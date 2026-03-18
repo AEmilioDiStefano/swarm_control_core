@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# PURPOSE
+# - Defines reusable controller/actuation backend templates.
+# - This is the "what backend we command" layer (GPIO mappings, controller params).
+#
+# HOW THIS RELATES TO THE SYSTEM
+# - Referenced by `robot_instances.yaml` via `control_interface`.
+# - Resolved by `swarm_control_core/drive_profiles.py` into the runtime hardware block.
+# - Designed to be transport/backend-agnostic (ground/air/marine capable naming).
+# - Used with `adapter_profiles.yaml` to separate local actuation from external integration paths.
+#
+# MUTABILITY / OWNERSHIP
+# - Repository copy is the baseline template library.
+# - Site-specific overrides belong in machine-local config, not git.
+#
+# WHAT THIS OFFERS
+# - Reusable backend definitions across multiple control types and vendors.
+# - Decouples kinematics from low-level interface wiring/limits.
+
+schema_version: "1.0"
+
+defaults:
+  control_interface: L298N_diff
+
+control_interfaces:
+  L298N_diff:
+    gpio:
+      en_left: 12
+      in1_left: 17
+      in2_left: 27
+      en_right: 13
+      in1_right: 22
+      in2_right: 23
+    params:
+      pwm_hz: 1000
+      max_pwm: 100
+      pwm_ramp_ms: 0
+      pwm_deadband_pct: 0
+      cmd_rate_hz: 0
+      pwm_slew_pct_per_s: 0
+
+  dual_tb6612_mecanum:
+    gpio:
+      fl_pwm: 12
+      fl_in1: 5
+      fl_in2: 6
+      fr_pwm: 13
+      fr_in1: 16
+      fr_in2: 19
+      rl_pwm: 18
+      rl_in1: 20
+      rl_in2: 21
+      rr_pwm: 26
+      rr_in1: 23
+      rr_in2: 24
+    params:
+      pwm_hz: 1000
+      max_pwm: 100
+      pwm_ramp_ms: 0
+      pwm_deadband_pct: 0
+      cmd_rate_hz: 0
+      pwm_slew_pct_per_s: 0
+
+  dual_tb6612_diff:
+    gpio:
+      fl_pwm: 12
+      fl_in1: 5
+      fl_in2: 6
+      fr_pwm: 18
+      fr_in1: 23
+      fr_in2: 24
+    params:
+      pwm_hz: 1000
+      max_pwm: 100
+      pwm_ramp_ms: 80
+      pwm_deadband_pct: 2
+      cmd_rate_hz: 0
+      pwm_slew_pct_per_s: 0

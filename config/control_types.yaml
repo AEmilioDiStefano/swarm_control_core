@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# PURPOSE
+# - Defines reusable control/kinematics templates.
+# - This is the "how motion is modeled" layer (not hardware wiring).
+#
+# HOW THIS RELATES TO THE SYSTEM
+# - Referenced by `robot_instances.yaml` via `control_type`.
+# - Resolved by `swarm_control_core/drive_profiles.py` into the runtime drive block.
+# - Works with `control_interfaces.yaml` to produce effective robot behavior.
+# - Combined with `adapter_profiles.yaml` to define robot-edge integration mode.
+#
+# MUTABILITY / OWNERSHIP
+# - Repository copy is the engineering baseline.
+# - Site-specific tuning should be copied to machine-local config and passed
+#   via `PROFILES_PATH`/`profiles_path:=` through `robot_instances.yaml`.
+#
+# WHAT THIS OFFERS
+# - Reuse of motion models across multiple robots/vendors.
+# - Separation of kinematics from controller wiring/backends.
+
+schema_version: "1.0"
+
+defaults:
+  control_type: diff_drive
+
+control_types:
+  diff_drive:
+    type: diff_drive
+    params:
+      wheel_base_m: 0.18
+      max_linear_mps: 0.4
+      max_angular_rps: 2.0
+      watchdog_timeout_s: 0.5
+      spin_speed_mult: 0.7
+      stall_timeout_s: 0
+      stall_duty_pct: 0
+      teleop_linear_mps: 0.5
+      teleop_angular_rps: 1.0
+      teleop_speed_step: 1.1
+      teleop_medium_steps: 10
+      teleop_fast_linear_steps: 15
+      teleop_fast_angular_steps: 10
+      teleop_omni_turn_gain: 0.5
+      teleop_smoothing_alpha: 0.0
+      fpv_lease_ttl_sec: 3.0
+
+  mecanum_drive:
+    type: omni
+    params:
+      wheel_base_m: 0.18
+      track_width_m: 0.18
+      max_linear_mps: 0.4
+      max_angular_rps: 2.0
+      watchdog_timeout_s: 0.5
+      spin_speed_mult: 0.7
+      stall_timeout_s: 0
+      stall_duty_pct: 0
+      teleop_linear_mps: 0.5
+      teleop_angular_rps: 1.0
+      teleop_speed_step: 1.1
+      teleop_medium_steps: 10
+      teleop_fast_linear_steps: 15
+      teleop_fast_angular_steps: 10
+      teleop_omni_turn_gain: 0.5
+      teleop_smoothing_alpha: 0.0
+      fpv_lease_ttl_sec: 3.0

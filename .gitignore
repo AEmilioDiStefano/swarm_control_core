@@ -1,0 +1,24 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# ROS/colcon build artifacts
+build/
+install/
+log/
+*.egg-info/
+
+# Local virtual environments
+.venv/
+venv/
+
+# Local environment files
+.env
+.envrc
+
+# Editor and OS noise
+.DS_Store
+*.swp
+*~

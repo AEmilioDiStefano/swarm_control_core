@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# PURPOSE
+# - Defines camera defaults and per-robot camera overrides used by launch/runtime.
+#
+# HOW THIS RELATES TO THE SYSTEM
+# - Read by:
+#   - `launch/swarm_bringup.launch.py` via `camera_profiles_path`
+#   - `swarm_control_core/save_camera_profile.py` for detect/select/persist flow
+# - Works together with control/instance profile files:
+#   - `robot_instances.yaml`, `control_types.yaml`, and `control_interfaces.yaml`
+#     handle motion/control-interface behavior.
+#   - `camera_profiles.yaml` is the camera source of truth.
+# - Runtime precedence is:
+#   launch args -> optional CAMERA_* env overrides (when enabled) ->
+#   this file -> hard safe defaults.
+#
+# MUTABILITY / OWNERSHIP
+# - Repository copy should stay as defaults/template.
+# - Active robot-specific runtime updates should be stored outside git
+#   (recommended: `~/.config/swarm_control_core/camera_profiles.yaml`) and passed with
+#   `--camera-profiles-path` / `camera_profiles_path:=`.
+#
+# WHAT THIS OFFERS
+# - Consistent camera startup per robot without repeating CLI args each launch.
+# - Controlled low-latency tuning and deterministic device selection.
+
+schema_version: "1.0"
+
+defaults:
+  source: usb
+  device: /dev/video0
+  width: 640
+  height: 480
+  fps: 15
+  fourcc: MJPG
+  force_v4l2: true
+profiles:
+  robot1: {}
+  robot2: {}
+  robot3: {}
+  control_machine:
+    source: usb
+    camera_name: 'USB Camera: Azurewave Integrated Camera'
+    sensor: ''
+    device: /dev/v4l/by-id/usb-Azurewave_Integrated_Camera-video-index0
+    width: 1280
+    height: 720
+    fps: 30
+    fourcc: MJPG
+    force_v4l2: true

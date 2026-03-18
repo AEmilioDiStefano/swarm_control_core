@@ -1,0 +1,112 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# PURPOSE
+# - Defines per-robot instance bindings to control type, control interface,
+#   and capability profile templates.
+#
+# HOW THIS RELATES TO THE SYSTEM
+# - Primary profile entrypoint for runtime (`PROFILES_PATH`).
+# - Combined with sibling files in the same directory:
+#   - `control_types.yaml`
+#   - `control_interfaces.yaml`
+#   - `capability_profiles.yaml`
+#   - `adapter_profiles.yaml`
+# - Resolved by `swarm_control_core/drive_profiles.py` into effective runtime config.
+#
+# MUTABILITY / OWNERSHIP
+# - Repository copy is baseline.
+# - Active deployments should copy to machine-local config and pass explicit path.
+#
+# WHAT THIS OFFERS
+# - Per-robot mapping without duplicating common templates.
+# - Cleaner modularity for adding new robot families/vendors.
+#
+# STRICT SPLIT NOTE
+# - Operational Linux SSH targeting now lives in:
+#     ~/.config/swarm_control_core/swarm_roster.yaml
+# - Any `ssh_target` values in this repository file are template/seed values and
+#   legacy migration inputs only. They are not the primary operational source.
+
+schema_version: "1.0"
+
+defaults:
+  control_type: diff_drive
+  control_interface: L298N_diff
+  capability_profile: ground_diff_basic
+  adapter_profile: passthrough_local
+
+robots:
+  robot1:
+    # Linux SSH target used by add_robots provisioning scripts.
+    # Format: username@hostname, username@hostname.local, or username@IPv4
+    ssh_target: robot1@legion1.local
+    control_type: diff_drive
+    control_interface: dual_tb6612_diff
+    capability_profile: ground_diff_basic
+    adapter_profile: passthrough_local
+    params:
+      control_type:
+        # Test tune: stronger response while keeping conservative safety margins.
+        max_linear_mps: 0.22
+        max_angular_rps: 0.90
+        spin_speed_mult: 0.45
+        watchdog_timeout_s: 0.25
+        teleop_linear_mps: 0.18
+        teleop_angular_rps: 0.70
+        teleop_diff_arc_inner_ratio: 0.75
+        teleop_smoothing_alpha: 0.25
+        stall_timeout_s: 0
+        stall_duty_pct: 0
+      control_interface:
+        max_pwm: 68
+        pwm_ramp_ms: 140
+        pwm_deadband_pct: 3
+        cmd_rate_hz: 30
+        pwm_slew_pct_per_s: 180
+        strict_single_cmd_vel_publisher: true
+        strict_cmd_vel_exempt_publishers:
+          - unit_executor_action_server
+        allow_rotate_bypass_safety: false
+
+  robot2:
+    ssh_target: robot2@legion2.local
+    control_type: mecanum_drive
+    control_interface: dual_tb6612_mecanum
+    capability_profile: ground_omni_basic
+    adapter_profile: passthrough_local
+    params:
+      control_type:
+        orchestrator_linear_duration_scale: 1.55
+        orchestrator_angular_duration_scale: 1.65
+        orchestrator_max_detour_scale: 0.45
+        max_linear_mps: 0.40
+        max_angular_rps: 1.8
+        spin_speed_mult: 0.75
+        stall_timeout_s: 0
+        stall_duty_pct: 0
+      control_interface:
+        max_pwm: 90
+        pwm_ramp_ms: 40
+        pwm_deadband_pct: 2
+        cmd_rate_hz: 50
+        pwm_slew_pct_per_s: 400
+
+  robot3:
+    ssh_target: robot3@legion3.local
+    control_type: diff_drive
+    control_interface: L298N_diff
+    capability_profile: ground_diff_basic
+    adapter_profile: passthrough_local
+    params:
+      control_type:
+        orchestrator_linear_duration_scale: 0.97
+        orchestrator_angular_duration_scale: 1.32
+        left_speed_scale: 1.04
+        right_speed_scale: 1.00
+
+  robot_omni:
+    ssh_target: robot_omni@legion-omni.local
+    control_type: mecanum_drive
+    control_interface: dual_tb6612_mecanum
+    capability_profile: ground_omni_basic
+    adapter_profile: passthrough_local

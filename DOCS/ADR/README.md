@@ -1,0 +1,19 @@
+# swarm_control_core ADR Index
+
+This folder contains Architecture Decision Records (ADRs) for swarm_control_core.
+
+Use ADRs to track:
+- the problem we needed to solve,
+- the options we considered,
+- the decision we made,
+- why we believe it works,
+- and what to monitor when operating the system.
+
+Active ADRs:
+- [ADR-0001: Local Video Transport Strategy (WebRTC-only main stream)](./ADR-0001-local-video-transport.md)
+- [ADR-0002: Low-Latency Robot-Switch Hardening](./ADR-0002-low-latency-switch-hardening.md)
+- [ADR-0003: Benign aioice STUN Retry Race Handling](./ADR-0003-aioice-race-handling.md)
+- [ADR-0007: Interest-Driven Video Scaling for Multi-Robot FPV](./ADR-0007-interest-driven-video-scaling.md)
+
+Companion validation doc:
+- [LOW_LATENCY_VALIDATION.md](../LOW_LATENCY_VALIDATION.md)
