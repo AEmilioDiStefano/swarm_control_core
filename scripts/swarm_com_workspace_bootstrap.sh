@@ -166,9 +166,9 @@ if [[ "$emit_shell" == "1" ]]; then
   printf 'export SWARM_COM_WORKSPACE_ROOT=%q\n' "$workspace_root"
   printf 'export WS_DEV=%q\n' "$workspace_root"
   printf 'export SWARM_COM_WORKSPACE_NAME=%q\n' "$WORKSPACE_NAME"
-  printf 'echo %q\n' "workspace name set to ${WORKSPACE_NAME}"
+  printf 'echo %q\n' "Workspace name has been set to: ${WORKSPACE_NAME}"
 else
   echo "[swarm_com_workspace_bootstrap] WS=${workspace_root}"
   echo "[swarm_com_workspace_bootstrap] SC=${SC}"
-  echo "workspace name set to ${WORKSPACE_NAME}"
+  echo "Workspace name has been set to: ${WORKSPACE_NAME}"
 fi
