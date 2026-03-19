@@ -24,9 +24,14 @@ Suggested terminal layout on the control machine:
 Run once in each terminal before Step 0:
 
 ```bash
-export WS_DEV="${WS_DEV:-$HOME/ros2_ws}"
-export WS="${WS:-${SWARM_WORKSPACE_ROOT:-$WS_DEV}}"   # set to your workspace root if different
-export SC="${SC:-$WS/src/swarm_control_core}"
+# If your current directory is the workspace root (<workspace>/):
+source "./src/swarm_control_core/scripts/swarm_com_workspace_env.sh"
+
+# If your current directory is the package root (<workspace>/src/swarm_control_core/):
+# source "./scripts/swarm_com_workspace_env.sh"
+
+# If needed, override auto-detect explicitly:
+# source "./src/swarm_control_core/scripts/swarm_com_workspace_env.sh" --workspace /path/to/workspace
 ```
 
 ## Mode Handoff Checklist (core <-> pro)

@@ -2,6 +2,16 @@
 
 This runbook is for local/LAN operation of `swarm_control_core`.
 
+Workspace bootstrap (run once per terminal before DRP steps):
+
+```bash
+# If your current directory is the workspace root (<workspace>/):
+source "./src/swarm_control_core/scripts/swarm_com_workspace_env.sh"
+
+# If your current directory is the package root (<workspace>/src/swarm_control_core/):
+# source "./scripts/swarm_com_workspace_env.sh"
+```
+
 ## DRP Steps
 
 ### 1. Install Dependencies (Control + Robots)
