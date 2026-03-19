@@ -1416,6 +1416,7 @@ class BrowserServer:
         self._webrtc_last_offer_client_id = ""
         self._webrtc_last_client_event: Dict[str, Any] = {}
         self._webrtc_pc_sessions: Dict[int, Dict[str, Any]] = {}
+        self._webrtc_pc_by_client_id: Dict[str, RTCPeerConnection] = {}
         self.ws_clients: Dict[str, web.WebSocketResponse] = {}
         self.ws_principals: Dict[str, Principal] = {}
         self.client_active_robot: Dict[str, str] = {}
@@ -1545,6 +1546,9 @@ class BrowserServer:
             "ice_connection_state": str(getattr(pc, "iceConnectionState", "") or ""),
             "ice_gathering_state": str(getattr(pc, "iceGatheringState", "") or ""),
         }
+        cid = str(client_id or "").strip()
+        if cid:
+            self._webrtc_pc_by_client_id[cid] = pc
         self._webrtc_pc_opened_total += 1
 
     def _update_pc_session(
@@ -1575,9 +1579,17 @@ class BrowserServer:
             pass
 
         sid = id(pc)
-        if sid in self._webrtc_pc_sessions:
+        session = self._webrtc_pc_sessions.get(sid)
+        if session is not None:
+            cid = str(session.get("client_id") or "").strip()
+            if cid and self._webrtc_pc_by_client_id.get(cid) is pc:
+                self._webrtc_pc_by_client_id.pop(cid, None)
             self._webrtc_pc_closed_total += 1
             self._webrtc_pc_sessions.pop(sid, None)
+        else:
+            stale_client_ids = [cid for cid, mapped_pc in self._webrtc_pc_by_client_id.items() if mapped_pc is pc]
+            for cid in stale_client_ids:
+                self._webrtc_pc_by_client_id.pop(cid, None)
 
         self.pcs.discard(pc)
         try:
@@ -2196,6 +2208,10 @@ class BrowserServer:
             if not robot:
                 return web.Response(status=400, text="robot required")
             self.hub.mark_image_interest(robot, ttl_s=max(3.0, float(self.hub.image_thumb_interest_ttl_s)))
+            if client_id:
+                prior_pc = self._webrtc_pc_by_client_id.get(client_id)
+                if prior_pc is not None:
+                    await self._close_pc(prior_pc)
 
             offer = RTCSessionDescription(sdp=body["sdp"], type=body["type"])
             pc = self._build_pc()
@@ -2362,6 +2378,9 @@ class BrowserServer:
         finally:
             self.ws_clients.pop(client_id, None)
             self.ws_principals.pop(client_id, None)
+            prior_pc = self._webrtc_pc_by_client_id.pop(client_id, None)
+            if prior_pc is not None:
+                await self._close_pc(prior_pc)
             self.client_active_robot.pop(client_id, None)
             to_release = [r for r, lk in self.locks.items() if lk.controller_id == client_id]
             for robot in to_release:
