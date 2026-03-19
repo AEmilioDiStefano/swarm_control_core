@@ -289,7 +289,7 @@ export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=6.0
 export SWARM_COM_THUMB_ROBOTS_PER_TICK=1
 # Drive command pacing/hold tuned for noisy Wi-Fi multi-robot sessions.
 export SWARM_COM_DRIVE_CMD_RATE_HZ=20.0
-export SWARM_COM_DRIVE_HOLD_TIMEOUT_S=0.35
+export SWARM_COM_DRIVE_HOLD_TIMEOUT_S=0.10
 "$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
 ```
 

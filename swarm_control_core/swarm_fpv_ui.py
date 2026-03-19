@@ -139,7 +139,10 @@ IMAGE_QOS = QoSProfile(
 
 
 def now_s() -> float:
-    return time.time()
+    # Use monotonic time for all runtime interval/timeout math.
+    # Wall-clock jumps (NTP/manual clock updates) can otherwise produce
+    # stale hold behavior and unrealistic telemetry spikes.
+    return time.monotonic()
 
 
 def _normalize_image_subscription_mode(raw: Any) -> str:
@@ -570,12 +573,14 @@ class RosFleetHub(Node):
 
         desired: Set[str] = set()
         active = str(self.active_robot or "").strip()
-        if active and active in self._known_robots:
+        # Keep the selected robot subscribed even if topic discovery briefly
+        # misses it; this avoids active stream dropouts/no-signal flicker.
+        if active:
             desired.add(active)
 
         t_now = now_s()
         for robot, until in list(self._img_interest_until_s.items()):
-            if until >= t_now and robot in self._known_robots:
+            if until >= t_now:
                 desired.add(robot)
             elif until < t_now:
                 self._img_interest_until_s.pop(robot, None)
@@ -616,7 +621,8 @@ class RosFleetHub(Node):
         prev = last_seen.get(robot)
         if prev is not None:
             dt = max(1e-6, now - prev)
-            inst_hz = 1.0 / dt
+            # Bound outliers from scheduler jitter and timer granularity.
+            inst_hz = min(200.0, 1.0 / dt)
             prev_ema = float(rate_ema.get(robot, inst_hz))
             alpha = float(self.drive_rate_ema_alpha)
             rate_ema[robot] = ((1.0 - alpha) * prev_ema) + (alpha * inst_hz)
@@ -1041,6 +1047,9 @@ class RosFleetHub(Node):
 
         watched = robot in self._img_subs
         if self.image_subscription_mode != "all" and not watched:
+            if robot == str(self.active_robot or "").strip():
+                # Fast-path active robot warm-up if interest bookkeeping lags.
+                self.mark_image_interest(robot, ttl_s=max(2.0, float(self.image_thumb_interest_ttl_s)))
             topic = f"/{robot}/camera/image_raw/compressed"
             publisher_count = self._topic_publishers(topic)
             diag = dict(self._cam_diag_payload.get(robot, {}) or {})
@@ -4842,6 +4851,14 @@ def _install_aiohttp_disconnect_exception_filter() -> None:
             and ("transaction.__retry" in handle_txt.lower() or "transaction.__retry" in msg_txt.lower())
             and "invalid state" in str(exc).lower()
         )
+        is_known_aioice_transport_teardown_race = (
+            isinstance(exc, AttributeError)
+            and ("transaction.__retry" in handle_txt.lower() or "transaction.__retry" in msg_txt.lower())
+            and (
+                "sendto" in str(exc).lower()
+                or "call_exception_handler" in str(exc).lower()
+            )
+        )
 
         if is_known_aiohttp_disconnect_race:
             if not warned_once["value"]:
@@ -4852,12 +4869,12 @@ def _install_aiohttp_disconnect_exception_filter() -> None:
                 )
             return
 
-        if is_known_aioice_stun_retry_race:
+        if is_known_aioice_stun_retry_race or is_known_aioice_transport_teardown_race:
             if not warned_once.get("aioice"):
                 warned_once["aioice"] = True
                 print(
                     "[swarm_fpv_ui] Noted and suppressing known aioice STUN retry race "
-                    "(Transaction.__retry InvalidStateError)."
+                    "(Transaction.__retry transport teardown)."
                 )
             return
 
