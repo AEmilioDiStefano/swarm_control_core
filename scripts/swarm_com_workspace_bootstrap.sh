@@ -88,9 +88,27 @@ resolve_env_script() {
   return 1
 }
 
+resolve_from_pwd() {
+  local cur="${PWD}"
+  while [[ -n "$cur" && "$cur" != "/" ]]; do
+    if [[ -f "${cur}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh" ]]; then
+      printf '%s' "${cur}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh"
+      return 0
+    fi
+    cur="$(dirname "$cur")"
+  done
+  return 1
+}
+
 env_script=""
+script_workspace_root="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+
 if [[ -n "$workspace_override" ]]; then
   env_script="$(resolve_env_script "$workspace_override" || true)"
+elif env_from_pwd="$(resolve_from_pwd || true)"; [[ -n "$env_from_pwd" ]]; then
+  env_script="$env_from_pwd"
+elif [[ -f "${script_workspace_root}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh" ]]; then
+  env_script="${script_workspace_root}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh"
 elif [[ -n "${SWARM_COM_WORKSPACE_ROOT:-}" ]]; then
   env_script="$(resolve_env_script "${SWARM_COM_WORKSPACE_ROOT}" || true)"
 fi
@@ -117,7 +135,7 @@ fi
 if [[ "$interactive_mode" == "yes" ]] || { [[ "$interactive_mode" == "auto" ]] && [[ -t 0 ]]; }; then
   detected_name="$(basename "$workspace_root")"
   while true; do
-    printf 'A workspace called [%s] has been detected as the parent workspace for the swarm_control_core package. Is this correct?\n' "$detected_name" >&2
+    printf '\nA workspace called [%s] has been detected as the parent workspace for the swarm_control_core package. Is this correct?\n' "$detected_name" >&2
     printf '(Y/n): ' >&2
     read -r confirm
     case "${confirm:-Y}" in
