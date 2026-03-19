@@ -18,13 +18,7 @@ run_root() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./lib/swarm_com_workspace.sh
-source "${SCRIPT_DIR}/lib/swarm_com_workspace.sh"
-WS="$(swarm_com_detect_workspace_root "${SWARM_COM_WORKSPACE_ROOT:-}" || true)"
-if [[ -z "$WS" ]]; then
-  log "ERROR: unable to detect workspace root; set SWARM_COM_WORKSPACE_ROOT."
-  exit 1
-fi
+WS="${SWARM_COM_WORKSPACE_ROOT:-$HOME/ros2_ws_dev}"
 BIND_HOST="${SWARM_COM_BIND_HOST:-127.0.0.1}"
 BIND_PORT="${SWARM_COM_BIND_PORT:-8080}"
 RECLAIM_BIND_PORT="${SWARM_COM_RECLAIM_BIND_PORT:-1}"
@@ -174,50 +168,6 @@ unset ROS_SUPER_CLIENT
 unset ROS_STATIC_PEERS
 export ROS_LOCALHOST_ONLY=0
 export ROS_AUTOMATIC_DISCOVERY_RANGE="${SWARM_COM_AUTOMATIC_DISCOVERY_RANGE:-SUBNET}"
-export SWARM_COM_REQUIRE_UFW_INACTIVE="${SWARM_COM_REQUIRE_UFW_INACTIVE:-1}"
-
-is_truthy() {
-  case "${1,,}" in
-    1|true|yes|on) return 0 ;;
-  esac
-  return 1
-}
-
-check_ufw_runtime_guard() {
-  local range_lc="${ROS_AUTOMATIC_DISCOVERY_RANGE,,}"
-  if [[ "$range_lc" == "off" ]]; then
-    return 0
-  fi
-  if ! is_truthy "$SWARM_COM_REQUIRE_UFW_INACTIVE"; then
-    return 0
-  fi
-  if ! command -v systemctl >/dev/null 2>&1; then
-    return 0
-  fi
-  if systemctl is-active --quiet ufw.service; then
-    log "ERROR: ufw.service is active and likely blocking DDS discovery/traffic."
-    log "Run compat reset in this control shell, then retry:"
-    log "  source \"$SCRIPT_DIR/swarm_com_reset_env.sh\" --scope deep --machine-role control --compat-mode --domain-id \"\${SWARM_COM_ROS_DOMAIN_ID:-17}\""
-    log "Override guard only if your firewall rules are already DDS-safe: export SWARM_COM_REQUIRE_UFW_INACTIVE=0"
-    exit 2
-  fi
-}
-
-warn_if_wifi_powersave_enabled() {
-  if ! command -v iw >/dev/null 2>&1; then
-    return 0
-  fi
-  if ! iw dev wlan0 info >/dev/null 2>&1; then
-    return 0
-  fi
-  if iw dev wlan0 get power_save 2>/dev/null | grep -qi 'Power save: on'; then
-    log "WARN: wlan0 power save is ON. This can cause lag spikes in local Wi-Fi sessions."
-    log "Recommend once per boot: sudo iw dev wlan0 set power_save off"
-  fi
-}
-
-check_ufw_runtime_guard
-warn_if_wifi_powersave_enabled
 
 export SWARM_COM_BIND_HOST="$BIND_HOST"
 export SWARM_COM_BIND_PORT="$BIND_PORT"
@@ -229,12 +179,9 @@ export SWARM_COM_MAIN_STREAM_FPS="${SWARM_COM_MAIN_STREAM_FPS:-15.0}"
 export SWARM_COM_WEBRTC_FPS="${SWARM_COM_WEBRTC_FPS:-15.0}"
 export SWARM_COM_WEBRTC_MAIN_ONLY="${SWARM_COM_WEBRTC_MAIN_ONLY:-0}"
 export SWARM_COM_THUMB_REFRESH_HZ="${SWARM_COM_THUMB_REFRESH_HZ:-0.5}"
-export SWARM_COM_IMAGE_SUBSCRIPTION_MODE="${SWARM_COM_IMAGE_SUBSCRIPTION_MODE:-active_only}"
-export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S="${SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S:-6.0}"
+export SWARM_COM_IMAGE_SUBSCRIPTION_MODE="${SWARM_COM_IMAGE_SUBSCRIPTION_MODE:-all}"
+export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S="${SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S:-2.5}"
 export SWARM_COM_THUMB_ROBOTS_PER_TICK="${SWARM_COM_THUMB_ROBOTS_PER_TICK:-1}"
-export SWARM_COM_DRIVE_CMD_RATE_HZ="${SWARM_COM_DRIVE_CMD_RATE_HZ:-20.0}"
-export SWARM_COM_DRIVE_HOLD_TIMEOUT_S="${SWARM_COM_DRIVE_HOLD_TIMEOUT_S:-0.10}"
-export SWARM_COM_DRIVE_RATE_EMA_ALPHA="${SWARM_COM_DRIVE_RATE_EMA_ALPHA:-0.25}"
 case "${SWARM_COM_WEBRTC_MAIN_ONLY,,}" in
   1|true|yes|on)
     export SWARM_COM_WEBRTC_MAIN_ONLY="true"
@@ -254,13 +201,6 @@ elif (( SWARM_COM_THUMB_ROBOTS_PER_TICK < 0 )); then
   log "Negative SWARM_COM_THUMB_ROBOTS_PER_TICK='${SWARM_COM_THUMB_ROBOTS_PER_TICK}', forcing 0."
   export SWARM_COM_THUMB_ROBOTS_PER_TICK="0"
 fi
-if ! awk -v v="${SWARM_COM_DRIVE_HOLD_TIMEOUT_S}" 'BEGIN{exit !(v ~ /^([0-9]+([.][0-9]+)?|[.][0-9]+)$/)}'; then
-  log "Invalid SWARM_COM_DRIVE_HOLD_TIMEOUT_S='${SWARM_COM_DRIVE_HOLD_TIMEOUT_S}', forcing 0.10."
-  export SWARM_COM_DRIVE_HOLD_TIMEOUT_S="0.10"
-elif awk -v v="${SWARM_COM_DRIVE_HOLD_TIMEOUT_S}" 'BEGIN{exit !(v+0 < 0.05)}'; then
-  log "SWARM_COM_DRIVE_HOLD_TIMEOUT_S='${SWARM_COM_DRIVE_HOLD_TIMEOUT_S}' is too low; forcing 0.05."
-  export SWARM_COM_DRIVE_HOLD_TIMEOUT_S="0.05"
-fi
 
 log "bind=${SWARM_COM_BIND_HOST}:${SWARM_COM_BIND_PORT}"
 log "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
@@ -269,9 +209,9 @@ log "ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY}"
 log "ROS_AUTOMATIC_DISCOVERY_RANGE=${ROS_AUTOMATIC_DISCOVERY_RANGE}"
 log "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-<unset>}"
 if [[ "${SWARM_COM_WEBRTC_MAIN_ONLY}" == "true" ]]; then
-  log "stream=WebRTC-only main stream (no fallback)"
+  log "stream=WebRTC-only main stream (no MJPEG fallback)"
 else
-  log "stream=WebRTC primary main stream + JPEG fallback"
+  log "stream=WebRTC primary main stream + MJPEG fallback"
 fi
 log "main_stream_fps=${SWARM_COM_MAIN_STREAM_FPS}"
 log "webrtc_fps=${SWARM_COM_WEBRTC_FPS}"
@@ -280,9 +220,6 @@ log "thumb_refresh_hz=${SWARM_COM_THUMB_REFRESH_HZ}"
 log "image_subscription_mode=${SWARM_COM_IMAGE_SUBSCRIPTION_MODE}"
 log "image_thumb_interest_ttl_s=${SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S}"
 log "thumb_robots_per_tick=${SWARM_COM_THUMB_ROBOTS_PER_TICK}"
-log "drive_cmd_rate_hz=${SWARM_COM_DRIVE_CMD_RATE_HZ}"
-log "drive_hold_timeout_s=${SWARM_COM_DRIVE_HOLD_TIMEOUT_S}"
-log "drive_rate_ema_alpha=${SWARM_COM_DRIVE_RATE_EMA_ALPHA}"
 if [[ "${SWARM_COM_ALLOW_LAN_BIND:-0}" == "1" ]]; then
   log "LAN bind enabled (private LAN use only)."
 else
@@ -311,61 +248,12 @@ else
 fi
 
 ui_pid=""
-_cleanup_done="0"
-
-seconds_to_ticks() {
-  local seconds="${1:-0}"
-  awk -v s="$seconds" 'BEGIN { t=int((s*10)+0.5); if (t < 1) t=1; print t }'
-}
-
-wait_for_exit() {
-  local pid="$1"
-  local seconds="$2"
-  local ticks
-  ticks="$(seconds_to_ticks "$seconds")"
-  for ((i=0; i<ticks; i++)); do
-    if ! kill -0 "$pid" 2>/dev/null; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  return 1
-}
-
-stop_ui_tree() {
-  local pid="$1"
-  local int_grace="${SWARM_COM_UI_SHUTDOWN_INT_GRACE_S:-4.0}"
-  local term_grace="${SWARM_COM_UI_SHUTDOWN_TERM_GRACE_S:-3.0}"
-  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
-  if ! kill -0 "$pid" 2>/dev/null; then
-    return 0
-  fi
-
-  log "Stopping local UI process tree (pid=${pid}) with SIGINT..."
-  kill -INT "-${pid}" 2>/dev/null || kill -INT "${pid}" 2>/dev/null || true
-  if wait_for_exit "$pid" "$int_grace"; then
-    return 0
-  fi
-
-  log "Local UI still running; escalating to SIGTERM..."
-  kill -TERM "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
-  if wait_for_exit "$pid" "$term_grace"; then
-    return 0
-  fi
-
-  log "Local UI still running; forcing SIGKILL..."
-  kill -KILL "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
-}
 
 cleanup() {
   local ec=$?
-  if [[ "$_cleanup_done" == "1" ]]; then
-    return 0
-  fi
-  _cleanup_done="1"
-  trap - EXIT INT TERM
   if [[ -n "$ui_pid" ]] && kill -0 "$ui_pid" 2>/dev/null; then
-    stop_ui_tree "$ui_pid"
+    log "Stopping local UI process tree (pid=${ui_pid})"
+    kill -TERM "-${ui_pid}" 2>/dev/null || kill -TERM "${ui_pid}" 2>/dev/null || true
     wait "$ui_pid" 2>/dev/null || true
   fi
   exit "$ec"
@@ -383,10 +271,7 @@ if command -v setsid >/dev/null 2>&1; then
     thumb_refresh_hz:="$SWARM_COM_THUMB_REFRESH_HZ" \
     image_subscription_mode:="$SWARM_COM_IMAGE_SUBSCRIPTION_MODE" \
     image_thumb_interest_ttl_s:="$SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S" \
-    thumb_robots_per_tick:="$SWARM_COM_THUMB_ROBOTS_PER_TICK" \
-    drive_cmd_rate_hz:="$SWARM_COM_DRIVE_CMD_RATE_HZ" \
-    drive_hold_timeout_s:="$SWARM_COM_DRIVE_HOLD_TIMEOUT_S" \
-    drive_rate_ema_alpha:="$SWARM_COM_DRIVE_RATE_EMA_ALPHA" &
+    thumb_robots_per_tick:="$SWARM_COM_THUMB_ROBOTS_PER_TICK" &
 else
   ros2 launch swarm_control_core swarm_fpv_ui.launch.py \
     ros_domain_id:="$ROS_DOMAIN_ID" \
@@ -398,10 +283,7 @@ else
     thumb_refresh_hz:="$SWARM_COM_THUMB_REFRESH_HZ" \
     image_subscription_mode:="$SWARM_COM_IMAGE_SUBSCRIPTION_MODE" \
     image_thumb_interest_ttl_s:="$SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S" \
-    thumb_robots_per_tick:="$SWARM_COM_THUMB_ROBOTS_PER_TICK" \
-    drive_cmd_rate_hz:="$SWARM_COM_DRIVE_CMD_RATE_HZ" \
-    drive_hold_timeout_s:="$SWARM_COM_DRIVE_HOLD_TIMEOUT_S" \
-    drive_rate_ema_alpha:="$SWARM_COM_DRIVE_RATE_EMA_ALPHA" &
+    thumb_robots_per_tick:="$SWARM_COM_THUMB_ROBOTS_PER_TICK" &
 fi
 ui_pid="$!"
 wait "$ui_pid"

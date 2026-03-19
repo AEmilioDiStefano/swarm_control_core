@@ -19,7 +19,6 @@ import asyncio
 import io
 import ipaddress
 import json
-import math
 import os
 import secrets
 import socket
@@ -55,12 +54,7 @@ import rclpy
 from geometry_msgs.msg import Twist
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
-from rclpy.qos import (
-    DurabilityPolicy,
-    HistoryPolicy,
-    QoSProfile,
-    ReliabilityPolicy,
-)
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
 
@@ -122,27 +116,10 @@ IMG_FLAT_RE = re.compile(r"^/([^/]+)/image_raw$")
 IMG_CAMERA_COMP_RE = re.compile(r"^/([^/]+)/camera/image_raw/compressed$")
 IMG_FLAT_COMP_RE = re.compile(r"^/([^/]+)/image_raw/compressed$")
 HB_RE = re.compile(r"^/([^/]+)/heartbeat$")
-CMD_VEL_QOS = QoSProfile(
-    history=HistoryPolicy.KEEP_LAST,
-    # depth=1 prevents stale queued drive commands under congestion.
-    depth=1,
-    reliability=ReliabilityPolicy.BEST_EFFORT,
-    durability=DurabilityPolicy.VOLATILE,
-)
-IMAGE_QOS = QoSProfile(
-    history=HistoryPolicy.KEEP_LAST,
-    # Keep only the newest frame to minimize apparent video latency.
-    depth=1,
-    reliability=ReliabilityPolicy.BEST_EFFORT,
-    durability=DurabilityPolicy.VOLATILE,
-)
 
 
 def now_s() -> float:
-    # Use monotonic time for all runtime interval/timeout math.
-    # Wall-clock jumps (NTP/manual clock updates) can otherwise produce
-    # stale hold behavior and unrealistic telemetry spikes.
-    return time.monotonic()
+    return time.time()
 
 
 def _normalize_image_subscription_mode(raw: Any) -> str:
@@ -373,14 +350,14 @@ class RosFleetHub(Node):
         )
         self.declare_parameter(
             "webrtc_main_only",
-            True,
+            False,
             ParameterDescriptor(dynamic_typing=True),
         )
-        self.declare_parameter("drive_cmd_rate_hz", 20.0)
+        self.declare_parameter("drive_cmd_rate_hz", 30.0)
         self.declare_parameter("drive_hold_timeout_s", 0.35)
         self.declare_parameter("drive_rate_ema_alpha", 0.25)
-        self.declare_parameter("image_subscription_mode", "active_only")
-        self.declare_parameter("image_thumb_interest_ttl_s", 6.0)
+        self.declare_parameter("image_subscription_mode", "all")
+        self.declare_parameter("image_thumb_interest_ttl_s", 2.5)
         self.declare_parameter("thumb_robots_per_tick", 1)
 
         self.webrtc_fps = float(self.get_parameter("webrtc_fps").value)
@@ -454,13 +431,10 @@ class RosFleetHub(Node):
         self._drive_pub_hz_ema: Dict[str, float] = {}
 
         self._known_robots: Set[str] = set()
-        self._discovery_stale_hold_s: float = 12.0
+        self._discovery_stale_hold_s: float = 120.0
         self._discovery_last_nonempty_s: float = 0.0
         self._discovery_scan_error_streak: int = 0
         self.create_timer(1.0, self._refresh_discovery)
-        # Fast interest-sync loop keeps active-only subscription handoff snappy
-        # without invoking ROS graph mutation from aiohttp request threads.
-        self.create_timer(0.25, self._sync_image_subscriptions)
         self.create_timer(1.0 / self.drive_cmd_rate_hz, self._drive_publish_tick)
         self.get_logger().info(
             "[swarm_fpv_ui] image_subscription_mode=%s thumb_interest_ttl_s=%.2f thumb_robots_per_tick=%d"
@@ -545,27 +519,11 @@ class RosFleetHub(Node):
         if self.image_subscription_mode == "all":
             return
         ttl = float(ttl_s) if ttl_s is not None else float(self.image_thumb_interest_ttl_s)
-        ttl = max(0.2, ttl, self._thumb_interest_floor_ttl_s())
+        ttl = max(0.2, ttl)
         until = now_s() + ttl
         prev = float(self._img_interest_until_s.get(robot, 0.0))
         if until > prev:
             self._img_interest_until_s[robot] = until
-
-    def _thumb_interest_floor_ttl_s(self) -> float:
-        """
-        Compute a lower bound that prevents active-only thumbnail flapping.
-
-        With bounded round-robin refresh (`thumb_robots_per_tick`), a robot's
-        next thumbnail probe can be several seconds away. If interest TTL is
-        shorter than that revisit interval, camera subscriptions churn and tiles
-        oscillate between live and no-signal in small fleets.
-        """
-        hz = max(0.1, float(self.thumb_refresh_hz))
-        tick_s = 1.0 / hz
-        budget = max(1, int(self.thumb_robots_per_tick))
-        non_active = max(1, len(self._known_robots) - 1)
-        rounds = max(1, int(math.ceil(float(non_active) / float(budget))))
-        return max(0.2, (tick_s * rounds) + 1.0)
 
     def _desired_image_subscription_robots(self) -> Set[str]:
         if self.image_subscription_mode == "all":
@@ -573,14 +531,12 @@ class RosFleetHub(Node):
 
         desired: Set[str] = set()
         active = str(self.active_robot or "").strip()
-        # Keep the selected robot subscribed even if topic discovery briefly
-        # misses it; this avoids active stream dropouts/no-signal flicker.
-        if active:
+        if active and active in self._known_robots:
             desired.add(active)
 
         t_now = now_s()
         for robot, until in list(self._img_interest_until_s.items()):
-            if until >= t_now:
+            if until >= t_now and robot in self._known_robots:
                 desired.add(robot)
             elif until < t_now:
                 self._img_interest_until_s.pop(robot, None)
@@ -598,9 +554,17 @@ class RosFleetHub(Node):
                 self.destroy_subscription(sub)
             except Exception:
                 pass
+        self._img_topic_for_robot.pop(robot, None)
+        self._img_source_for_robot.pop(robot, None)
         self._img_last_probe_s.pop(robot, None)
-        # Keep last frame cache across active-only unsubscribe to avoid
-        # rail flicker/no-signal churn while round-robin interest rotates.
+        self._latest_img_msg.pop(robot, None)
+        self._latest_jpeg.pop(robot, None)
+        self._latest_rgb_cache.pop(robot, None)
+        self._latest_rgb_cache_stamp.pop(robot, None)
+        self._img_last_frame_s.pop(robot, None)
+        self._img_prev_frame_s.pop(robot, None)
+        self._img_fps_ema.pop(robot, None)
+        self._img_last_encoding.pop(robot, None)
         self._camera_health_cache.pop(robot, None)
 
     def _sync_image_subscriptions(self) -> None:
@@ -608,7 +572,17 @@ class RosFleetHub(Node):
         current = set(self._img_subs.keys())
         for robot in sorted(desired - current):
             self.ensure_image_subscription(robot)
+        t_now = now_s()
         for robot in sorted(current - desired):
+            # Keep existing subscriptions alive through temporary discovery
+            # jitter to avoid no-signal flapping in multi-robot sessions.
+            if self.image_subscription_mode != "all":
+                last = float(self._img_last_frame_s.get(robot, 0.0))
+                recent_frame = (t_now - last) <= 8.0 if last > 0.0 else False
+                if robot in self._known_robots and recent_frame:
+                    continue
+                if float(self._img_interest_until_s.get(robot, 0.0)) >= t_now:
+                    continue
             self._drop_image_subscription(robot)
 
     def _update_rate_ema(
@@ -621,8 +595,7 @@ class RosFleetHub(Node):
         prev = last_seen.get(robot)
         if prev is not None:
             dt = max(1e-6, now - prev)
-            # Bound outliers from scheduler jitter and timer granularity.
-            inst_hz = min(200.0, 1.0 / dt)
+            inst_hz = 1.0 / dt
             prev_ema = float(rate_ema.get(robot, inst_hz))
             alpha = float(self.drive_rate_ema_alpha)
             rate_ema[robot] = ((1.0 - alpha) * prev_ema) + (alpha * inst_hz)
@@ -653,7 +626,6 @@ class RosFleetHub(Node):
             "ws_rx_hz": float(self._drive_rx_hz_ema.get(robot, 0.0)),
             "cmd_pub_hz": cmd_pub_hz,
             "target_age_s": age,
-            "active": active,
             "hold_active": active,
             "rate_status": rate_status,
             "cmd_rate_target_hz": target_hz,
@@ -735,7 +707,7 @@ class RosFleetHub(Node):
                 msg_type,
                 t,
                 lambda msg, r=robot, src=t, fn=cb_fn: fn(msg, r=r, src_topic=src),
-                IMAGE_QOS,
+                qos_profile_sensor_data,
             )
 
     def _topic_publishers(self, topic: str) -> int:
@@ -1047,9 +1019,6 @@ class RosFleetHub(Node):
 
         watched = robot in self._img_subs
         if self.image_subscription_mode != "all" and not watched:
-            if robot == str(self.active_robot or "").strip():
-                # Fast-path active robot warm-up if interest bookkeeping lags.
-                self.mark_image_interest(robot, ttl_s=max(2.0, float(self.image_thumb_interest_ttl_s)))
             topic = f"/{robot}/camera/image_raw/compressed"
             publisher_count = self._topic_publishers(topic)
             diag = dict(self._cam_diag_payload.get(robot, {}) or {})
@@ -1308,7 +1277,7 @@ class RosFleetHub(Node):
 
         pub = self._cmd_pubs.get(target_robot)
         if pub is None:
-            pub = self.create_publisher(Twist, f"/{target_robot}/cmd_vel", CMD_VEL_QOS)
+            pub = self.create_publisher(Twist, f"/{target_robot}/cmd_vel", 10)
             self._cmd_pubs[target_robot] = pub
 
         t = Twist()
@@ -1467,7 +1436,6 @@ class BrowserServer:
         self._webrtc_last_offer_client_id = ""
         self._webrtc_last_client_event: Dict[str, Any] = {}
         self._webrtc_pc_sessions: Dict[int, Dict[str, Any]] = {}
-        self._webrtc_pc_by_client_id: Dict[str, RTCPeerConnection] = {}
         self.ws_clients: Dict[str, web.WebSocketResponse] = {}
         self.ws_principals: Dict[str, Principal] = {}
         self.client_active_robot: Dict[str, str] = {}
@@ -1597,9 +1565,6 @@ class BrowserServer:
             "ice_connection_state": str(getattr(pc, "iceConnectionState", "") or ""),
             "ice_gathering_state": str(getattr(pc, "iceGatheringState", "") or ""),
         }
-        cid = str(client_id or "").strip()
-        if cid:
-            self._webrtc_pc_by_client_id[cid] = pc
         self._webrtc_pc_opened_total += 1
 
     def _update_pc_session(
@@ -1630,17 +1595,9 @@ class BrowserServer:
             pass
 
         sid = id(pc)
-        session = self._webrtc_pc_sessions.get(sid)
-        if session is not None:
-            cid = str(session.get("client_id") or "").strip()
-            if cid and self._webrtc_pc_by_client_id.get(cid) is pc:
-                self._webrtc_pc_by_client_id.pop(cid, None)
+        if sid in self._webrtc_pc_sessions:
             self._webrtc_pc_closed_total += 1
             self._webrtc_pc_sessions.pop(sid, None)
-        else:
-            stale_client_ids = [cid for cid, mapped_pc in self._webrtc_pc_by_client_id.items() if mapped_pc is pc]
-            for cid in stale_client_ids:
-                self._webrtc_pc_by_client_id.pop(cid, None)
 
         self.pcs.discard(pc)
         try:
@@ -2081,7 +2038,7 @@ class BrowserServer:
                     "auth_mode": self.auth_config.mode,
                 },
                 "stream": {
-                    "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "jpeg_poll"),
+                    "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "mjpeg"),
                     "fps": float(self.hub.main_stream_fps),
                 },
                 "webrtc": self._webrtc_public(),
@@ -2338,10 +2295,6 @@ class BrowserServer:
             if not robot:
                 return web.Response(status=400, text="robot required")
             self.hub.mark_image_interest(robot, ttl_s=max(3.0, float(self.hub.image_thumb_interest_ttl_s)))
-            if client_id:
-                prior_pc = self._webrtc_pc_by_client_id.get(client_id)
-                if prior_pc is not None:
-                    await self._close_pc(prior_pc)
 
             offer = RTCSessionDescription(sdp=body["sdp"], type=body["type"])
             pc = self._build_pc()
@@ -2414,7 +2367,7 @@ class BrowserServer:
                     "drive_telemetry": self.hub.drive_telemetry_snapshot(),
                     "features": {"webrtc": bool(HAS_WEBRTC), "auth_mode": self.auth_config.mode},
                     "stream": {
-                        "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "jpeg_poll"),
+                        "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "mjpeg"),
                         "fps": float(self.hub.main_stream_fps),
                     },
                     "webrtc": self._webrtc_public(),
@@ -2509,9 +2462,6 @@ class BrowserServer:
         finally:
             self.ws_clients.pop(client_id, None)
             self.ws_principals.pop(client_id, None)
-            prior_pc = self._webrtc_pc_by_client_id.pop(client_id, None)
-            if prior_pc is not None:
-                await self._close_pc(prior_pc)
             self.client_active_robot.pop(client_id, None)
             to_release = [r for r, lk in self.locks.items() if lk.controller_id == client_id]
             for robot in to_release:
@@ -2855,14 +2805,12 @@ let localRobotSwitchTimer = null;
 let pendingLocalRobotSelection = null;
 let robotsSig = "";
 let locksSig = "";
-const DRIVE_HOLD_INTERVAL_MS = 100;
+const DRIVE_HOLD_INTERVAL_MS = 40;
 const MAIN_FALLBACK_INTERVAL_MS = 120;
 const ROBOT_SWITCH_DEBOUNCE_MS = 140;
 const ROBOT_SWITCH_GRACE_MS = 500;
 const WEBRTC_RETRY_INTERVAL_MS = 900;
 const THUMB_DRIVE_SUPPRESS_MS = 700;
-const ACTIVE_THUMB_MIN_INTERVAL_MS = 2000;
-let activeThumbLastRefreshMs = 0;
 const driveHoldTimers = new Map();
 const pressedDriveKeys = new Set();
 let keyboardDriveHooked = false;
@@ -3024,9 +2972,6 @@ function setDriveButtonActive(token, active){
   const btn = driveButtonsByToken.get(k);
   if (!btn) return;
   if (active){
-    if (!activeDriveButtonTokens.has(k) && activeDriveButtonTokens.size > 0){
-      clearDriveButtonActiveStates();
-    }
     btn.classList.add("active");
     activeDriveButtonTokens.add(k);
     return;
@@ -3084,11 +3029,6 @@ function _isTypingContext(event){
 function startDriveHold(tag, cmdFn){
   if (!tag || typeof cmdFn !== "function") return;
   if (driveHoldTimers.has(tag)) return;
-  if (driveHoldTimers.size > 0){
-    // Enforce one active directional hold at a time so commands do not
-    // interleave when operators transition quickly between buttons/keys.
-    stopAllDriveHolds(false);
-  }
   cmdFn();
   const timer = setInterval(cmdFn, DRIVE_HOLD_INTERVAL_MS);
   driveHoldTimers.set(tag, timer);
@@ -3404,24 +3344,6 @@ function hookKeyboardDrive(){
     if (document.hidden){
       pressedDriveKeys.clear();
       stopAllDriveHolds(true);
-      webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
-      if (webrtcOfferAbortController){
-        try { webrtcOfferAbortController.abort(); } catch(_e){}
-        webrtcOfferAbortController = null;
-      }
-      closePeerConnection();
-      if (isWebrtcMainOnly()){
-        const fb = $("mainJpeg");
-        if (fb) fb.style.display = "none";
-      }
-      renderWebrtcDiagnostics();
-      updateTransportBadge();
-      return;
-    }
-    if (activeRobot && features.webrtc && !webrtcAttemptInFlight){
-      webrtcSwitchNonce += 1;
-      webrtcRetryAtMs = 0;
-      setupWebRTC(activeRobot, webrtcSwitchNonce);
     }
   });
 }
@@ -3522,23 +3444,6 @@ function isWebrtcMainOnly(){
   return streamConfig.mode === "webrtc_only";
 }
 
-function startMainFallback(robot){
-  const fb = $("mainJpeg");
-  if (!robot || isWebrtcMainOnly()){
-    stopMainMjpegStream();
-    if (fb) fb.style.display = "none";
-    return;
-  }
-  if (streamConfig.mode === "mjpeg"){
-    setupMainMjpegStream(robot);
-    if (fb) fb.style.display = "block";
-    return;
-  }
-  // jpeg_poll fallback path
-  stopMainMjpegStream();
-  if (fb) fb.style.display = "block";
-}
-
 function applyThumbPolicy(payload){
   const n = Math.floor(_toNumber(payload && payload.thumb_robots_per_tick, 0));
   thumbRobotsPerTick = Math.max(0, n);
@@ -3555,7 +3460,7 @@ function isDriveSessionActive(){
   const dt = driveTelemetry || {};
   for (const robot of Object.keys(dt)){
     const row = dt[robot];
-    if (row && (_toBool(row.active) || _toBool(row.hold_active))){
+    if (row && _toBool(row.active)){
       return true;
     }
   }
@@ -3766,8 +3671,8 @@ function refreshThumbImage(imgEl, robot){
   // Offscreen preload prevents tile flicker:
   // - old frame stays visible while loading next frame
   // - if fetch fails, old frame remains instead of flashing to black
-  if (!imgEl || !robot) return false;
-  if (thumbRequestInFlight.get(robot)) return false;
+  if (!imgEl || !robot) return;
+  if (thumbRequestInFlight.get(robot)) return;
   thumbRequestInFlight.set(robot, true);
   const next = new Image();
   next.onload = () => {
@@ -3780,7 +3685,6 @@ function refreshThumbImage(imgEl, robot){
     if (!imgEl.src) imgEl.src = NO_SIGNAL_IMG;
   };
   next.src = withAuthPath(`/api/jpeg?robot=${encodeURIComponent(robot)}&t=${Date.now()}`);
-  return true;
 }
 
 function renderCapabilityMeta(){
@@ -4201,7 +4105,13 @@ function closePeerConnection(targetPc=null){
 async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
   const requestedRobot = String(robot || "");
   if (!features.webrtc || !robot){
-    startMainFallback(robot);
+    if (isWebrtcMainOnly()){
+      stopMainMjpegStream();
+      const fb = $("mainJpeg");
+      if (fb) fb.style.display = "none";
+    } else {
+      setupMainMjpegStream(robot);
+    }
     updateTransportBadge();
     return;
   }
@@ -4314,10 +4224,16 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       if (isWebrtcMainOnly()){
         setStatus("WebRTC unavailable (main stream is WebRTC-only)");
       } else {
-        setStatus("WebRTC unavailable, using JPEG fallback");
+        setStatus("WebRTC unavailable, using MJPEG fallback");
       }
       sendWebrtcTelemetry("offer_failed");
-      startMainFallback(robot);
+      if (isWebrtcMainOnly()){
+        stopMainMjpegStream();
+        const fb = $("mainJpeg");
+        if (fb) fb.style.display = "none";
+      } else {
+        setupMainMjpegStream(robot);
+      }
       webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
       renderWebrtcDiagnostics();
       updateTransportBadge();
@@ -4345,10 +4261,16 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       if (isWebrtcMainOnly()){
         setStatus("WebRTC handshake failed (main stream is WebRTC-only)");
       } else {
-        setStatus("WebRTC handshake failed, using JPEG fallback");
+        setStatus("WebRTC handshake failed, using MJPEG fallback");
       }
       sendWebrtcTelemetry("answer_failed");
-      startMainFallback(robot);
+      if (isWebrtcMainOnly()){
+        stopMainMjpegStream();
+        const fb = $("mainJpeg");
+        if (fb) fb.style.display = "none";
+      } else {
+        setupMainMjpegStream(robot);
+      }
       webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
       renderWebrtcDiagnostics();
       updateTransportBadge();
@@ -4491,7 +4413,6 @@ function setActiveRobot(robot, announce=true, source="local"){
   if (changed){
     stopAllDriveHolds(true);
     pressedDriveKeys.clear();
-    activeThumbLastRefreshMs = 0;
     webrtcSwitchNonce += 1;
     activeRobotSwitchAtMs = Date.now();
     webrtcRetryAtMs = activeRobotSwitchAtMs + 100;
@@ -4525,7 +4446,13 @@ function setActiveRobot(robot, announce=true, source="local"){
   renderWebrtcDiagnostics();
   updateTransportBadge();
   if (changed){
-    startMainFallback(robot);
+    if (!isWebrtcMainOnly()){
+      setupMainMjpegStream(robot);
+    } else {
+      stopMainMjpegStream();
+      const fb = $("mainJpeg");
+      if (fb) fb.style.display = "none";
+    }
     setupWebRTC(robot, webrtcSwitchNonce);
   }
 }
@@ -4540,24 +4467,13 @@ function refreshThumbs(){
     return;
   }
   const tiles = [];
-  let activeTile = null;
   for (const tile of document.querySelectorAll(".thumb")){
     const img = tile.querySelector("img");
     const nameBadge = tile.querySelector(".badge-right");
     const robot = (nameBadge && nameBadge.textContent) ? nameBadge.textContent.trim() : "";
     if (!img || !robot) continue;
-    if (robot === activeRobot){
-      activeTile = { img, robot };
-      continue;
-    }
+    if (robot === activeRobot) continue;
     tiles.push({ img, robot });
-  }
-  if (activeTile && activeRobot){
-    if ((nowMs - activeThumbLastRefreshMs) >= ACTIVE_THUMB_MIN_INTERVAL_MS){
-      if (refreshThumbImage(activeTile.img, activeTile.robot)){
-        activeThumbLastRefreshMs = nowMs;
-      }
-    }
   }
   if (!tiles.length){
     thumbRoundRobinCursor = 0;
@@ -4851,14 +4767,6 @@ def _install_aiohttp_disconnect_exception_filter() -> None:
             and ("transaction.__retry" in handle_txt.lower() or "transaction.__retry" in msg_txt.lower())
             and "invalid state" in str(exc).lower()
         )
-        is_known_aioice_transport_teardown_race = (
-            isinstance(exc, AttributeError)
-            and ("transaction.__retry" in handle_txt.lower() or "transaction.__retry" in msg_txt.lower())
-            and (
-                "sendto" in str(exc).lower()
-                or "call_exception_handler" in str(exc).lower()
-            )
-        )
 
         if is_known_aiohttp_disconnect_race:
             if not warned_once["value"]:
@@ -4869,12 +4777,12 @@ def _install_aiohttp_disconnect_exception_filter() -> None:
                 )
             return
 
-        if is_known_aioice_stun_retry_race or is_known_aioice_transport_teardown_race:
+        if is_known_aioice_stun_retry_race:
             if not warned_once.get("aioice"):
                 warned_once["aioice"] = True
                 print(
                     "[swarm_fpv_ui] Noted and suppressing known aioice STUN retry race "
-                    "(Transaction.__retry transport teardown)."
+                    "(Transaction.__retry InvalidStateError)."
                 )
             return
 
@@ -4907,7 +4815,7 @@ async def _run_server():
         "allow_anonymous_readonly",
         str(os.environ.get("SWARM_COM_ALLOW_ANON_READONLY", "true")).strip().lower() in ("1", "true", "yes", "on"),
     )
-    hub.declare_parameter("site_id", "community_local")
+    hub.declare_parameter("site_id", os.environ.get("SWARM_EDGE_SITE_ID", ""))
     hub.declare_parameter(
         "dev_login_enabled",
         str(os.environ.get("SWARM_COM_DEV_LOGIN_ENABLED", "true")).strip().lower() in ("1", "true", "yes", "on"),
@@ -5015,7 +4923,7 @@ async def _run_server():
     if hub.webrtc_main_only:
         hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_only_main")
     else:
-        hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_primary_jpeg_fallback")
+        hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_primary_mjpeg_fallback")
     if site_id:
         hub.get_logger().info(f"Swarm FPV UI site_id={site_id}")
     urls = _detect_ipv4_addresses()

@@ -43,7 +43,7 @@ def _default_webrtc_fps() -> str:
 
 
 def _default_webrtc_main_only() -> str:
-    raw = str(os.environ.get("SWARM_COM_WEBRTC_MAIN_ONLY", "1")).strip().lower()
+    raw = str(os.environ.get("SWARM_COM_WEBRTC_MAIN_ONLY", "0")).strip().lower()
     if raw in ("0", "false", "no", "off"):
         return "false"
     return "true"
@@ -60,20 +60,20 @@ def _default_thumb_refresh_hz() -> str:
 
 
 def _default_image_subscription_mode() -> str:
-    raw = str(os.environ.get("SWARM_COM_IMAGE_SUBSCRIPTION_MODE", "active_only")).strip().lower()
+    raw = str(os.environ.get("SWARM_COM_IMAGE_SUBSCRIPTION_MODE", "all")).strip().lower()
     if raw in ("all", "all_robots", "full"):
         return "all"
     return "active_only"
 
 
 def _default_image_thumb_interest_ttl_s() -> str:
-    raw = str(os.environ.get("SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S", "6.0")).strip()
+    raw = str(os.environ.get("SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S", "2.5")).strip()
     if not raw:
-        return "6.0"
+        return "2.5"
     try:
         return str(float(raw))
     except ValueError:
-        return "6.0"
+        return "2.5"
 
 
 def _default_thumb_robots_per_tick() -> str:
@@ -84,36 +84,6 @@ def _default_thumb_robots_per_tick() -> str:
         return str(max(0, int(raw)))
     except ValueError:
         return "1"
-
-
-def _default_drive_cmd_rate_hz() -> str:
-    raw = str(os.environ.get("SWARM_COM_DRIVE_CMD_RATE_HZ", "20.0")).strip()
-    if not raw:
-        return "20.0"
-    try:
-        return str(float(raw))
-    except ValueError:
-        return "20.0"
-
-
-def _default_drive_hold_timeout_s() -> str:
-    raw = str(os.environ.get("SWARM_COM_DRIVE_HOLD_TIMEOUT_S", "0.35")).strip()
-    if not raw:
-        return "0.35"
-    try:
-        return str(float(raw))
-    except ValueError:
-        return "0.35"
-
-
-def _default_drive_rate_ema_alpha() -> str:
-    raw = str(os.environ.get("SWARM_COM_DRIVE_RATE_EMA_ALPHA", "0.25")).strip()
-    if not raw:
-        return "0.25"
-    try:
-        return str(float(raw))
-    except ValueError:
-        return "0.25"
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -132,9 +102,6 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("image_subscription_mode", default_value=_default_image_subscription_mode()),
         DeclareLaunchArgument("image_thumb_interest_ttl_s", default_value=_default_image_thumb_interest_ttl_s()),
         DeclareLaunchArgument("thumb_robots_per_tick", default_value=_default_thumb_robots_per_tick()),
-        DeclareLaunchArgument("drive_cmd_rate_hz", default_value=_default_drive_cmd_rate_hz()),
-        DeclareLaunchArgument("drive_hold_timeout_s", default_value=_default_drive_hold_timeout_s()),
-        DeclareLaunchArgument("drive_rate_ema_alpha", default_value=_default_drive_rate_ema_alpha()),
         DeclareLaunchArgument(
             "profiles_path",
             default_value="",
@@ -167,9 +134,6 @@ def generate_launch_description() -> LaunchDescription:
                     value_type=int,
                 )
             },
-            {"drive_cmd_rate_hz": ParameterValue(LaunchConfiguration("drive_cmd_rate_hz"), value_type=float)},
-            {"drive_hold_timeout_s": ParameterValue(LaunchConfiguration("drive_hold_timeout_s"), value_type=float)},
-            {"drive_rate_ema_alpha": ParameterValue(LaunchConfiguration("drive_rate_ema_alpha"), value_type=float)},
             {"profiles_path": LaunchConfiguration("profiles_path")},
             {"auth_mode": "off"},
             {"auth_issuer": ""},

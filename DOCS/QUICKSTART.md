@@ -219,8 +219,6 @@ Expected robot-side nodes include:
 - `heartbeat_node`
 - `unit_executor_action_server`
 - `camera` (if `use_camera:=true`)
-- readiness banner from launcher:
-  `[swarm_com_run_robot] [READY] robot=<name> heartbeat=ok cmd_vel_subscriber=ok camera=ok`
 
 ### IF robot nodes or camera do not come up
 
@@ -228,7 +226,7 @@ Go to [Fix Step 2.1](#ref-2-1), then return to [Step 2](#step-2).
 
 For multi-robot sessions:
 - keep each robot SSH terminal running.
-- wait until each robot terminal prints its `[READY]` banner before proceeding to Step 3.
+- proceed to Step 3 after each robot terminal shows all bringup nodes started and camera first-frame logs.
 
 If one robot feed is much darker than others (while transport/control are healthy), validate camera controls on that robot:
 
@@ -257,8 +255,7 @@ Proceed to Step 3.
 ## Step 3: Start Local FPV UI (Control Machine)
 
 Prerequisite (required):
-- Do not start Step 3 until every robot terminal has completed Step 2 and printed
-  `[swarm_com_run_robot] [READY] ...`.
+- Do not start Step 3 until every robot terminal has completed Step 2 and each robot bringup is running.
 
 ### Run on control machine:
 
@@ -278,18 +275,15 @@ export SWARM_COM_ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
 # Multi-robot low-latency defaults (local/LAN):
 # - reduce WebRTC pacing to match low-latency camera clamp
 # - keep thumbnail polling bounded (1 robot/tick) so fleet tiles remain visible
-# - subscribe camera streams for active + on-demand thumbnail targets only
+# - keep camera subscriptions stable for all robots to avoid no-signal flapping
 # - set explicit values (no `:-`) so old shell values cannot silently persist
 export SWARM_COM_MAIN_STREAM_FPS=15.0
 export SWARM_COM_WEBRTC_FPS=15.0
 export SWARM_COM_WEBRTC_MAIN_ONLY=0
 export SWARM_COM_THUMB_REFRESH_HZ=0.5
-export SWARM_COM_IMAGE_SUBSCRIPTION_MODE=active_only
-export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=6.0
+export SWARM_COM_IMAGE_SUBSCRIPTION_MODE=all
+export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=2.5
 export SWARM_COM_THUMB_ROBOTS_PER_TICK=1
-# Drive command pacing/hold tuned for noisy Wi-Fi multi-robot sessions.
-export SWARM_COM_DRIVE_CMD_RATE_HZ=20.0
-export SWARM_COM_DRIVE_HOLD_TIMEOUT_S=0.10
 "$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
 ```
 
@@ -300,11 +294,6 @@ Terminal usage requirement:
 Operator tip:
 - Keep only one active UI tab/window connected to avoid unnecessary duplicate WebRTC/control sessions.
 
-Fail-fast runtime guard:
-- `swarm_com_run_robot.sh` and `swarm_com_run_local_ui.sh` now stop with a clear error if `ufw.service` is active while LAN discovery is enabled.
-- Override only when firewall rules are explicitly DDS-safe:
-  `export SWARM_COM_REQUIRE_UFW_INACTIVE=0`
-
 For maximum active-robot latency reduction in single-robot focus mode (at the cost of much slower fleet-tile updates and slower robot switching):
 
 ```bash
@@ -313,26 +302,24 @@ export SWARM_COM_THUMB_ROBOTS_PER_TICK=0
 
 Switch behavior (expected):
 
-- Active robot switch triggers WebRTC main-stream handoff plus interest-driven camera subscription handoff.
-- Keep `SWARM_COM_THUMB_ROBOTS_PER_TICK=1` for best multi-robot switching responsiveness (balanced default).
+- Active robot switch triggers WebRTC main-stream handoff while camera subscriptions stay warm across robots.
+- Keep `SWARM_COM_THUMB_ROBOTS_PER_TICK=1` for balanced fleet tile updates.
 - Use `SWARM_COM_THUMB_ROBOTS_PER_TICK=0` only when you care about one active robot and minimal background load.
 
-If rapid back-and-forth switching still feels sticky, use this switch-heavy profile:
+If rapid back-and-forth switching still feels sticky and you intentionally use `active_only` mode, use this switch-heavy profile:
 
 ```bash
 export SWARM_COM_THUMB_REFRESH_HZ=1.0
 export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=4.0
 ```
 
-For fleets with 5+ robots, this switch-heavy profile is recommended.
-
 Open in browser:
 - `http://127.0.0.1:8080`
 
 Video path:
-- Main stream is WebRTC-primary with JPEG fallback (default).
-- Set `SWARM_COM_WEBRTC_MAIN_ONLY=1` only if you explicitly want strict WebRTC-only.
-- Fleet thumbnails use bounded JPEG polling and do not take over the main pane.
+- Main stream uses WebRTC with MJPEG fallback by default.
+- To force WebRTC-only main stream, set `SWARM_COM_WEBRTC_MAIN_ONLY=1`.
+- Fleet thumbnails stay in side tiles and do not take over the main pane.
 
 Optional private LAN bind:
 

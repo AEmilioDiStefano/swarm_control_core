@@ -565,36 +565,6 @@ def _read_sysfs_video_node_name(node: str) -> str:
         return ""
 
 
-def _read_sysfs_video_device_path(node: str) -> str:
-    """
-    Resolve `/sys/class/video4linux/videoN/device` to a canonical path.
-
-    This gives a topology hint for camera transport classification:
-    - USB devices include `.../usb...` in the resolved path.
-    - CSI devices usually include markers like `csi` / `unicam` / `rp1-cfe`.
-    """
-    n = str(node or "").strip()
-    if not n.startswith("/dev/video"):
-        return ""
-    base = Path(n).name
-    p = Path("/sys/class/video4linux") / base / "device"
-    try:
-        return str(p.resolve())
-    except Exception:
-        return ""
-
-
-def _sysfs_path_looks_like_csi(dev_path: str) -> bool:
-    """
-    Check whether a resolved video-device sysfs path looks CSI-backed.
-    """
-    s = str(dev_path or "").lower()
-    if not s:
-        return False
-    markers = ("csi", "unicam", "rp1-cfe", "bcm2835-unicam")
-    return any(m in s for m in markers)
-
-
 def _sensor_code_to_friendly_module(sensor_code: str) -> str:
     """
     Map common sensor IDs to user-friendly Raspberry Pi camera names.
@@ -697,46 +667,29 @@ def _inventory_camera_candidates() -> List[CameraCandidate]:
             by_id_path = by_id_map.get(node, "")
             by_id_name = Path(by_id_path).name if by_id_path else ""
             sys_name = _read_sysfs_video_node_name(node)
-            sys_dev_path = _read_sysfs_video_device_path(node)
 
             # Classification:
-            # - Prefer real bus topology evidence first (sysfs/by-id USB hints).
-            # - Use CSI heuristics when USB evidence is absent.
-            # - Use "internal" naming only as fallback when transport is unclear.
+            # - by-id strongly indicates USB camera class
+            # - otherwise fallback to card-name CSI heuristic
+            # - sysfs node name is a final hint when card naming is ambiguous
             card_l = card.lower()
             sys_l = sys_name.lower()
             by_id_l = by_id_name.lower()
-            dev_path_l = sys_dev_path.lower()
             internal_hint = (
                 _looks_like_internal_camera_name(card)
                 or _looks_like_internal_camera_name(sys_name)
                 or _looks_like_internal_camera_name(by_id_name)
             )
-            is_csi = (
-                _looks_like_csi_card(card)
-                or _looks_like_csi_card(sys_name)
-                or _sysfs_path_looks_like_csi(sys_dev_path)
-            )
+            is_csi = _looks_like_csi_card(card) or _looks_like_csi_card(sys_name)
             is_usb = (
-                bool(by_id_path)
-                or ("usb" in card_l)
-                or ("usb" in sys_l)
-                or by_id_l.startswith("usb-")
-                or ("usb" in dev_path_l)
-            )
-
-            if is_usb:
-                preferred_device = by_id_path or node
-                candidates.append(
-                    CameraCandidate(
-                        kind="usb",
-                        display_name=_friendly_usb_name(by_id_name, fallback_card=(card or sys_name)),
-                        device=preferred_device,
-                        card=(card or sys_name),
-                        source_note=("/dev/v4l/by-id" if by_id_path else "v4l2 node"),
-                    )
+                (not internal_hint)
+                and (
+                    bool(by_id_path)
+                    or ("usb" in card_l)
+                    or ("usb" in sys_l)
+                    or by_id_l.startswith("usb-")
                 )
-                continue
+            )
 
             if is_csi:
                 # If libcamera provided a sensor map, prefer a known sensor for
@@ -768,9 +721,10 @@ def _inventory_camera_candidates() -> List[CameraCandidate]:
                 )
                 continue
 
-            # Remaining non-CSI/non-USB candidates are classified as internal
-            # only when we have explicit integrated-camera hints.
-            if internal_hint:
+            # Non-CSI candidates are classified as integrated/non-external
+            # first, then USB. We still prefer by-id for stable persistence
+            # because /dev/videoN can reorder across reboot/reattach events.
+            if internal_hint and not is_usb:
                 kind = "internal"
                 display = _friendly_internal_name(by_id_name, fallback_card=(card or sys_name))
             else:
@@ -794,24 +748,13 @@ def _inventory_camera_candidates() -> List[CameraCandidate]:
         if fallback:
             label = "Generic Camera"
             sys_name = _read_sysfs_video_node_name(fallback)
-            sys_dev_path = _read_sysfs_video_device_path(fallback)
             fallback_name = Path(fallback).name if fallback.startswith("/dev/v4l/by-id/") else ""
-            fallback_l = fallback.lower()
-            sys_l = sys_name.lower()
-            dev_path_l = sys_dev_path.lower()
             internal_hint = _looks_like_internal_camera_name(f"{sys_name} {fallback_name}")
-            is_usb_like = (
-                fallback_l.startswith("/dev/v4l/by-id/")
-                or fallback_name.lower().startswith("usb-")
-                or ("usb" in fallback_l)
-                or ("usb" in sys_l)
-                or ("usb" in dev_path_l)
-            )
-            is_csi_like = _looks_like_csi_card(sys_name) or _sysfs_path_looks_like_csi(sys_dev_path)
             # If libcamera sees a CSI sensor and fallback device is /dev/video0,
             # classify as CSI candidate first for clearer operator intent.
             csi_sensors = _detect_csi_sensors_from_libcamera()
-            if (csi_sensors or is_csi_like) and fallback.startswith("/dev/video") and not is_usb_like:
+            looks_like_csi_node = _looks_like_csi_card(sys_name)
+            if (csi_sensors or looks_like_csi_node) and fallback.startswith("/dev/video"):
                 sensor = csi_sensors.get(0, "") or next(iter(csi_sensors.values()), "")
                 label = _sensor_code_to_friendly_module(sensor)
                 candidates.append(
@@ -825,15 +768,12 @@ def _inventory_camera_candidates() -> List[CameraCandidate]:
                     )
                 )
             else:
-                fallback_kind = "usb"
-                if not is_usb_like and internal_hint:
-                    fallback_kind = "internal"
                 candidates.append(
                     CameraCandidate(
-                        kind=fallback_kind,
+                        kind="internal" if internal_hint else "usb",
                         display_name=(
                             _friendly_internal_name("", fallback_card=sys_name)
-                            if fallback_kind == "internal"
+                            if internal_hint
                             else (_friendly_usb_name("", fallback_card=sys_name) if sys_name else label)
                         ),
                         device=fallback,
@@ -1149,30 +1089,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     camera_profiles_arg = str(args.camera_profiles or "").strip()
     if not camera_profiles_arg:
-        # Always persist operator camera selections to runtime config.
-        # This prevents first-run writes to installed/share defaults that can be
-        # overwritten by later runtime seeding.
-        runtime_profiles_path = Path.home() / ".config" / "swarm_control_core" / "camera_profiles.yaml"
         try:
-            runtime_profiles_path.parent.mkdir(parents=True, exist_ok=True)
-        except Exception as ex:
-            print(f"[ERROR] unable to create runtime config dir: {ex}", file=sys.stderr)
+            camera_profiles_arg = default_camera_profiles_path()
+        except MissingConfigError as ex:
+            print(f"[ERROR] {ex}", file=sys.stderr)
             return 2
-
-        # If runtime file is missing, seed it once from current defaults so we
-        # retain global defaults structure before writing robot-specific profile.
-        if not runtime_profiles_path.exists():
-            try:
-                seed_src = Path(default_camera_profiles_path()).expanduser()
-            except MissingConfigError:
-                seed_src = None
-            if seed_src is not None and seed_src.exists():
-                try:
-                    runtime_profiles_path.write_text(seed_src.read_text(encoding="utf-8"), encoding="utf-8")
-                except Exception:
-                    # Continue with empty skeleton fallback handled by _load_yaml.
-                    pass
-        camera_profiles_arg = str(runtime_profiles_path)
 
     profiles_path = Path(camera_profiles_arg).expanduser()
     data = _load_yaml(profiles_path)

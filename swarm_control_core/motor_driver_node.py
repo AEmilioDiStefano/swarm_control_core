@@ -313,10 +313,9 @@ class MotorDriverNode(Node):
                 now = time.time()
                 if (now - self._last_multi_pub_block_log_s) >= 1.0:
                     self._last_multi_pub_block_log_s = now
-                    active_publishers = ", ".join(self._cmd_vel_pub_nodes or ["unknown_node"])
                     self.get_logger().error(
                         f"[{self.robot_name}] strict mode blocking non-stop cmd_vel while "
-                        f"{self._cmd_vel_pub_count} publishers are active: {active_publishers}"
+                        f"{self._cmd_vel_pub_count} publishers are active"
                     )
                 self._set_motor_outputs(0.0, 0.0, force=True)
                 return
@@ -431,33 +430,20 @@ class MotorDriverNode(Node):
         # expose multiple writers under the same node identity.
         all_pub_nodes = sorted({p for p in pub_nodes if p})
         known_pub_nodes = sorted({p for p in all_pub_nodes if not self._is_unknown_cmd_vel_publisher(p)})
-        unknown_pub_nodes = sorted({p for p in all_pub_nodes if self._is_unknown_cmd_vel_publisher(p)})
-
-        # Strict gating should only count publishers with stable identities.
-        # Some DDS setups intermittently report "_NODE_*_UNKNOWN_" identities,
-        # which can otherwise trip false multi-publisher blocks.
-        effective_pub_nodes = sorted({p for p in known_pub_nodes if not self._is_exempt_cmd_vel_publisher(p)})
-        unknown_effective_pub_nodes = sorted({p for p in unknown_pub_nodes if not self._is_exempt_cmd_vel_publisher(p)})
-        if effective_pub_nodes:
-            display_nodes = effective_pub_nodes
-            effective_count = len(effective_pub_nodes)
-        elif unknown_effective_pub_nodes:
-            display_nodes = ["unknown_node"]
-            effective_count = 1
-        else:
-            display_nodes = ["none"]
-            effective_count = 0
-
+        if known_pub_nodes:
+            all_pub_nodes = known_pub_nodes
+        effective_pub_nodes = sorted({p for p in all_pub_nodes if not self._is_exempt_cmd_vel_publisher(p)})
+        display_nodes = effective_pub_nodes or ["none"]
         self._cmd_vel_pub_count_total = len(all_pub_nodes)
         self._cmd_vel_pub_nodes_total = list(all_pub_nodes)
-        self._cmd_vel_pub_count = int(effective_count)
-        self._cmd_vel_pub_nodes = [] if display_nodes == ["none"] else list(display_nodes)
+        self._cmd_vel_pub_count = len(effective_pub_nodes)
+        self._cmd_vel_pub_nodes = list(effective_pub_nodes)
 
         signature = (
             len(all_pub_nodes),
             tuple(all_pub_nodes),
-            int(effective_count),
-            tuple(display_nodes),
+            len(effective_pub_nodes),
+            tuple(effective_pub_nodes),
         )
         if signature == self._last_cmd_pub_signature:
             return
@@ -476,14 +462,11 @@ class MotorDriverNode(Node):
             self.get_logger().info(
                 f"[{self.robot_name}] cmd_vel effective publisher set: {', '.join(display_nodes)}"
             )
-        if len(all_pub_nodes) != int(effective_count):
-            ignored = sorted({p for p in all_pub_nodes if p not in known_pub_nodes or self._is_exempt_cmd_vel_publisher(p)})
-            if ignored and display_nodes == ["unknown_node"]:
-                ignored = sorted({p for p in ignored if not self._is_unknown_cmd_vel_publisher(p)})
-            if ignored:
-                self.get_logger().info(
-                    f"[{self.robot_name}] cmd_vel strict-exempt publishers ignored: {', '.join(ignored)}"
-                )
+        if len(all_pub_nodes) != len(effective_pub_nodes):
+            ignored = sorted({p for p in all_pub_nodes if p not in effective_pub_nodes})
+            self.get_logger().info(
+                f"[{self.robot_name}] cmd_vel strict-exempt publishers ignored: {', '.join(ignored)}"
+            )
 
     def _publish_motor_diag(self):
         payload = {

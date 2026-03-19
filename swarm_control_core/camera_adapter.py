@@ -36,7 +36,7 @@ import rclpy
 from cv_bridge import CvBridge
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
 from .path_defaults import default_robot_name
@@ -45,13 +45,6 @@ from .runtime_env import ensure_ros_domain_id
 
 DeviceType = Union[int, str]
 _OPENCV_GSTREAMER_AVAILABLE: Optional[bool] = None
-CAMERA_IMAGE_QOS = QoSProfile(
-    history=HistoryPolicy.KEEP_LAST,
-    # Keep only newest frame to avoid stale frame backlog on congested links.
-    depth=1,
-    reliability=ReliabilityPolicy.BEST_EFFORT,
-    durability=DurabilityPolicy.VOLATILE,
-)
 
 
 @dataclass
@@ -292,11 +285,11 @@ class CameraAdapterNode(Node):
 
         # Use sensor-data QoS for camera transport so lossy links still deliver
         # fresh frames instead of stalling on reliable retransmit behavior.
-        self.image_pub = self.create_publisher(Image, self.image_topic, CAMERA_IMAGE_QOS)
+        self.image_pub = self.create_publisher(Image, self.image_topic, qos_profile_sensor_data)
         self.compressed_pub = self.create_publisher(
             CompressedImage,
             self.compressed_topic,
-            CAMERA_IMAGE_QOS,
+            qos_profile_sensor_data,
         )
         self.diag_pub = self.create_publisher(String, self.diag_topic, 10)
         self.bridge = CvBridge()

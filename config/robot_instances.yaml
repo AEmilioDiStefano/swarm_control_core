@@ -26,10 +26,6 @@
 #     ~/.config/swarm_control_core/swarm_roster.yaml
 # - Any `ssh_target` values in this repository file are template/seed values and
 #   legacy migration inputs only. They are not the primary operational source.
-#
-# FLEET SCALING NOTE
-# - Add/remove robot keys to match your fleet.
-# - Robots without explicit entries inherit `defaults`.
 
 schema_version: "1.0"
 
