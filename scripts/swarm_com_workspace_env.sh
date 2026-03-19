@@ -16,22 +16,30 @@ source "${SCRIPT_DIR}/lib/swarm_com_workspace.sh"
 usage() {
   cat <<'USAGE'
 Usage (must be sourced):
-  source swarm_com_workspace_env.sh [--workspace <path>]
+  source swarm_com_workspace_env.sh [--workspace <path>] [--non-interactive]
 
 Exports:
   WS                        Workspace root
   SC                        Core package path (${WS}/src/swarm_control_core)
   SWARM_COM_WORKSPACE_ROOT  Workspace root (for core scripts)
   WS_DEV                    Alias of WS for legacy doc compatibility
+  SWARM_COM_WORKSPACE_NAME  Workspace directory name (basename of WS)
 USAGE
 }
 
 workspace_override=""
+interactive_mode="auto"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --workspace)
       shift
       workspace_override="${1:-}"
+      ;;
+    --interactive)
+      interactive_mode="yes"
+      ;;
+    --non-interactive)
+      interactive_mode="no"
       ;;
     -h|--help)
       usage
@@ -59,10 +67,57 @@ if [[ ! -d "$SC" ]]; then
   return 1
 fi
 
+if [[ "$interactive_mode" == "yes" ]] || { [[ "$interactive_mode" == "auto" ]] && [[ -t 0 ]] && [[ -z "$workspace_override" ]]; }; then
+  _detected_ws_name="$(basename "$WS")"
+  while true; do
+    printf 'A workspace called [%s] has been detected as the parent workspace for the swarm_control_core package. Is this correct?\n' "$_detected_ws_name"
+    printf '(Y/n): '
+    read -r _confirm
+    case "${_confirm:-Y}" in
+      y|Y)
+        break
+        ;;
+      n|N)
+        while true; do
+          printf 'Enter workspace directory name: '
+          read -r _ws_input
+          if [[ -z "${_ws_input// }" ]]; then
+            echo "[swarm_com_workspace_env] Workspace directory name cannot be empty." >&2
+            continue
+          fi
+          if [[ "$_ws_input" == /* ]]; then
+            _ws_candidate="$_ws_input"
+          elif [[ "$_ws_input" == "~/"* ]]; then
+            _ws_candidate="${HOME}/${_ws_input#~/}"
+          else
+            _ws_candidate="${HOME}/${_ws_input}"
+          fi
+          _ws_candidate="${_ws_candidate%/}"
+          if [[ ! -d "${_ws_candidate}/src/swarm_control_core" ]]; then
+            echo "[swarm_com_workspace_env] Path does not contain src/swarm_control_core: ${_ws_candidate}" >&2
+            continue
+          fi
+          WS="$_ws_candidate"
+          SC="${WS}/src/swarm_control_core"
+          _detected_ws_name="$(basename "$WS")"
+          break
+        done
+        break
+        ;;
+      *)
+        echo "Please enter Y, N, or press ENTER." >&2
+        ;;
+    esac
+  done
+  unset _confirm _ws_input _ws_candidate
+fi
+
 export WS
 export SC
 export SWARM_COM_WORKSPACE_ROOT="$WS"
 export WS_DEV="$WS"
+export SWARM_COM_WORKSPACE_NAME="$(basename "$WS")"
 
 echo "[swarm_com_workspace_env] WS=${WS}"
 echo "[swarm_com_workspace_env] SC=${SC}"
+echo "Workspace name has been set to: ${SWARM_COM_WORKSPACE_NAME}"
