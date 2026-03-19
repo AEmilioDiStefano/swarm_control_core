@@ -447,13 +447,13 @@ def resolve_robot_profile(reg: Dict[str, Any], robot_name: str) -> Dict[str, Any
     if not robot_name:
         raise ValueError("resolve_robot_profile() requires a non-empty robot_name")
 
-    robots = reg.get("robots", {})
-    if robot_name not in robots:
-        # Student-friendly error: show known robots
-        known = ", ".join(sorted(robots.keys())) if robots else "<none>"
-        raise KeyError(f"Unknown robot '{robot_name}'. Known robots: {known}")
-
-    robot_entry = robots[robot_name] or {}
+    robots = reg.get("robots", {}) or {}
+    if not isinstance(robots, dict):
+        raise ValueError("Profile registry key 'robots' must be a mapping")
+    # Unknown robot names are allowed: we resolve from defaults when an explicit
+    # per-robot entry is not present. This keeps runtime behavior scalable for
+    # dynamically named fleets without forcing pre-registration of every unit.
+    robot_entry = (robots.get(robot_name) or {}) if isinstance(robots, dict) else {}
     defaults = reg.get("defaults", {}) or {}
     drive_profile_name = (
         robot_entry.get("control_type")

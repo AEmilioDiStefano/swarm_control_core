@@ -60,7 +60,6 @@ from rclpy.qos import (
     HistoryPolicy,
     QoSProfile,
     ReliabilityPolicy,
-    qos_profile_sensor_data,
 )
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
@@ -125,7 +124,15 @@ IMG_FLAT_COMP_RE = re.compile(r"^/([^/]+)/image_raw/compressed$")
 HB_RE = re.compile(r"^/([^/]+)/heartbeat$")
 CMD_VEL_QOS = QoSProfile(
     history=HistoryPolicy.KEEP_LAST,
-    depth=10,
+    # depth=1 prevents stale queued drive commands under congestion.
+    depth=1,
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    durability=DurabilityPolicy.VOLATILE,
+)
+IMAGE_QOS = QoSProfile(
+    history=HistoryPolicy.KEEP_LAST,
+    # Keep only the newest frame to minimize apparent video latency.
+    depth=1,
     reliability=ReliabilityPolicy.BEST_EFFORT,
     durability=DurabilityPolicy.VOLATILE,
 )
@@ -722,7 +729,7 @@ class RosFleetHub(Node):
                 msg_type,
                 t,
                 lambda msg, r=robot, src=t, fn=cb_fn: fn(msg, r=r, src_topic=src),
-                qos_profile_sensor_data,
+                IMAGE_QOS,
             )
 
     def _topic_publishers(self, topic: str) -> int:

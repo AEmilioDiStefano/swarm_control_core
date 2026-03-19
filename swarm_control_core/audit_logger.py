@@ -24,7 +24,7 @@ Usage:
   
   logger = AuditLogger(node, "motor_driver")
   logger.log_command(
-    robot="robot1",
+    robot="robot_name",
     source="teleop",
     command_id="transit",
     parameters={"direction": "forward", "duration_s": 2.0},

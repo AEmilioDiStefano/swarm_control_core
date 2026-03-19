@@ -124,8 +124,167 @@ if [[ -n "${CAMERA_PROFILES_PATH:-}" ]]; then
   echo "[swarm_com_run_robot] CAMERA_PROFILES_PATH=${CAMERA_PROFILES_PATH}"
 fi
 
-ros2 launch swarm_control_core swarm_bringup.launch.py \
-  robot_name:="$ROBOT_NAME" \
-  ros_domain_id:="$ROS_DOMAIN_ID" \
-  use_camera:="$USE_CAMERA" \
-  camera_pipeline:="$CAMERA_PIPELINE"
+launch_pid=""
+ready_probe_pid=""
+_shutdown_in_progress="0"
+_cleanup_done="0"
+
+seconds_to_ticks() {
+  local seconds="${1:-0}"
+  awk -v s="$seconds" 'BEGIN { t=int((s*10)+0.5); if (t < 1) t=1; print t }'
+}
+
+wait_for_exit() {
+  local pid="$1"
+  local seconds="$2"
+  local ticks
+  ticks="$(seconds_to_ticks "$seconds")"
+  for ((i=0; i<ticks; i++)); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+kill_launch_tree() {
+  local pid="$1"
+  local int_grace="${SWARM_COM_SHUTDOWN_INT_GRACE_S:-5.0}"
+  local term_grace="${SWARM_COM_SHUTDOWN_TERM_GRACE_S:-3.0}"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+
+  echo "[swarm_com_run_robot] Stopping launch process tree (pid=${pid}) with SIGINT..." >&2
+  kill -INT "-${pid}" 2>/dev/null || kill -INT "${pid}" 2>/dev/null || true
+  if wait_for_exit "$pid" "$int_grace"; then
+    return 0
+  fi
+
+  echo "[swarm_com_run_robot] Launch still running; escalating to SIGTERM..." >&2
+  kill -TERM "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+  if wait_for_exit "$pid" "$term_grace"; then
+    return 0
+  fi
+
+  echo "[swarm_com_run_robot] Launch still running; forcing SIGKILL..." >&2
+  kill -KILL "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
+}
+
+topic_count() {
+  local topic="$1"
+  local label="$2"
+  local out count
+  out="$(ros2 topic info "$topic" 2>/dev/null || true)"
+  count="$(printf '%s\n' "$out" | awk -F': ' -v k="$label" '$1==k {print $2; exit}')"
+  if [[ "$count" =~ ^[0-9]+$ ]]; then
+    printf '%s' "$count"
+  else
+    printf '0'
+  fi
+}
+
+readiness_probe() {
+  local timeout_s="${SWARM_COM_READY_TIMEOUT_S:-45}"
+  local warned="0"
+  local start_s now_s elapsed_s
+  start_s="$(date +%s)"
+
+  while [[ -n "$launch_pid" ]] && kill -0 "$launch_pid" 2>/dev/null; do
+    local hb_pub cmd_sub cam_comp_pub cam_raw_pub
+    hb_pub="$(topic_count "/${ROBOT_NAME}/heartbeat" "Publisher count")"
+    cmd_sub="$(topic_count "/${ROBOT_NAME}/cmd_vel" "Subscription count")"
+    cam_comp_pub="$(topic_count "/${ROBOT_NAME}/camera/image_raw/compressed" "Publisher count")"
+    cam_raw_pub="$(topic_count "/${ROBOT_NAME}/camera/image_raw" "Publisher count")"
+
+    local hb_ok cmd_ok cam_ok
+    hb_ok="0"
+    cmd_ok="0"
+    cam_ok="1"
+
+    (( hb_pub >= 1 )) && hb_ok="1"
+    (( cmd_sub >= 1 )) && cmd_ok="1"
+    if [[ "${USE_CAMERA}" == "true" ]]; then
+      if (( cam_comp_pub < 1 && cam_raw_pub < 1 )); then
+        cam_ok="0"
+      fi
+    fi
+
+    if [[ "$hb_ok" == "1" && "$cmd_ok" == "1" && "$cam_ok" == "1" ]]; then
+      echo "[swarm_com_run_robot] [READY] robot=${ROBOT_NAME} heartbeat=ok cmd_vel_subscriber=ok camera=ok" >&2
+      echo "[swarm_com_run_robot] [READY] You can now select '${ROBOT_NAME}' in the UI and drive immediately." >&2
+      return 0
+    fi
+
+    now_s="$(date +%s)"
+    elapsed_s=$(( now_s - start_s ))
+    if (( elapsed_s >= timeout_s )) && [[ "$warned" == "0" ]]; then
+      warned="1"
+      echo "[swarm_com_run_robot] [WAIT] readiness timeout (${timeout_s}s)." >&2
+      echo "[swarm_com_run_robot] [WAIT] heartbeat_pub=${hb_pub} cmd_vel_sub=${cmd_sub} camera_comp_pub=${cam_comp_pub} camera_raw_pub=${cam_raw_pub}" >&2
+      echo "[swarm_com_run_robot] [WAIT] Robot may still come up; keeping launch running." >&2
+    fi
+    sleep 1
+  done
+  return 0
+}
+
+on_signal() {
+  local sig="$1"
+  if [[ "$_shutdown_in_progress" == "1" ]]; then
+    echo "[swarm_com_run_robot] ${sig} received while shutdown is already in progress; please wait..." >&2
+    return 0
+  fi
+  _shutdown_in_progress="1"
+  if [[ -n "$ready_probe_pid" ]] && kill -0 "$ready_probe_pid" 2>/dev/null; then
+    kill "$ready_probe_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$launch_pid" ]] && kill -0 "$launch_pid" 2>/dev/null; then
+    kill_launch_tree "$launch_pid"
+  fi
+  return 0
+}
+
+cleanup() {
+  local ec=$?
+  if [[ "$_cleanup_done" == "1" ]]; then
+    return 0
+  fi
+  _cleanup_done="1"
+  trap - EXIT INT TERM
+  if [[ -n "$ready_probe_pid" ]] && kill -0 "$ready_probe_pid" 2>/dev/null; then
+    kill "$ready_probe_pid" 2>/dev/null || true
+    wait "$ready_probe_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$launch_pid" ]] && kill -0 "$launch_pid" 2>/dev/null; then
+    kill_launch_tree "$launch_pid"
+    wait "$launch_pid" 2>/dev/null || true
+  fi
+  exit "$ec"
+}
+
+trap 'on_signal INT' INT
+trap 'on_signal TERM' TERM
+trap cleanup EXIT
+
+if command -v setsid >/dev/null 2>&1; then
+  setsid ros2 launch swarm_control_core swarm_bringup.launch.py \
+    robot_name:="$ROBOT_NAME" \
+    ros_domain_id:="$ROS_DOMAIN_ID" \
+    use_camera:="$USE_CAMERA" \
+    camera_pipeline:="$CAMERA_PIPELINE" &
+else
+  ros2 launch swarm_control_core swarm_bringup.launch.py \
+    robot_name:="$ROBOT_NAME" \
+    ros_domain_id:="$ROS_DOMAIN_ID" \
+    use_camera:="$USE_CAMERA" \
+    camera_pipeline:="$CAMERA_PIPELINE" &
+fi
+launch_pid="$!"
+if [[ "${SWARM_COM_PRINT_READY_ON_START:-1}" == "1" ]]; then
+  readiness_probe &
+  ready_probe_pid="$!"
+fi
+wait "$launch_pid"

@@ -24,6 +24,10 @@
 # WHAT THIS OFFERS
 # - Consistent camera startup per robot without repeating CLI args each launch.
 # - Controlled low-latency tuning and deterministic device selection.
+#
+# FLEET SCALING NOTE
+# - `profiles` is open-ended: add one key per robot name as needed.
+# - Existing keys are examples only.
 
 schema_version: "1.0"
 

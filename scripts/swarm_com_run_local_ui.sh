@@ -227,13 +227,13 @@ export SWARM_COM_WEBRTC_ICE_SERVERS_JSON='[]'
 export SWARM_COM_WEBRTC_ICE_TRANSPORT_POLICY="all"
 export SWARM_COM_MAIN_STREAM_FPS="${SWARM_COM_MAIN_STREAM_FPS:-15.0}"
 export SWARM_COM_WEBRTC_FPS="${SWARM_COM_WEBRTC_FPS:-15.0}"
-export SWARM_COM_WEBRTC_MAIN_ONLY="${SWARM_COM_WEBRTC_MAIN_ONLY:-1}"
+export SWARM_COM_WEBRTC_MAIN_ONLY="${SWARM_COM_WEBRTC_MAIN_ONLY:-0}"
 export SWARM_COM_THUMB_REFRESH_HZ="${SWARM_COM_THUMB_REFRESH_HZ:-0.5}"
 export SWARM_COM_IMAGE_SUBSCRIPTION_MODE="${SWARM_COM_IMAGE_SUBSCRIPTION_MODE:-active_only}"
 export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S="${SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S:-6.0}"
 export SWARM_COM_THUMB_ROBOTS_PER_TICK="${SWARM_COM_THUMB_ROBOTS_PER_TICK:-1}"
-export SWARM_COM_DRIVE_CMD_RATE_HZ="${SWARM_COM_DRIVE_CMD_RATE_HZ:-20.0}"
-export SWARM_COM_DRIVE_HOLD_TIMEOUT_S="${SWARM_COM_DRIVE_HOLD_TIMEOUT_S:-0.35}"
+export SWARM_COM_DRIVE_CMD_RATE_HZ="${SWARM_COM_DRIVE_CMD_RATE_HZ:-15.0}"
+export SWARM_COM_DRIVE_HOLD_TIMEOUT_S="${SWARM_COM_DRIVE_HOLD_TIMEOUT_S:-0.10}"
 export SWARM_COM_DRIVE_RATE_EMA_ALPHA="${SWARM_COM_DRIVE_RATE_EMA_ALPHA:-0.25}"
 case "${SWARM_COM_WEBRTC_MAIN_ONLY,,}" in
   1|true|yes|on)
@@ -304,12 +304,61 @@ else
 fi
 
 ui_pid=""
+_cleanup_done="0"
+
+seconds_to_ticks() {
+  local seconds="${1:-0}"
+  awk -v s="$seconds" 'BEGIN { t=int((s*10)+0.5); if (t < 1) t=1; print t }'
+}
+
+wait_for_exit() {
+  local pid="$1"
+  local seconds="$2"
+  local ticks
+  ticks="$(seconds_to_ticks "$seconds")"
+  for ((i=0; i<ticks; i++)); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+stop_ui_tree() {
+  local pid="$1"
+  local int_grace="${SWARM_COM_UI_SHUTDOWN_INT_GRACE_S:-4.0}"
+  local term_grace="${SWARM_COM_UI_SHUTDOWN_TERM_GRACE_S:-3.0}"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+
+  log "Stopping local UI process tree (pid=${pid}) with SIGINT..."
+  kill -INT "-${pid}" 2>/dev/null || kill -INT "${pid}" 2>/dev/null || true
+  if wait_for_exit "$pid" "$int_grace"; then
+    return 0
+  fi
+
+  log "Local UI still running; escalating to SIGTERM..."
+  kill -TERM "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+  if wait_for_exit "$pid" "$term_grace"; then
+    return 0
+  fi
+
+  log "Local UI still running; forcing SIGKILL..."
+  kill -KILL "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
+}
 
 cleanup() {
   local ec=$?
+  if [[ "$_cleanup_done" == "1" ]]; then
+    return 0
+  fi
+  _cleanup_done="1"
+  trap - EXIT INT TERM
   if [[ -n "$ui_pid" ]] && kill -0 "$ui_pid" 2>/dev/null; then
-    log "Stopping local UI process tree (pid=${ui_pid})"
-    kill -TERM "-${ui_pid}" 2>/dev/null || kill -TERM "${ui_pid}" 2>/dev/null || true
+    stop_ui_tree "$ui_pid"
     wait "$ui_pid" 2>/dev/null || true
   fi
   exit "$ec"

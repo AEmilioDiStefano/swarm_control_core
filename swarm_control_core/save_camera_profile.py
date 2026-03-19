@@ -1149,11 +1149,30 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     camera_profiles_arg = str(args.camera_profiles or "").strip()
     if not camera_profiles_arg:
+        # Always persist operator camera selections to runtime config.
+        # This prevents first-run writes to installed/share defaults that can be
+        # overwritten by later runtime seeding.
+        runtime_profiles_path = Path.home() / ".config" / "swarm_control_core" / "camera_profiles.yaml"
         try:
-            camera_profiles_arg = default_camera_profiles_path()
-        except MissingConfigError as ex:
-            print(f"[ERROR] {ex}", file=sys.stderr)
+            runtime_profiles_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception as ex:
+            print(f"[ERROR] unable to create runtime config dir: {ex}", file=sys.stderr)
             return 2
+
+        # If runtime file is missing, seed it once from current defaults so we
+        # retain global defaults structure before writing robot-specific profile.
+        if not runtime_profiles_path.exists():
+            try:
+                seed_src = Path(default_camera_profiles_path()).expanduser()
+            except MissingConfigError:
+                seed_src = None
+            if seed_src is not None and seed_src.exists():
+                try:
+                    runtime_profiles_path.write_text(seed_src.read_text(encoding="utf-8"), encoding="utf-8")
+                except Exception:
+                    # Continue with empty skeleton fallback handled by _load_yaml.
+                    pass
+        camera_profiles_arg = str(runtime_profiles_path)
 
     profiles_path = Path(camera_profiles_arg).expanduser()
     data = _load_yaml(profiles_path)

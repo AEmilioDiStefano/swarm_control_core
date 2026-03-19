@@ -17,9 +17,9 @@ Operator model for this quickstart (required):
 
 Suggested terminal layout on the control machine:
 - `CM-UI`: local UI terminal.
-- `R1`: `ssh <robot1_user>@<robot1_host>.local`
-- `R2`: `ssh <robot2_user>@<robot2_host>.local`
-- `R3`: `ssh <robot3_user>@<robot3_host>.local`
+- `R-<robot-a>`: `ssh <robot_user>@<robot_host>.local`
+- `R-<robot-b>`: `ssh <robot_user>@<robot_host>.local`
+- add one terminal per additional robot.
 
 ## Mode Handoff Checklist (core <-> pro)
 
@@ -66,7 +66,7 @@ unset SWARM_CORE_BOOTSTRAP
   --machine-role control
 ```
 
-### Run in each dedicated robot SSH terminal (`R1`, `R2`, `R3`):
+### Run in each dedicated robot SSH terminal (one terminal per robot):
 
 ```bash
 "$WS/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
@@ -190,6 +190,9 @@ set -u || true
 ros2 run swarm_control_core save_camera_profile_com --robot "$SWARM_COM_ROBOT_NAME"
 ```
 
+Expected from save step:
+- `output: /home/<user>/.config/swarm_control_core/camera_profiles.yaml`
+
 ### LAUNCH EACH ROBOT
 
 ### Run in each dedicated robot SSH terminal:
@@ -206,10 +209,16 @@ Expected robot-side nodes include:
 - `heartbeat_node`
 - `unit_executor_action_server`
 - `camera` (if `use_camera:=true`)
+- readiness banner from launcher:
+  `[swarm_com_run_robot] [READY] robot=<name> heartbeat=ok cmd_vel_subscriber=ok camera=ok`
 
 ### IF robot nodes or camera do not come up
 
 Go to [Fix Step 2.1](#ref-2-1), then return to [Step 2](#step-2).
+
+For multi-robot sessions:
+- keep each robot SSH terminal running.
+- wait until each robot terminal prints its `[READY]` banner before proceeding to Step 3.
 
 If one robot feed is much darker than others (while transport/control are healthy), validate camera controls on that robot:
 
@@ -259,19 +268,19 @@ export SWARM_COM_ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
 # - set explicit values (no `:-`) so old shell values cannot silently persist
 export SWARM_COM_MAIN_STREAM_FPS=15.0
 export SWARM_COM_WEBRTC_FPS=15.0
-export SWARM_COM_WEBRTC_MAIN_ONLY=1
+export SWARM_COM_WEBRTC_MAIN_ONLY=0
 export SWARM_COM_THUMB_REFRESH_HZ=0.5
 export SWARM_COM_IMAGE_SUBSCRIPTION_MODE=active_only
 export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=6.0
 export SWARM_COM_THUMB_ROBOTS_PER_TICK=1
 # Drive command pacing/hold tuned for noisy Wi-Fi multi-robot sessions.
-export SWARM_COM_DRIVE_CMD_RATE_HZ=20.0
-export SWARM_COM_DRIVE_HOLD_TIMEOUT_S=0.35
+export SWARM_COM_DRIVE_CMD_RATE_HZ=15.0
+export SWARM_COM_DRIVE_HOLD_TIMEOUT_S=0.10
 "$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
 ```
 
 Terminal usage requirement:
-- Keep `R1`/`R2`/`R3` open while operating.
+- Keep each robot SSH terminal open while operating.
 - Run the UI only in `CM-UI`.
 
 Operator tip:
