@@ -187,7 +187,8 @@ set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
-ros2 run swarm_control_core save_camera_profile_com --robot "$SWARM_COM_ROBOT_NAME"
+ROBOT_NAME="${SWARM_COM_ROBOT_NAME:-${USER:-$(id -un)}}"
+ros2 run swarm_control_core save_camera_profile_com --robot "$ROBOT_NAME"
 ```
 
 Expected from save step:
@@ -199,8 +200,17 @@ Expected from save step:
 
 ```bash
 # Block C: launch robot bringup
-"$WS/src/swarm_control_core/scripts/swarm_com_run_robot.sh" "$SWARM_COM_ROBOT_NAME"
+ROBOT_NAME="${SWARM_COM_ROBOT_NAME:-${USER:-$(id -un)}}"
+"$WS/src/swarm_control_core/scripts/swarm_com_run_robot.sh" "$ROBOT_NAME"
 ```
+
+Profile refresh behavior:
+- `swarm_com_run_robot.sh` refreshes core runtime profiles from Git each launch
+  (`robot_instances.yaml`, `control_types.yaml`, `control_interfaces.yaml`,
+  `capability_profiles.yaml`, `adapter_profiles.yaml`) while preserving
+  existing `camera_profiles.yaml`.
+- Disable this only if you intentionally maintain custom local runtime profiles:
+  `export SWARM_COM_SEED_OVERWRITE_CORE_PROFILES=0`
 
 ### Verify success
 
@@ -246,6 +256,10 @@ Proceed to Step 3.
 <a id="step-3"></a>
 ## Step 3: Start Local FPV UI (Control Machine)
 
+Prerequisite (required):
+- Do not start Step 3 until every robot terminal has completed Step 2 and printed
+  `[swarm_com_run_robot] [READY] ...`.
+
 ### Run on control machine:
 
 ```bash
@@ -274,8 +288,8 @@ export SWARM_COM_IMAGE_SUBSCRIPTION_MODE=active_only
 export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=6.0
 export SWARM_COM_THUMB_ROBOTS_PER_TICK=1
 # Drive command pacing/hold tuned for noisy Wi-Fi multi-robot sessions.
-export SWARM_COM_DRIVE_CMD_RATE_HZ=15.0
-export SWARM_COM_DRIVE_HOLD_TIMEOUT_S=0.10
+export SWARM_COM_DRIVE_CMD_RATE_HZ=20.0
+export SWARM_COM_DRIVE_HOLD_TIMEOUT_S=0.35
 "$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
 ```
 
@@ -310,11 +324,14 @@ export SWARM_COM_THUMB_REFRESH_HZ=1.0
 export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=4.0
 ```
 
+For fleets with 5+ robots, this switch-heavy profile is recommended.
+
 Open in browser:
 - `http://127.0.0.1:8080`
 
 Video path:
-- Main stream is strict WebRTC-only.
+- Main stream is WebRTC-primary with JPEG fallback (default).
+- Set `SWARM_COM_WEBRTC_MAIN_ONLY=1` only if you explicitly want strict WebRTC-only.
 - Fleet thumbnails use bounded JPEG polling and do not take over the main pane.
 
 Optional private LAN bind:

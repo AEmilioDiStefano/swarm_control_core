@@ -44,7 +44,14 @@ if [[ "${SWARM_COM_TERMINATE_EXISTING_PROCESSES:-1}" == "1" ]]; then
 fi
 
 if [[ -x "${SCRIPT_DIR}/swarm_com_seed_runtime_config.sh" ]]; then
-  "${SCRIPT_DIR}/swarm_com_seed_runtime_config.sh" --workspace "$WS" || true
+  seed_args=(--workspace "$WS")
+  if [[ "${SWARM_COM_SEED_OVERWRITE_CORE_PROFILES:-1}" == "1" ]]; then
+    seed_args+=(--overwrite-core-profiles)
+  fi
+  if [[ "${SWARM_COM_SEED_OVERWRITE_ALL_PROFILES:-0}" == "1" ]]; then
+    seed_args+=(--overwrite)
+  fi
+  "${SCRIPT_DIR}/swarm_com_seed_runtime_config.sh" "${seed_args[@]}" || true
 fi
 
 runtime_cfg_dir="${SWARM_COM_CONFIG_DIR:-$HOME/.config/swarm_control_core}"

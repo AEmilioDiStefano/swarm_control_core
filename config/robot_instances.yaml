@@ -67,7 +67,7 @@ robots:
         pwm_deadband_pct: 3
         cmd_rate_hz: 30
         pwm_slew_pct_per_s: 180
-        strict_single_cmd_vel_publisher: true
+        strict_single_cmd_vel_publisher: false
         strict_cmd_vel_exempt_publishers:
           - unit_executor_action_server
         allow_rotate_bypass_safety: false

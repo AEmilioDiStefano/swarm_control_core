@@ -2072,7 +2072,7 @@ class BrowserServer:
                     "auth_mode": self.auth_config.mode,
                 },
                 "stream": {
-                    "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "mjpeg"),
+                    "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "jpeg_poll"),
                     "fps": float(self.hub.main_stream_fps),
                 },
                 "webrtc": self._webrtc_public(),
@@ -2405,7 +2405,7 @@ class BrowserServer:
                     "drive_telemetry": self.hub.drive_telemetry_snapshot(),
                     "features": {"webrtc": bool(HAS_WEBRTC), "auth_mode": self.auth_config.mode},
                     "stream": {
-                        "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "mjpeg"),
+                        "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "jpeg_poll"),
                         "fps": float(self.hub.main_stream_fps),
                     },
                     "webrtc": self._webrtc_public(),
@@ -3513,6 +3513,23 @@ function isWebrtcMainOnly(){
   return streamConfig.mode === "webrtc_only";
 }
 
+function startMainFallback(robot){
+  const fb = $("mainJpeg");
+  if (!robot || isWebrtcMainOnly()){
+    stopMainMjpegStream();
+    if (fb) fb.style.display = "none";
+    return;
+  }
+  if (streamConfig.mode === "mjpeg"){
+    setupMainMjpegStream(robot);
+    if (fb) fb.style.display = "block";
+    return;
+  }
+  // jpeg_poll fallback path
+  stopMainMjpegStream();
+  if (fb) fb.style.display = "block";
+}
+
 function applyThumbPolicy(payload){
   const n = Math.floor(_toNumber(payload && payload.thumb_robots_per_tick, 0));
   thumbRobotsPerTick = Math.max(0, n);
@@ -4175,13 +4192,7 @@ function closePeerConnection(targetPc=null){
 async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
   const requestedRobot = String(robot || "");
   if (!features.webrtc || !robot){
-    if (isWebrtcMainOnly()){
-      stopMainMjpegStream();
-      const fb = $("mainJpeg");
-      if (fb) fb.style.display = "none";
-    } else {
-      setupMainMjpegStream(robot);
-    }
+    startMainFallback(robot);
     updateTransportBadge();
     return;
   }
@@ -4294,16 +4305,10 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       if (isWebrtcMainOnly()){
         setStatus("WebRTC unavailable (main stream is WebRTC-only)");
       } else {
-        setStatus("WebRTC unavailable, using MJPEG fallback");
+        setStatus("WebRTC unavailable, using JPEG fallback");
       }
       sendWebrtcTelemetry("offer_failed");
-      if (isWebrtcMainOnly()){
-        stopMainMjpegStream();
-        const fb = $("mainJpeg");
-        if (fb) fb.style.display = "none";
-      } else {
-        setupMainMjpegStream(robot);
-      }
+      startMainFallback(robot);
       webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
       renderWebrtcDiagnostics();
       updateTransportBadge();
@@ -4331,16 +4336,10 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       if (isWebrtcMainOnly()){
         setStatus("WebRTC handshake failed (main stream is WebRTC-only)");
       } else {
-        setStatus("WebRTC handshake failed, using MJPEG fallback");
+        setStatus("WebRTC handshake failed, using JPEG fallback");
       }
       sendWebrtcTelemetry("answer_failed");
-      if (isWebrtcMainOnly()){
-        stopMainMjpegStream();
-        const fb = $("mainJpeg");
-        if (fb) fb.style.display = "none";
-      } else {
-        setupMainMjpegStream(robot);
-      }
+      startMainFallback(robot);
       webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
       renderWebrtcDiagnostics();
       updateTransportBadge();
@@ -4517,13 +4516,7 @@ function setActiveRobot(robot, announce=true, source="local"){
   renderWebrtcDiagnostics();
   updateTransportBadge();
   if (changed){
-    if (!isWebrtcMainOnly()){
-      setupMainMjpegStream(robot);
-    } else {
-      stopMainMjpegStream();
-      const fb = $("mainJpeg");
-      if (fb) fb.style.display = "none";
-    }
+    startMainFallback(robot);
     setupWebRTC(robot, webrtcSwitchNonce);
   }
 }
@@ -5005,7 +4998,7 @@ async def _run_server():
     if hub.webrtc_main_only:
         hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_only_main")
     else:
-        hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_primary_mjpeg_fallback")
+        hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_primary_jpeg_fallback")
     if site_id:
         hub.get_logger().info(f"Swarm FPV UI site_id={site_id}")
     urls = _detect_ipv4_addresses()

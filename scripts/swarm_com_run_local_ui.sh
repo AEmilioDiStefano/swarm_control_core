@@ -232,8 +232,8 @@ export SWARM_COM_THUMB_REFRESH_HZ="${SWARM_COM_THUMB_REFRESH_HZ:-0.5}"
 export SWARM_COM_IMAGE_SUBSCRIPTION_MODE="${SWARM_COM_IMAGE_SUBSCRIPTION_MODE:-active_only}"
 export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S="${SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S:-6.0}"
 export SWARM_COM_THUMB_ROBOTS_PER_TICK="${SWARM_COM_THUMB_ROBOTS_PER_TICK:-1}"
-export SWARM_COM_DRIVE_CMD_RATE_HZ="${SWARM_COM_DRIVE_CMD_RATE_HZ:-15.0}"
-export SWARM_COM_DRIVE_HOLD_TIMEOUT_S="${SWARM_COM_DRIVE_HOLD_TIMEOUT_S:-0.10}"
+export SWARM_COM_DRIVE_CMD_RATE_HZ="${SWARM_COM_DRIVE_CMD_RATE_HZ:-20.0}"
+export SWARM_COM_DRIVE_HOLD_TIMEOUT_S="${SWARM_COM_DRIVE_HOLD_TIMEOUT_S:-0.35}"
 export SWARM_COM_DRIVE_RATE_EMA_ALPHA="${SWARM_COM_DRIVE_RATE_EMA_ALPHA:-0.25}"
 case "${SWARM_COM_WEBRTC_MAIN_ONLY,,}" in
   1|true|yes|on)
@@ -254,6 +254,13 @@ elif (( SWARM_COM_THUMB_ROBOTS_PER_TICK < 0 )); then
   log "Negative SWARM_COM_THUMB_ROBOTS_PER_TICK='${SWARM_COM_THUMB_ROBOTS_PER_TICK}', forcing 0."
   export SWARM_COM_THUMB_ROBOTS_PER_TICK="0"
 fi
+if ! awk -v v="${SWARM_COM_DRIVE_HOLD_TIMEOUT_S}" 'BEGIN{exit !(v ~ /^([0-9]+([.][0-9]+)?|[.][0-9]+)$/)}'; then
+  log "Invalid SWARM_COM_DRIVE_HOLD_TIMEOUT_S='${SWARM_COM_DRIVE_HOLD_TIMEOUT_S}', forcing 0.35."
+  export SWARM_COM_DRIVE_HOLD_TIMEOUT_S="0.35"
+elif awk -v v="${SWARM_COM_DRIVE_HOLD_TIMEOUT_S}" 'BEGIN{exit !(v+0 < 0.20)}'; then
+  log "SWARM_COM_DRIVE_HOLD_TIMEOUT_S='${SWARM_COM_DRIVE_HOLD_TIMEOUT_S}' is too low for reliable key-hold cadence; forcing 0.20."
+  export SWARM_COM_DRIVE_HOLD_TIMEOUT_S="0.20"
+fi
 
 log "bind=${SWARM_COM_BIND_HOST}:${SWARM_COM_BIND_PORT}"
 log "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
@@ -262,9 +269,9 @@ log "ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY}"
 log "ROS_AUTOMATIC_DISCOVERY_RANGE=${ROS_AUTOMATIC_DISCOVERY_RANGE}"
 log "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-<unset>}"
 if [[ "${SWARM_COM_WEBRTC_MAIN_ONLY}" == "true" ]]; then
-  log "stream=WebRTC-only main stream (no MJPEG fallback)"
+  log "stream=WebRTC-only main stream (no fallback)"
 else
-  log "stream=WebRTC primary main stream + MJPEG fallback"
+  log "stream=WebRTC primary main stream + JPEG fallback"
 fi
 log "main_stream_fps=${SWARM_COM_MAIN_STREAM_FPS}"
 log "webrtc_fps=${SWARM_COM_WEBRTC_FPS}"

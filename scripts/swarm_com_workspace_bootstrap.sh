@@ -19,7 +19,7 @@ Behavior:
 
 Examples:
   eval "$(/path/to/swarm_com_workspace_bootstrap.sh --interactive --emit-shell)"
-  /path/to/swarm_com_workspace_bootstrap.sh --workspace /home/user/ros2_ws --non-interactive
+  /path/to/swarm_com_workspace_bootstrap.sh --workspace /home/user/my_workspace --non-interactive
 USAGE
 }
 

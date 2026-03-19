@@ -14,6 +14,9 @@ Options:
   --workspace <path>      Workspace root (default: auto-detect)
   --target-dir <path>     Runtime config dir (default: ~/.config/swarm_control_core)
   --overwrite             Overwrite existing runtime config files
+  --overwrite-core-profiles
+                          Overwrite existing core profile files but keep
+                          existing camera_profiles.yaml
   -h, --help              Show this help
 
 Behavior:
@@ -37,6 +40,7 @@ fail() {
 workspace=""
 target_dir="${HOME}/.config/swarm_control_core"
 overwrite="0"
+overwrite_core_profiles="0"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,6 +54,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --overwrite)
       overwrite="1"
+      ;;
+    --overwrite-core-profiles)
+      overwrite_core_profiles="1"
       ;;
     -h|--help)
       usage
@@ -92,6 +99,13 @@ for f in "${required_files[@]}"; do
   dst_file="${target_dir}/${f}"
   [[ -f "$src_file" ]] || fail "Missing required source file: $src_file"
   if [[ -f "$dst_file" && "$overwrite" != "1" ]]; then
+    if [[ "$overwrite_core_profiles" == "1" && "$f" != "camera_profiles.yaml" ]]; then
+      cp -f "$src_file" "$dst_file"
+      chmod 644 "$dst_file" || true
+      copied=$((copied + 1))
+      log "Refreshed core profile: ${dst_file}"
+      continue
+    fi
     kept=$((kept + 1))
     log "Keeping existing: ${dst_file}"
     continue
