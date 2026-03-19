@@ -340,7 +340,7 @@ class RosFleetHub(Node):
         self.declare_parameter("webrtc_fps", 15.0)
         self.declare_parameter("thumb_jpeg_quality", 70)
         self.declare_parameter("thumb_refresh_hz", 0.5)
-        self.declare_parameter("drive_cmd_rate_hz", 30.0)
+        self.declare_parameter("drive_cmd_rate_hz", 20.0)
         self.declare_parameter("drive_hold_timeout_s", 0.35)
         self.declare_parameter("drive_rate_ema_alpha", 0.25)
         self.declare_parameter("image_subscription_mode", "active_only")
@@ -2692,12 +2692,15 @@ let localRobotSwitchTimer = null;
 let pendingLocalRobotSelection = null;
 let robotsSig = "";
 let locksSig = "";
-const DRIVE_HOLD_INTERVAL_MS = 40;
+const DRIVE_HOLD_INTERVAL_MS = 100;
 const ROBOT_SWITCH_DEBOUNCE_MS = 140;
 const ROBOT_SWITCH_GRACE_MS = 500;
 const WEBRTC_RETRY_INTERVAL_MS = 900;
 const THUMB_DRIVE_SUPPRESS_MS = 700;
 const driveHoldTimers = new Map();
+const driveHoldCommands = new Map();
+const driveHoldButtonTokens = new Map();
+const driveHoldOrder = [];
 const pressedDriveKeys = new Set();
 let keyboardDriveHooked = false;
 let driveProfileRobot = null;
@@ -2716,6 +2719,7 @@ let driveDiffArcInnerRatio = 0.6;
 let driveWheelSeparation = 0.18;
 const driveButtonsByToken = new Map();
 const activeDriveButtonTokens = new Set();
+let activeDriveHoldTag = "";
 
 const NO_SIGNAL_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
   "<svg xmlns='http://www.w3.org/2000/svg' width='640' height='360'>"
@@ -2912,33 +2916,107 @@ function _isTypingContext(event){
   return false;
 }
 
-function startDriveHold(tag, cmdFn){
-  if (!tag || typeof cmdFn !== "function") return;
-  if (driveHoldTimers.has(tag)) return;
+function _clearDriveHoldTimer(tag, keepEntry=true){
+  const timer = driveHoldTimers.get(tag);
+  if (timer){
+    clearInterval(timer);
+  }
+  if (keepEntry){
+    driveHoldTimers.set(tag, null);
+  } else {
+    driveHoldTimers.delete(tag);
+  }
+}
+
+function _syncDriveHoldController(sendStopIfIdle=true){
+  const nextTag = driveHoldOrder.length ? driveHoldOrder[driveHoldOrder.length - 1] : "";
+  const prevTag = activeDriveHoldTag;
+  if (prevTag && prevTag !== nextTag){
+    _clearDriveHoldTimer(prevTag, true);
+  }
+  if (!nextTag){
+    activeDriveHoldTag = "";
+    clearDriveButtonActiveStates();
+    if (sendStopIfIdle){
+      drive(0, 0, 0, 0);
+    }
+    return;
+  }
+
+  activeDriveHoldTag = nextTag;
+  clearDriveButtonActiveStates();
+  const btnToken = String(driveHoldButtonTokens.get(nextTag) || "").trim();
+  if (btnToken){
+    setDriveButtonActive(btnToken, true);
+  }
+
+  if (nextTag === prevTag && driveHoldTimers.get(nextTag)){
+    return;
+  }
+
+  const cmdFn = driveHoldCommands.get(nextTag);
+  if (typeof cmdFn !== "function"){
+    return;
+  }
   cmdFn();
   const timer = setInterval(cmdFn, DRIVE_HOLD_INTERVAL_MS);
-  driveHoldTimers.set(tag, timer);
+  driveHoldTimers.set(nextTag, timer);
+}
+
+function startDriveHold(tag, cmdFn, buttonToken=""){
+  if (!tag || typeof cmdFn !== "function") return;
+  if (driveHoldCommands.has(tag)) return;
+  driveHoldCommands.set(tag, cmdFn);
+  const safeButtonToken = String(buttonToken || "").trim();
+  if (safeButtonToken){
+    driveHoldButtonTokens.set(tag, safeButtonToken);
+  } else {
+    driveHoldButtonTokens.delete(tag);
+  }
+  driveHoldTimers.set(tag, null);
+  driveHoldOrder.push(tag);
+  _syncDriveHoldController(false);
 }
 
 function stopDriveHold(tag, sendStop=true){
   if (!tag) return;
-  const timer = driveHoldTimers.get(tag);
-  if (timer){
-    clearInterval(timer);
-    driveHoldTimers.delete(tag);
+  const idx = driveHoldOrder.indexOf(tag);
+  const wasActive = (activeDriveHoldTag === tag);
+  _clearDriveHoldTimer(tag, false);
+  driveHoldCommands.delete(tag);
+  driveHoldButtonTokens.delete(tag);
+  if (idx >= 0){
+    driveHoldOrder.splice(idx, 1);
   }
-  if (sendStop && driveHoldTimers.size === 0){
-    drive(0, 0, 0, 0);
+  if (wasActive || driveHoldOrder.length === 0){
+    _syncDriveHoldController(sendStop);
   }
 }
 
 function stopAllDriveHolds(sendStop=true){
-  for (const [, timer] of driveHoldTimers.entries()){
-    clearInterval(timer);
+  for (const tag of driveHoldOrder){
+    _clearDriveHoldTimer(tag, false);
   }
+  driveHoldCommands.clear();
+  driveHoldButtonTokens.clear();
+  driveHoldOrder.length = 0;
   driveHoldTimers.clear();
+  activeDriveHoldTag = "";
   clearDriveButtonActiveStates();
   if (sendStop){
+    drive(0, 0, 0, 0);
+  }
+}
+
+function stopDriveHoldsByPrefix(prefix, sendStop=true){
+  const safePrefix = String(prefix || "");
+  if (!safePrefix) return;
+  const matches = driveHoldOrder.filter((tag) => String(tag || "").startsWith(safePrefix));
+  if (!matches.length) return;
+  for (const tag of matches){
+    stopDriveHold(tag, false);
+  }
+  if (sendStop && driveHoldOrder.length === 0){
     drive(0, 0, 0, 0);
   }
 }
@@ -3174,10 +3252,7 @@ function hookKeyboardDrive(){
     }
     if (e.repeat || pressedDriveKeys.has(token)) return;
     pressedDriveKeys.add(token);
-    if (btnToken){
-      setDriveButtonActive(btnToken, true);
-    }
-    startDriveHold(token, () => drive(cmd.lin, cmd.yaw, cmd.lat, cmd.vert));
+    startDriveHold(token, () => drive(cmd.lin, cmd.yaw, cmd.lat, cmd.vert), btnToken);
   }, { passive: false });
 
   window.addEventListener("keyup", (e) => {
@@ -3185,39 +3260,35 @@ function hookKeyboardDrive(){
     if (!cmd) return;
     e.preventDefault();
     const token = _keyToken(e);
-    const btnToken = driveButtonTokenForEvent(e);
     pressedDriveKeys.delete(token);
     if (!cmd.stop){
       stopDriveHold(token, true);
-      if (btnToken){
-        setDriveButtonActive(btnToken, false);
-      }
     } else {
       clearDriveButtonActiveStates();
     }
   }, { passive: false });
 
   window.addEventListener("pointerup", () => {
-    if (driveHoldTimers.size > 0){
-      stopAllDriveHolds(true);
+    if (driveHoldOrder.length > 0){
+      stopDriveHoldsByPrefix("btn:", true);
     }
   });
 
   window.addEventListener("mouseup", () => {
-    if (driveHoldTimers.size > 0){
-      stopAllDriveHolds(true);
+    if (driveHoldOrder.length > 0){
+      stopDriveHoldsByPrefix("btn:", true);
     }
   });
 
   window.addEventListener("touchend", () => {
-    if (driveHoldTimers.size > 0){
-      stopAllDriveHolds(true);
+    if (driveHoldOrder.length > 0){
+      stopDriveHoldsByPrefix("btn:", true);
     }
   }, { passive: true });
 
   window.addEventListener("touchcancel", () => {
-    if (driveHoldTimers.size > 0){
-      stopAllDriveHolds(true);
+    if (driveHoldOrder.length > 0){
+      stopDriveHoldsByPrefix("btn:", true);
     }
   }, { passive: true });
 
@@ -3598,22 +3669,19 @@ function renderDriveControls(){
       if (typeof b.setPointerCapture === "function"){
         try { b.setPointerCapture(e.pointerId); } catch(_e) {}
       }
-      if (btnToken){
-        setDriveButtonActive(btnToken, true);
-      }
       if (continuous){
-        startDriveHold(holdTag, onDown);
+        startDriveHold(holdTag, onDown, btnToken);
       } else {
         onDown();
       }
     };
     const stop = (e) => {
       e.preventDefault();
-      stopDriveHold(holdTag, false);
-      if (btnToken){
-        setDriveButtonActive(btnToken, false);
+      if (continuous){
+        stopDriveHold(holdTag, true);
+      } else {
+        onUp();
       }
-      onUp();
     };
     if (window.PointerEvent){
       b.onpointerdown = start;

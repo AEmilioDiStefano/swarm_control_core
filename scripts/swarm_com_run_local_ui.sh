@@ -180,6 +180,8 @@ export SWARM_COM_THUMB_REFRESH_HZ="${SWARM_COM_THUMB_REFRESH_HZ:-0.5}"
 export SWARM_COM_IMAGE_SUBSCRIPTION_MODE="${SWARM_COM_IMAGE_SUBSCRIPTION_MODE:-active_only}"
 export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S="${SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S:-2.5}"
 export SWARM_COM_THUMB_ROBOTS_PER_TICK="${SWARM_COM_THUMB_ROBOTS_PER_TICK:-1}"
+export SWARM_COM_DRIVE_CMD_RATE_HZ="${SWARM_COM_DRIVE_CMD_RATE_HZ:-20.0}"
+export SWARM_COM_DRIVE_HOLD_TIMEOUT_S="${SWARM_COM_DRIVE_HOLD_TIMEOUT_S:-0.35}"
 if ! [[ "${SWARM_COM_THUMB_ROBOTS_PER_TICK}" =~ ^-?[0-9]+$ ]]; then
   log "Invalid SWARM_COM_THUMB_ROBOTS_PER_TICK='${SWARM_COM_THUMB_ROBOTS_PER_TICK}', forcing 1."
   export SWARM_COM_THUMB_ROBOTS_PER_TICK="1"
@@ -200,6 +202,8 @@ log "thumb_refresh_hz=${SWARM_COM_THUMB_REFRESH_HZ}"
 log "image_subscription_mode=${SWARM_COM_IMAGE_SUBSCRIPTION_MODE}"
 log "image_thumb_interest_ttl_s=${SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S}"
 log "thumb_robots_per_tick=${SWARM_COM_THUMB_ROBOTS_PER_TICK}"
+log "drive_cmd_rate_hz=${SWARM_COM_DRIVE_CMD_RATE_HZ}"
+log "drive_hold_timeout_s=${SWARM_COM_DRIVE_HOLD_TIMEOUT_S}"
 if [[ "${SWARM_COM_ALLOW_LAN_BIND:-0}" == "1" ]]; then
   log "LAN bind enabled (private LAN use only)."
 else
@@ -249,7 +253,9 @@ if command -v setsid >/dev/null 2>&1; then
     thumb_refresh_hz:="$SWARM_COM_THUMB_REFRESH_HZ" \
     image_subscription_mode:="$SWARM_COM_IMAGE_SUBSCRIPTION_MODE" \
     image_thumb_interest_ttl_s:="$SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S" \
-    thumb_robots_per_tick:="$SWARM_COM_THUMB_ROBOTS_PER_TICK" &
+    thumb_robots_per_tick:="$SWARM_COM_THUMB_ROBOTS_PER_TICK" \
+    drive_cmd_rate_hz:="$SWARM_COM_DRIVE_CMD_RATE_HZ" \
+    drive_hold_timeout_s:="$SWARM_COM_DRIVE_HOLD_TIMEOUT_S" &
 else
   ros2 launch swarm_control_core swarm_fpv_ui.launch.py \
     ros_domain_id:="$ROS_DOMAIN_ID" \
@@ -259,7 +265,9 @@ else
     thumb_refresh_hz:="$SWARM_COM_THUMB_REFRESH_HZ" \
     image_subscription_mode:="$SWARM_COM_IMAGE_SUBSCRIPTION_MODE" \
     image_thumb_interest_ttl_s:="$SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S" \
-    thumb_robots_per_tick:="$SWARM_COM_THUMB_ROBOTS_PER_TICK" &
+    thumb_robots_per_tick:="$SWARM_COM_THUMB_ROBOTS_PER_TICK" \
+    drive_cmd_rate_hz:="$SWARM_COM_DRIVE_CMD_RATE_HZ" \
+    drive_hold_timeout_s:="$SWARM_COM_DRIVE_HOLD_TIMEOUT_S" &
 fi
 ui_pid="$!"
 wait "$ui_pid"

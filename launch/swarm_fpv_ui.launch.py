@@ -69,6 +69,26 @@ def _default_thumb_robots_per_tick() -> str:
         return "1"
 
 
+def _default_drive_cmd_rate_hz() -> str:
+    raw = str(os.environ.get("SWARM_COM_DRIVE_CMD_RATE_HZ", "20.0")).strip()
+    if not raw:
+        return "20.0"
+    try:
+        return str(float(raw))
+    except ValueError:
+        return "20.0"
+
+
+def _default_drive_hold_timeout_s() -> str:
+    raw = str(os.environ.get("SWARM_COM_DRIVE_HOLD_TIMEOUT_S", "0.35")).strip()
+    if not raw:
+        return "0.35"
+    try:
+        return str(float(raw))
+    except ValueError:
+        return "0.35"
+
+
 def generate_launch_description() -> LaunchDescription:
     args = [
         DeclareLaunchArgument(
@@ -83,6 +103,8 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("image_subscription_mode", default_value=_default_image_subscription_mode()),
         DeclareLaunchArgument("image_thumb_interest_ttl_s", default_value=_default_image_thumb_interest_ttl_s()),
         DeclareLaunchArgument("thumb_robots_per_tick", default_value=_default_thumb_robots_per_tick()),
+        DeclareLaunchArgument("drive_cmd_rate_hz", default_value=_default_drive_cmd_rate_hz()),
+        DeclareLaunchArgument("drive_hold_timeout_s", default_value=_default_drive_hold_timeout_s()),
         DeclareLaunchArgument(
             "profiles_path",
             default_value="",
@@ -113,6 +135,8 @@ def generate_launch_description() -> LaunchDescription:
                     value_type=int,
                 )
             },
+            {"drive_cmd_rate_hz": ParameterValue(LaunchConfiguration("drive_cmd_rate_hz"), value_type=float)},
+            {"drive_hold_timeout_s": ParameterValue(LaunchConfiguration("drive_hold_timeout_s"), value_type=float)},
             {"profiles_path": LaunchConfiguration("profiles_path")},
             {"auth_mode": "off"},
             {"auth_issuer": ""},
