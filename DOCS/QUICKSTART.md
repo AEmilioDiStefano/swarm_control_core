@@ -28,6 +28,32 @@ export WS="${WS:-$HOME/ros2_ws_dev}"   # set to your workspace root if different
 export SC="${SC:-$WS/src/swarm_control_core}"
 ```
 
+## Mode Handoff Checklist (core <-> pro)
+
+Use this when both `swarm_control_core` and `swarm_control_pro` exist on the same robots.
+
+From pro persistent mode to core session mode:
+- Run this core quickstart normally (Step 2 robot prep + Step 3 UI).
+- Core compat prep stops conflicting services/processes and applies runtime-only masks as needed.
+- No reboot is required to enter core session mode.
+
+From core session mode back to pro persistent mode:
+- Option A (recommended): reboot each robot, then run pro quickstart Step 2 (`service-sync`).
+- Option B (same boot, no reboot): on each robot, unmask pro units first:
+
+```bash
+sudo systemctl unmask --runtime swarm-robot.service swarm-agent.service || true
+```
+
+- Then run pro quickstart Step 2 (`service-sync`) from control machine.
+
+Quick sanity checks on a robot:
+
+```bash
+sudo systemctl is-enabled swarm-robot.service || true
+sudo systemctl is-active swarm-robot.service || true
+```
+
 # Quickstart Path:
 
 <a id="step-0"></a>
