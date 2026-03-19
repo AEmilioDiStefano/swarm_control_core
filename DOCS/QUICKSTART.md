@@ -53,23 +53,23 @@ sudo systemctl is-active swarm-robot.service || true
 SWARM_CORE_BOOTSTRAP="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_com_workspace_bootstrap.sh" 2>/dev/null | sort | head -n1)"
 if [[ -z "$SWARM_CORE_BOOTSTRAP" ]]; then
   echo "[FAIL] Could not locate swarm_control_core workspace bootstrap script under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-  return 1 2>/dev/null || exit 1
+else
+  eval "$("$SWARM_CORE_BOOTSTRAP" --interactive --emit-shell)"
 fi
-eval "$("$SWARM_CORE_BOOTSTRAP" --interactive --emit-shell)"
 unset SWARM_CORE_BOOTSTRAP
 ```
 
 ### Run on control machine:
 
 ```bash
-"$SC/scripts/swarm_com_check_install_dependencies.sh" \
+"$WS/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
   --machine-role control
 ```
 
 ### Run in each dedicated robot SSH terminal (`R1`, `R2`, `R3`):
 
 ```bash
-"$SC/scripts/swarm_com_check_install_dependencies.sh" \
+"$WS/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
   --machine-role robot
 ```
 
@@ -94,16 +94,16 @@ Proceed to Step 1.
 ### Run on control machine, then run the same sync/build block in each dedicated robot SSH terminal:
 
 ```bash
-cd "$SC"
+cd "$WS/src/swarm_control_core"
 git fetch origin --prune
 git switch main || git checkout -b main origin/main
 git pull --ff-only origin main
 
 rg -n -- '--machine-role|--compat-mode|compat-stop-ufw|ROS_AUTOMATIC_DISCOVERY_RANGE|SWARM_COM_PROCESS_RESET_DONE|SWARM_COM_WEBRTC_FPS|SWARM_COM_WEBRTC_MAIN_ONLY|SWARM_COM_THUMB_REFRESH_HZ|SWARM_COM_IMAGE_SUBSCRIPTION_MODE|SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S|SWARM_COM_THUMB_ROBOTS_PER_TICK|SWARM_COM_DRIVE_CMD_RATE_HZ|SWARM_COM_DRIVE_HOLD_TIMEOUT_S' \
-  "$SC/scripts/swarm_com_reset_env.sh" \
-  "$SC/scripts/swarm_com_terminate_existing_robot_processes.sh" \
-  "$SC/scripts/swarm_com_run_robot.sh" \
-  "$SC/scripts/swarm_com_run_local_ui.sh"
+  "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
+  "$WS/src/swarm_control_core/scripts/swarm_com_terminate_existing_robot_processes.sh" \
+  "$WS/src/swarm_control_core/scripts/swarm_com_run_robot.sh" \
+  "$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
 
 cd "$WS"
 set +u
@@ -141,7 +141,7 @@ Proceed to Step 2.
 # - applies runtime-only proprietary service masks (auto-cleared on reboot)
 # - in compat mode, may stop ufw runtime so DDS discovery is not blocked
 #   (reboot restores ufw policy)
-source "$SC/scripts/swarm_com_reset_env.sh" \
+source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
   --scope deep \
   --machine-role robot \
   --compat-mode \
@@ -196,7 +196,7 @@ ros2 run swarm_control_core save_camera_profile_com --robot "$SWARM_COM_ROBOT_NA
 
 ```bash
 # Block C: launch robot bringup
-"$SC/scripts/swarm_com_run_robot.sh" "$SWARM_COM_ROBOT_NAME"
+"$WS/src/swarm_control_core/scripts/swarm_com_run_robot.sh" "$SWARM_COM_ROBOT_NAME"
 ```
 
 ### Verify success
@@ -242,7 +242,7 @@ Proceed to Step 3.
 ```bash
 # Compatibility prep for mixed-use control machine state:
 # - in compat mode, may stop ufw runtime if needed for DDS discovery
-source "$SC/scripts/swarm_com_reset_env.sh" \
+source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
   --scope deep \
   --machine-role control \
   --compat-mode \
@@ -267,7 +267,7 @@ export SWARM_COM_THUMB_ROBOTS_PER_TICK=1
 # Drive command pacing/hold tuned for noisy Wi-Fi multi-robot sessions.
 export SWARM_COM_DRIVE_CMD_RATE_HZ=20.0
 export SWARM_COM_DRIVE_HOLD_TIMEOUT_S=0.35
-"$SC/scripts/swarm_com_run_local_ui.sh"
+"$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
 ```
 
 Terminal usage requirement:
@@ -313,7 +313,7 @@ Optional private LAN bind:
 ```bash
 export SWARM_COM_ALLOW_LAN_BIND=1
 export SWARM_COM_BIND_HOST=0.0.0.0
-"$SC/scripts/swarm_com_run_local_ui.sh"
+"$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
 ```
 
 ### IF UI does not load or bind
@@ -382,7 +382,7 @@ Run:
 
 ```bash
 sudo apt-get update
-"$SC/scripts/swarm_com_check_install_dependencies.sh" \
+"$WS/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
   --machine-role control
 ```
 
@@ -430,9 +430,9 @@ Then return to [Step 2](#step-2).
 Run on control machine:
 
 ```bash
-"$SC/scripts/swarm_com_free_ui_port.sh" --port 8080
+"$WS/src/swarm_control_core/scripts/swarm_com_free_ui_port.sh" --port 8080
 export ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
-"$SC/scripts/swarm_com_run_local_ui.sh"
+"$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
 ```
 
 If LAN access is needed, set:
@@ -471,7 +471,7 @@ If reset script prints `Unknown argument: --machine-role`, your robot/control ch
 Run on each machine:
 
 ```bash
-cd "$SC"
+cd "$WS/src/swarm_control_core"
 git fetch origin --prune
 git switch main || git checkout -b main origin/main
 git pull --ff-only origin main
