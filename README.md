@@ -153,20 +153,20 @@ Use jumper cables to connect motor outputs on the controller to each wheel motor
 ### Run on CONTROL MACHINE and on ALL ROBOTS:
 
 ```bash
-mkdir -p "$HOME/ros2_ws_dev/src"
-cd "$HOME/ros2_ws_dev/src"
+mkdir -p "$WS_DEV/src"
+cd "$WS_DEV/src"
 
-if [ ! -d "$HOME/ros2_ws_dev/src/swarm_control_core/.git" ]; then
+if [ ! -d "$WS_DEV/src/swarm_control_core/.git" ]; then
   git clone https://github.com/AEmilioDiStefano/swarm_control_core.git \
-    "$HOME/ros2_ws_dev/src/swarm_control_core"
+    "$WS_DEV/src/swarm_control_core"
 fi
-cd "$HOME/ros2_ws_dev/src/swarm_control_core"
+cd "$WS_DEV/src/swarm_control_core"
 git fetch origin
 git switch main || git checkout -b main origin/main
 git pull --ff-only origin main
-cd "$HOME/ros2_ws_dev/src"
+cd "$WS_DEV/src"
 
-source "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
+source "$WS_DEV/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
   --scope deep
 ```
 
@@ -177,9 +177,9 @@ This reset clears stale ROS/discovery/session state and stops existing robot/UI 
 ### Run on CONTROL MACHINE:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_bootstrap_machine.sh" \
+"$WS_DEV/src/swarm_control_core/scripts/swarm_com_bootstrap_machine.sh" \
   --machine-role control \
-  --workspace "$HOME/ros2_ws_dev" \
+  --workspace "$WS_DEV" \
   --domain-id 17
 ```
 
@@ -192,14 +192,14 @@ From the control machine, SSH into each robot and run the robot bootstrap block 
 ### Run on EACH ROBOT:
 
 ```bash
-cd "$HOME/ros2_ws_dev/src/swarm_control_core"
+cd "$WS_DEV/src/swarm_control_core"
 git fetch origin
 git switch main || git checkout -b main origin/main
 git pull --ff-only origin main
 
-if "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_bootstrap_machine.sh" \
+if "$WS_DEV/src/swarm_control_core/scripts/swarm_com_bootstrap_machine.sh" \
   --machine-role robot \
-  --workspace "$HOME/ros2_ws_dev" \
+  --workspace "$WS_DEV" \
   --domain-id 17; then
   if [ -e /dev/gpiomem ] && [ -r /dev/gpiomem ] && [ -w /dev/gpiomem ]; then
     echo "[OK] Robot bootstrap complete. GPIO access is active."
@@ -222,11 +222,11 @@ fi
 ### Run on EACH ROBOT:
 
 ```bash
-cd "$HOME/ros2_ws_dev"
+cd "$WS_DEV"
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 colcon build --packages-select swarm_control_core
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 set -u || true
 
 export ROS_DOMAIN_ID=17
@@ -238,7 +238,7 @@ ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
 ```bash
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 set -u || true
 
 export ROS_DOMAIN_ID=17
@@ -251,23 +251,23 @@ ros2 run swarm_control_core save_camera_profile_com --robot "$ROBOT_NAME"
 ```bash
 export ROS_DOMAIN_ID=17
 ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_run_robot.sh" "$ROBOT_NAME"
+"$WS_DEV/src/swarm_control_core/scripts/swarm_com_run_robot.sh" "$ROBOT_NAME"
 ```
 
 ### Run on CONTROL MACHINE:
 
 ```bash
-cd "$HOME/ros2_ws_dev"
+cd "$WS_DEV"
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 colcon build --packages-select swarm_control_core
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 set -u || true
 
 export ROS_DOMAIN_ID=17
 export SWARM_COM_MAIN_STREAM_FPS="${SWARM_COM_MAIN_STREAM_FPS:-20.0}"
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_free_ui_port.sh" --port 8080
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
+"$WS_DEV/src/swarm_control_core/scripts/swarm_com_free_ui_port.sh" --port 8080
+"$WS_DEV/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
 ```
 
 Open:
@@ -284,7 +284,7 @@ Open:
 export ROS_DOMAIN_ID=17
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 set -u || true
 
 ros2 run swarm_control_core swarm_teleop_com
@@ -299,7 +299,7 @@ ros2 run swarm_control_core swarm_teleop_com
 export ROS_DOMAIN_ID=17
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 set -u || true
 
 ros2 run swarm_control_core terminal_orchestrator_com
@@ -317,20 +317,20 @@ Show status:
 (while robots are running launch nodes)
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_switch_robot_mode.sh" status
+"$WS_DEV/src/swarm_control_core/scripts/swarm_com_switch_robot_mode.sh" status
 ```
 
 Activate community robot service:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_switch_robot_mode.sh" \
+"$WS_DEV/src/swarm_control_core/scripts/swarm_com_switch_robot_mode.sh" \
   activate --install-if-missing
 ```
 
 Terminate existing robot processes before manual launch:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_terminate_existing_robot_processes.sh"
+"$WS_DEV/src/swarm_control_core/scripts/swarm_com_terminate_existing_robot_processes.sh"
 ```
 
 <br>  
@@ -344,7 +344,7 @@ Terminate existing robot processes before manual launch:
 export ROS_DOMAIN_ID=17
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 set -u || true
 
 ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
@@ -358,7 +358,7 @@ ros2 run swarm_control_core save_camera_profile_com --robot "$ROBOT_NAME"
 export ROS_DOMAIN_ID=17
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 set -u || true
 
 ros2 topic list | rg "/.*/(heartbeat|camera/image_raw|cmd_vel)"

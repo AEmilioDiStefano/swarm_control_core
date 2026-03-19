@@ -9,7 +9,7 @@ This runbook is for local/LAN operation of `swarm_control_core`.
 Run this on each machine:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
+"$WS_DEV/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
   --machine-role control
 ```
 
@@ -23,11 +23,11 @@ Go to [5.1](#51-dependency-install-fails).
 Run on each machine where nodes will run:
 
 ```bash
-cd "$HOME/ros2_ws_dev"
+cd "$WS_DEV"
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 colcon build --packages-select swarm_control_core
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 set -u || true
 ```
 
@@ -41,7 +41,7 @@ Run on each robot:
 ```bash
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-17}"
 ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_terminate_existing_robot_processes.sh"
+"$WS_DEV/src/swarm_control_core/scripts/swarm_com_terminate_existing_robot_processes.sh"
 
 ros2 launch swarm_control_core swarm_bringup.launch.py \
   robot_name:="$ROBOT_NAME" \
@@ -115,12 +115,12 @@ Re-run Step 1.
 Run clean rebuild:
 
 ```bash
-cd "$HOME/ros2_ws_dev"
+cd "$WS_DEV"
 rm -rf build/swarm_control_core install/swarm_control_core log/latest_build/swarm_control_core
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 colcon build --packages-select swarm_control_core --event-handlers console_direct+
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 set -u || true
 ```
 
@@ -129,7 +129,7 @@ set -u || true
 On the robot:
 
 ```bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
 ros2 node list
 ros2 topic list | rg "/${ROBOT_NAME}/(cmd_vel|heartbeat|camera)"
@@ -147,7 +147,7 @@ ros2 run swarm_control_core save_camera_profile_com --robot "$ROBOT_NAME"
 On control machine:
 
 ```bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 ros2 topic list | rg "/.*/(heartbeat|camera/image_raw|cmd_vel)"
 ```
 
@@ -158,7 +158,7 @@ If empty, verify robot and control are on same LAN/domain ID and both sourced wi
 Confirm endpoints:
 
 ```bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS_DEV/install/setup.bash"
 ros2 topic list | rg "/.*/cmd_vel"
 ros2 action list | rg "/.*/execute_playbook"
 ```
@@ -170,6 +170,6 @@ If actions are missing, verify `unit_executor_action_server_com` is running from
 If robots are shared between multiple stacks, use mode switching on the robot:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_switch_robot_mode.sh" status
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_switch_robot_mode.sh" activate --install-if-missing
+"$WS_DEV/src/swarm_control_core/scripts/swarm_com_switch_robot_mode.sh" status
+"$WS_DEV/src/swarm_control_core/scripts/swarm_com_switch_robot_mode.sh" activate --install-if-missing
 ```

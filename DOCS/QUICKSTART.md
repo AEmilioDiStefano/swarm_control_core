@@ -24,7 +24,8 @@ Suggested terminal layout on the control machine:
 Run once in each terminal before Step 0:
 
 ```bash
-export WS="${WS:-$HOME/ros2_ws_dev}"   # set to your workspace root if different
+export WS_DEV="${WS_DEV:-$HOME/ros2_ws}"
+export WS="${WS:-${SWARM_WORKSPACE_ROOT:-$WS_DEV}}"   # set to your workspace root if different
 export SC="${SC:-$WS/src/swarm_control_core}"
 ```
 
@@ -38,14 +39,9 @@ From pro persistent mode to core session mode:
 - No reboot is required to enter core session mode.
 
 From core session mode back to pro persistent mode:
-- Option A (recommended): reboot each robot, then run pro quickstart Step 2 (`service-sync`).
-- Option B (same boot, no reboot): on each robot, unmask pro units first:
-
-```bash
-sudo systemctl unmask --runtime swarm-robot.service swarm-agent.service || true
-```
-
-- Then run pro quickstart Step 2 (`service-sync`) from control machine.
+- Run pro quickstart Step 2 (`service-sync`) from the control machine.
+- Pro service-sync now clears core runtime masks automatically and restores pro persistent service ownership in the same boot.
+- Reboot is still acceptable (optional) if you want a full clean restart of robot state before returning to pro.
 
 Quick sanity checks on a robot:
 
