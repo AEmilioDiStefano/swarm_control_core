@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/swarm_com_workspace.sh
+source "${script_dir}/lib/swarm_com_workspace.sh"
+
 usage() {
   cat <<'USAGE'
 Usage:
   swarm_com_install_robot_service.sh [options]
 
 Options:
-  --workspace <path>               Workspace root (default: ~/ros2_ws_dev)
+  --workspace <path>               Workspace root (default: auto-detect)
   --service-name <name>            Community service name (default: com-swarm-robot)
   --service-user <user>            Service user (default: current user)
   --env-file <path>                Environment file (default: /etc/swarm_control_core/robot.env)
@@ -49,7 +53,7 @@ trim() {
   printf '%s' "$value"
 }
 
-workspace="${HOME}/ros2_ws_dev"
+workspace=""
 service_name="com-swarm-robot"
 service_user="${USER:-$(id -un)}"
 env_file="/etc/swarm_control_core/robot.env"
@@ -123,6 +127,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 workspace="$(trim "$workspace")"
+workspace="$(swarm_com_detect_workspace_root "$workspace" || true)"
+[[ -n "$workspace" ]] || fail "Unable to detect workspace root. Pass --workspace or set SWARM_COM_WORKSPACE_ROOT."
 service_name="$(trim "$service_name")"
 service_user="$(trim "$service_user")"
 env_file="$(trim "$env_file")"

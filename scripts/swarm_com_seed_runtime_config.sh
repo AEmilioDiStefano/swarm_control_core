@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/swarm_com_workspace.sh
+source "${SCRIPT_DIR}/lib/swarm_com_workspace.sh"
+
 usage() {
   cat <<'USAGE'
 Usage:
   swarm_com_seed_runtime_config.sh [options]
 
 Options:
-  --workspace <path>      Workspace root (default: ~/ros2_ws_dev)
+  --workspace <path>      Workspace root (default: auto-detect)
   --target-dir <path>     Runtime config dir (default: ~/.config/swarm_control_core)
   --overwrite             Overwrite existing runtime config files
   -h, --help              Show this help
@@ -30,7 +34,7 @@ fail() {
   exit 1
 }
 
-workspace="${HOME}/ros2_ws_dev"
+workspace=""
 target_dir="${HOME}/.config/swarm_control_core"
 overwrite="0"
 
@@ -58,12 +62,8 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ "${workspace}" == "~/"* ]]; then
-  workspace="${HOME}/${workspace#~/}"
-fi
-if [[ "${workspace}" == '$HOME/'* ]]; then
-  workspace="${HOME}/${workspace#\$HOME/}"
-fi
+workspace="$(swarm_com_detect_workspace_root "$workspace" || true)"
+[[ -n "$workspace" ]] || fail "Unable to detect workspace root. Pass --workspace or set SWARM_COM_WORKSPACE_ROOT."
 if [[ "${target_dir}" == "~/"* ]]; then
   target_dir="${HOME}/${target_dir#~/}"
 fi

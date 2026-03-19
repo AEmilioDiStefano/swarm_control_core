@@ -8,7 +8,7 @@
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   echo "This script must be sourced, not executed." >&2
-  echo "Example: source ~/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_reset_env.sh" >&2
+  echo "Example: source <workspace>/src/swarm_control_core/scripts/swarm_com_reset_env.sh" >&2
   exit 1
 fi
 

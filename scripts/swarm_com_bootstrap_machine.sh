@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/swarm_com_workspace.sh
+source "${script_dir}/lib/swarm_com_workspace.sh"
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -8,7 +12,7 @@ Usage:
 
 Options:
   --machine-role <control|robot>  Target machine role (default: robot)
-  --workspace <path>              Workspace root (default: ~/ros2_ws_dev)
+  --workspace <path>              Workspace root (default: auto-detect)
   --repo-url <url>                Clone URL if package dir is missing and --clone-if-missing is set
   --clone-if-missing              Clone package into <workspace>/src/swarm_control_core if absent
   --skip-gpio                     Skip GPIO setup (robot role only)
@@ -133,10 +137,8 @@ print_current_setup_summary() {
   echo "COMMUNITY_SERVICE_ACTIVE = ${com_service_active:-unknown}"
 }
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 machine_role="robot"
-workspace="${HOME}/ros2_ws_dev"
+workspace=""
 repo_url=""
 clone_if_missing="0"
 skip_gpio="0"
@@ -209,16 +211,11 @@ case "$machine_role" in
     ;;
 esac
 
-[[ -n "$workspace" ]] || fail "--workspace cannot be empty"
 [[ -n "$domain_id" ]] || fail "--domain-id cannot be empty"
 [[ -n "$robot_name" ]] || fail "--robot-name cannot be empty"
 
-if [[ "${workspace}" == "~/"* ]]; then
-  workspace="${HOME}/${workspace#~/}"
-fi
-if [[ "${workspace}" == '$HOME/'* ]]; then
-  workspace="${HOME}/${workspace#\$HOME/}"
-fi
+workspace="$(swarm_com_detect_workspace_root "$workspace" || true)"
+[[ -n "$workspace" ]] || fail "Unable to detect workspace root. Pass --workspace or set SWARM_COM_WORKSPACE_ROOT."
 
 target_pkg_dir="${workspace}/src/swarm_control_core"
 if [[ ! -d "$target_pkg_dir" ]]; then
