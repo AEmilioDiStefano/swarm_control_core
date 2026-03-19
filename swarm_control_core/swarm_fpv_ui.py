@@ -6,7 +6,6 @@ Browser-first FPV control surface for heterogeneous robots.
 
 Design goals:
 - Main low-latency WebRTC stream for the selected robot.
-- Automatic MJPEG fallback when WebRTC is temporarily unavailable.
 - Medium thumbnail streams for the rest of the fleet.
 - Robot capability-aware controls (diff vs mecanum now, extensible for aerial later).
 - Control lock semantics so one operator controls one robot at a time.
@@ -52,7 +51,6 @@ except Exception as e:
     _MISSING_REQUIRED_DEPS.append(("Pillow", "python3-pil", str(e)))
 import rclpy
 from geometry_msgs.msg import Twist
-from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, Image
@@ -342,34 +340,16 @@ class RosFleetHub(Node):
         self.declare_parameter("webrtc_fps", 15.0)
         self.declare_parameter("thumb_jpeg_quality", 70)
         self.declare_parameter("thumb_refresh_hz", 0.5)
-        # Accept integer or float overrides (e.g., 20 vs 20.0) safely.
-        self.declare_parameter(
-            "main_stream_fps",
-            15.0,
-            ParameterDescriptor(dynamic_typing=True),
-        )
-        self.declare_parameter(
-            "webrtc_main_only",
-            False,
-            ParameterDescriptor(dynamic_typing=True),
-        )
         self.declare_parameter("drive_cmd_rate_hz", 30.0)
         self.declare_parameter("drive_hold_timeout_s", 0.35)
         self.declare_parameter("drive_rate_ema_alpha", 0.25)
-        self.declare_parameter("image_subscription_mode", "all")
+        self.declare_parameter("image_subscription_mode", "active_only")
         self.declare_parameter("image_thumb_interest_ttl_s", 2.5)
         self.declare_parameter("thumb_robots_per_tick", 1)
 
         self.webrtc_fps = float(self.get_parameter("webrtc_fps").value)
         self.thumb_jpeg_quality = int(self.get_parameter("thumb_jpeg_quality").value)
         self.thumb_refresh_hz = float(self.get_parameter("thumb_refresh_hz").value)
-        self.main_stream_fps = max(2.0, float(self.get_parameter("main_stream_fps").value))
-        self.webrtc_main_only = str(self.get_parameter("webrtc_main_only").value).strip().lower() in (
-            "1",
-            "true",
-            "yes",
-            "on",
-        )
         self.drive_cmd_rate_hz = max(1.0, float(self.get_parameter("drive_cmd_rate_hz").value))
         self.drive_hold_timeout_s = max(0.05, float(self.get_parameter("drive_hold_timeout_s").value))
         self.drive_rate_ema_alpha = min(1.0, max(0.01, float(self.get_parameter("drive_rate_ema_alpha").value)))
@@ -2038,8 +2018,7 @@ class BrowserServer:
                     "auth_mode": self.auth_config.mode,
                 },
                 "stream": {
-                    "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "mjpeg"),
-                    "fps": float(self.hub.main_stream_fps),
+                    "mode": "webrtc_only",
                 },
                 "webrtc": self._webrtc_public(),
                 "thumb_hz": float(self.hub.thumb_refresh_hz),
@@ -2199,84 +2178,6 @@ class BrowserServer:
             headers=_no_cache_headers(),
         )
 
-    async def handle_mjpeg(self, req: web.Request):
-        _principal, denied = self._authorize_http(req, SWARM_SCOPE_READ)
-        if denied is not None:
-            return denied
-
-        robot = str(req.query.get("robot") or "").strip()
-        if not robot:
-            return web.Response(status=400, text="robot query param required")
-        self.hub.mark_image_interest(robot, ttl_s=max(1.0, float(self.hub.image_thumb_interest_ttl_s)))
-
-        fps_raw = str(req.query.get("fps") or "").strip()
-        try:
-            fps = float(fps_raw) if fps_raw else float(self.hub.main_stream_fps)
-        except Exception:
-            fps = float(self.hub.main_stream_fps)
-        fps = max(2.0, min(60.0, fps))
-        period = 1.0 / fps
-
-        boundary = "frame"
-        headers = {
-            "Content-Type": f"multipart/x-mixed-replace; boundary={boundary}",
-            **_no_cache_headers(),
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        }
-        resp = web.StreamResponse(status=200, reason="OK", headers=headers)
-        try:
-            await resp.prepare(req)
-        except (asyncio.CancelledError, ConnectionResetError, BrokenPipeError):
-            # Client disconnected before stream headers were written.
-            return resp
-        except Exception as exc:
-            self.hub.get_logger().debug(f"[swarm_fpv_ui] mjpeg prepare aborted: {exc}")
-            return resp
-
-        last_stamp = 0.0
-        last_size = -1
-        try:
-            while True:
-                stamp = float(self.hub._img_last_frame_s.get(robot, 0.0))
-                blob = self.hub._latest_jpeg.get(robot)
-                if blob is None:
-                    frame = self.hub.latest_rgb(robot)
-                    if frame is not None:
-                        img = PILImage.fromarray(frame, mode="RGB")
-                        buf = io.BytesIO()
-                        img.save(
-                            buf,
-                            format="JPEG",
-                            quality=max(30, min(95, int(self.hub.thumb_jpeg_quality))),
-                        )
-                        blob = buf.getvalue()
-                        stamp = now_s()
-
-                if blob and (stamp > last_stamp or len(blob) != last_size):
-                    part_header = (
-                        f"--{boundary}\r\n"
-                        "Content-Type: image/jpeg\r\n"
-                        f"Content-Length: {len(blob)}\r\n\r\n"
-                    ).encode("ascii")
-                    await resp.write(part_header)
-                    await resp.write(blob)
-                    await resp.write(b"\r\n")
-                    last_stamp = stamp
-                    last_size = len(blob)
-
-                await asyncio.sleep(period)
-        except (asyncio.CancelledError, ConnectionResetError, BrokenPipeError):
-            pass
-        except Exception as exc:
-            self.hub.get_logger().debug(f"[swarm_fpv_ui] mjpeg stream closed: {exc}")
-        finally:
-            try:
-                await resp.write_eof()
-            except Exception:
-                pass
-        return resp
-
     async def handle_offer(self, req: web.Request):
         principal, denied = self._authorize_http(req, SWARM_SCOPE_READ)
         if denied is not None:
@@ -2331,7 +2232,7 @@ class BrowserServer:
             self.hub.get_logger().warn(f"[swarm_fpv_ui] WebRTC offer failed: {exc}")
             if pc is not None:
                 await self._close_pc(pc)
-            return web.Response(status=503, text="WebRTC handshake failed; use JPEG fallback")
+            return web.Response(status=503, text="WebRTC handshake failed")
 
     async def handle_ws(self, req: web.Request):
         principal, denied = self._authorize_http(req, SWARM_SCOPE_READ)
@@ -2367,8 +2268,7 @@ class BrowserServer:
                     "drive_telemetry": self.hub.drive_telemetry_snapshot(),
                     "features": {"webrtc": bool(HAS_WEBRTC), "auth_mode": self.auth_config.mode},
                     "stream": {
-                        "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "mjpeg"),
-                        "fps": float(self.hub.main_stream_fps),
+                        "mode": "webrtc_only",
                     },
                     "webrtc": self._webrtc_public(),
                     "thumb_hz": float(self.hub.thumb_refresh_hz),
@@ -2562,14 +2462,6 @@ video{
   position:absolute;
   inset:0;
 }
-.main-fallback{
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  position:absolute;
-  inset:0;
-  background:#000;
-}
 .meta{
   display:grid;gap:6px;padding:8px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:12px
 }
@@ -2755,7 +2647,6 @@ _INDEX_HTML = r"""
     <div class="main-wrap">
       <div class="hero">
         <video id="mainVideo" autoplay playsinline muted></video>
-        <img id="mainJpeg" class="main-fallback" alt="FPV JPEG fallback" style="display:none"/>
       </div>
       <div class="controls" id="driveControls"></div>
       <div class="meta" id="capMeta"></div>
@@ -2792,10 +2683,6 @@ let thumbRobotsPerTick = 0;
 let thumbDriveSuppressedUntilMs = 0;
 let authConfig = { mode: "off", allow_anonymous_readonly: true, dev_login_enabled: false };
 let pc = null;
-let mainFallbackTimer = null;
-let mainFallbackInFlight = false;
-let mainMjpegSeq = 0;
-let mainMjpegRobot = "";
 let webrtcAttemptInFlight = false;
 let webrtcRetryAtMs = 0;
 let webrtcSwitchNonce = 0;
@@ -2806,7 +2693,6 @@ let pendingLocalRobotSelection = null;
 let robotsSig = "";
 let locksSig = "";
 const DRIVE_HOLD_INTERVAL_MS = 40;
-const MAIN_FALLBACK_INTERVAL_MS = 120;
 const ROBOT_SWITCH_DEBOUNCE_MS = 140;
 const ROBOT_SWITCH_GRACE_MS = 500;
 const WEBRTC_RETRY_INTERVAL_MS = 900;
@@ -3413,35 +3299,20 @@ function applyWebrtcState(payload){
 
 function normalizeStreamMode(raw){
   const v = String(raw || "").trim().toLowerCase();
-  if (v === "webrtc_only" || v === "webrtc-only" || v === "webrtc"){
-    return "webrtc_only";
-  }
-  if (v === "jpeg_poll" || v === "jpeg-poll"){
-    return "jpeg_poll";
-  }
-  if (v === "mjpeg"){
-    return "mjpeg";
-  }
+  if (v === "webrtc_only" || v === "webrtc-only" || v === "webrtc") return "webrtc_only";
   return "webrtc_only";
 }
 
 function applyStreamState(payload){
   const s = (payload && payload.stream && typeof payload.stream === "object") ? payload.stream : {};
-  const next = {
+  streamConfig = {
     mode: normalizeStreamMode(s.mode),
     fps: Math.max(2, Math.min(60, _toNumber(s.fps, 15))),
   };
-  const modeChanged = next.mode !== streamConfig.mode;
-  streamConfig = next;
-  if (modeChanged && streamConfig.mode !== "mjpeg"){
-    stopMainMjpegStream();
-  } else if (modeChanged && streamConfig.mode === "mjpeg" && activeRobot){
-    setupMainMjpegStream(activeRobot);
-  }
 }
 
 function isWebrtcMainOnly(){
-  return streamConfig.mode === "webrtc_only";
+  return true;
 }
 
 function applyThumbPolicy(payload){
@@ -3460,47 +3331,23 @@ function isDriveSessionActive(){
   const dt = driveTelemetry || {};
   for (const robot of Object.keys(dt)){
     const row = dt[robot];
-    if (row && _toBool(row.active)){
+    if (row && (_toBool(row.hold_active) || _toBool(row.active))){
       return true;
     }
   }
   return false;
 }
 
-function stopMainMjpegStream(){
-  mainMjpegSeq += 1;
-  mainMjpegRobot = "";
-  const fb = $("mainJpeg");
-  if (!fb) return;
-  fb.onerror = null;
-  if (fb.src){
-    fb.removeAttribute("src");
-  }
-}
-
-function setupMainMjpegStream(robot){
-  const fb = $("mainJpeg");
-  if (!fb) return;
-  if (!robot || streamConfig.mode !== "mjpeg"){
-    stopMainMjpegStream();
-    fb.style.display = "none";
-    return;
-  }
-  const seq = ++mainMjpegSeq;
-  mainMjpegRobot = robot;
-  const fps = Math.max(2, Math.min(60, Math.floor(_toNumber(streamConfig.fps, 15))));
-  const url = withAuthPath(`/api/mjpeg?robot=${encodeURIComponent(robot)}&fps=${fps}&seq=${seq}`);
-  fb.onerror = () => {
-    // Reconnect quickly on transient disconnects while staying on the same robot.
-    if (seq !== mainMjpegSeq) return;
-    setTimeout(() => {
-      if (seq !== mainMjpegSeq) return;
-      if (!activeRobot || activeRobot !== robot) return;
-      setupMainMjpegStream(robot);
-    }, 200);
-  };
-  fb.src = url;
-  fb.style.display = "block";
+function startWebrtcRetryLoop(){
+  setInterval(() => {
+    if (document.hidden) return;
+    if (!activeRobot) return;
+    if (!features.webrtc) return;
+    if (webrtcAttemptInFlight) return;
+    if (hasWebRtcFrameNow()) return;
+    if (Date.now() < webrtcRetryAtMs) return;
+    setupWebRTC(activeRobot, webrtcSwitchNonce);
+  }, 200);
 }
 
 async function fetchState(){
@@ -4037,14 +3884,6 @@ function hasWebRtcFrameNow(){
   );
 }
 
-function isFallbackVisible(){
-  const fb = $("mainJpeg");
-  if (!fb) return false;
-  if (fb.style.display === "none") return false;
-  const srcAttr = String(fb.getAttribute("src") || "").trim();
-  return srcAttr.length > 0 || String(fb.src || "").trim().length > 0;
-}
-
 function updateTransportBadge(){
   const badge = $("transportBadge");
   if (!badge) return;
@@ -4065,24 +3904,18 @@ function updateTransportBadge(){
   } else if (hasWebRtcFrameNow()){
     klass = "webrtc";
     text = "WebRTC";
-  } else if (features.webrtc){
+  } else if (!features.webrtc){
+    klass = "fallback";
+    text = "WebRTC unavailable";
+  } else {
     const conn = pc ? String(pc.connectionState || "new") : "new";
     if (conn === "connecting" || conn === "new" || webrtcAttemptInFlight){
       klass = "fallback";
       text = "WebRTC connecting";
-    } else if (isWebrtcMainOnly()){
-      klass = "fallback";
-      text = "WebRTC only (no fallback)";
-    } else if (isFallbackVisible()){
-      klass = "fallback";
-      text = "MJPEG fallback";
     } else {
       klass = "fallback";
       text = "WebRTC retrying";
     }
-  } else if (isFallbackVisible()){
-    klass = "fallback";
-    text = (streamConfig.mode === "mjpeg") ? "MJPEG" : "JPEG poll";
   }
 
   badge.className = `transport-badge ${klass}`;
@@ -4099,18 +3932,18 @@ function closePeerConnection(targetPc=null){
   try { candidate.close(); } catch(_e){}
   if (pc === candidate){
     pc = null;
+    const v = $("mainVideo");
+    if (v && v.srcObject){
+      try { v.srcObject = null; } catch(_e){}
+    }
   }
 }
 
 async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
   const requestedRobot = String(robot || "");
   if (!features.webrtc || !robot){
-    if (isWebrtcMainOnly()){
-      stopMainMjpegStream();
-      const fb = $("mainJpeg");
-      if (fb) fb.style.display = "none";
-    } else {
-      setupMainMjpegStream(robot);
+    if (robot && !features.webrtc){
+      setStatus("WebRTC unavailable");
     }
     updateTransportBadge();
     return;
@@ -4184,9 +4017,6 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       if (evt.track.kind === "video"){
         $("mainVideo").srcObject = evt.streams[0];
       }
-      stopMainMjpegStream();
-      const fb = $("mainJpeg");
-      if (fb) fb.style.display = "none";
       webrtcRetryAtMs = 0;
       sendWebrtcTelemetry("track");
       renderWebrtcDiagnostics();
@@ -4221,19 +4051,8 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       return;
     }
     if (!resp.ok){
-      if (isWebrtcMainOnly()){
-        setStatus("WebRTC unavailable (main stream is WebRTC-only)");
-      } else {
-        setStatus("WebRTC unavailable, using MJPEG fallback");
-      }
+      setStatus("WebRTC unavailable");
       sendWebrtcTelemetry("offer_failed");
-      if (isWebrtcMainOnly()){
-        stopMainMjpegStream();
-        const fb = $("mainJpeg");
-        if (fb) fb.style.display = "none";
-      } else {
-        setupMainMjpegStream(robot);
-      }
       webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
       renderWebrtcDiagnostics();
       updateTransportBadge();
@@ -4252,35 +4071,18 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       }
       await attemptPc.setRemoteDescription(ans);
       sendWebrtcTelemetry("remote_description_set");
-      const fb = $("mainJpeg");
-      if (fb) fb.style.display = "none";
       webrtcRetryAtMs = 0;
       renderWebrtcDiagnostics();
       updateTransportBadge();
     }catch(_e){
-      if (isWebrtcMainOnly()){
-        setStatus("WebRTC handshake failed (main stream is WebRTC-only)");
-      } else {
-        setStatus("WebRTC handshake failed, using MJPEG fallback");
-      }
+      setStatus("WebRTC handshake failed");
       sendWebrtcTelemetry("answer_failed");
-      if (isWebrtcMainOnly()){
-        stopMainMjpegStream();
-        const fb = $("mainJpeg");
-        if (fb) fb.style.display = "none";
-      } else {
-        setupMainMjpegStream(robot);
-      }
       webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
       renderWebrtcDiagnostics();
       updateTransportBadge();
     }
   }catch(_err){
-    if (isWebrtcMainOnly()){
-      stopMainMjpegStream();
-      const fb = $("mainJpeg");
-      if (fb) fb.style.display = "none";
-    }
+    setStatus("WebRTC retrying");
     webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
     updateTransportBadge();
   } finally {
@@ -4290,97 +4092,6 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
     webrtcAttemptInFlight = false;
     updateTransportBadge();
   }
-}
-
-function setupMainFallbackLoop(){
-  if (mainFallbackTimer){
-    clearInterval(mainFallbackTimer);
-    mainFallbackTimer = null;
-  }
-  mainFallbackInFlight = false;
-  mainFallbackTimer = setInterval(() => {
-    const fb = $("mainJpeg");
-    if (!fb) return;
-    if (!activeRobot){
-      stopMainMjpegStream();
-      fb.style.display = "none";
-      mainFallbackInFlight = false;
-      updateTransportBadge();
-      return;
-    }
-    const inSwitchGrace = Boolean(
-      features.webrtc &&
-      (Date.now() - activeRobotSwitchAtMs) < ROBOT_SWITCH_GRACE_MS
-    );
-    if (inSwitchGrace){
-      fb.style.display = "none";
-      mainFallbackInFlight = false;
-      if (!webrtcAttemptInFlight && Date.now() >= webrtcRetryAtMs){
-        setupWebRTC(activeRobot, webrtcSwitchNonce);
-      }
-      updateTransportBadge();
-      return;
-    }
-    // Show fallback whenever WebRTC is unavailable or not established.
-    const v = $("mainVideo");
-    const hasWebRtcFrame = Boolean(
-      features.webrtc &&
-      v &&
-      v.srcObject &&
-      v.readyState >= 2 &&
-      v.videoWidth > 0 &&
-      v.videoHeight > 0
-    );
-    if (hasWebRtcFrame){
-      stopMainMjpegStream();
-      fb.style.display = "none";
-      mainFallbackInFlight = false;
-      updateTransportBadge();
-      return;
-    }
-
-    if (features.webrtc && !webrtcAttemptInFlight && Date.now() >= webrtcRetryAtMs){
-      setupWebRTC(activeRobot, webrtcSwitchNonce);
-    }
-
-    if (isWebrtcMainOnly()){
-      stopMainMjpegStream();
-      fb.style.display = "none";
-      mainFallbackInFlight = false;
-      updateTransportBadge();
-      return;
-    }
-
-    if (streamConfig.mode === "mjpeg"){
-      if (mainMjpegRobot !== activeRobot){
-        setupMainMjpegStream(activeRobot);
-      }
-      fb.style.display = "block";
-      mainFallbackInFlight = false;
-      updateTransportBadge();
-      return;
-    }
-
-    fb.style.display = "block";
-    if (mainFallbackInFlight){
-      updateTransportBadge();
-      return;
-    }
-    mainFallbackInFlight = true;
-    const next = new Image();
-    next.onload = () => {
-      fb.src = next.src;
-      mainFallbackInFlight = false;
-      updateTransportBadge();
-    };
-    next.onerror = () => {
-      mainFallbackInFlight = false;
-      if (!fb.src) fb.src = NO_SIGNAL_IMG;
-      updateTransportBadge();
-    };
-    next.src = withAuthPath(`/api/jpeg?robot=${encodeURIComponent(activeRobot)}&t=${Date.now()}`);
-    updateTransportBadge();
-  }, MAIN_FALLBACK_INTERVAL_MS);
 }
 
 function setActiveRobot(robot, announce=true, source="local"){
@@ -4446,13 +4157,6 @@ function setActiveRobot(robot, announce=true, source="local"){
   renderWebrtcDiagnostics();
   updateTransportBadge();
   if (changed){
-    if (!isWebrtcMainOnly()){
-      setupMainMjpegStream(robot);
-    } else {
-      stopMainMjpegStream();
-      const fb = $("mainJpeg");
-      if (fb) fb.style.display = "none";
-    }
     setupWebRTC(robot, webrtcSwitchNonce);
   }
 }
@@ -4678,7 +4382,7 @@ async function main(){
     }
   }, 1000);
   startHeartbeat();
-  setupMainFallbackLoop();
+  startWebrtcRetryLoop();
 }
 
 main();
@@ -4717,7 +4421,7 @@ def _print_dependency_preflight() -> bool:
 
     print("[swarm_fpv_ui] Required dependencies: OK")
     if not HAS_WEBRTC:
-        print("[swarm_fpv_ui] WebRTC dependencies missing. Using MJPEG fallback until installed.")
+        print("[swarm_fpv_ui] WebRTC dependencies missing. Main-pane video will remain unavailable until installed.")
         for name, apt_pkg, reason in _MISSING_WEBRTC_DEPS:
             print(f"  - {name} (install: {apt_pkg})")
             print(f"    reason: {reason}")
@@ -4900,7 +4604,6 @@ async def _run_server():
             web.get("/api/state", server.handle_state),
             web.get("/api/fleet/state", server.handle_fleet_state),
             web.get("/api/jpeg", server.handle_jpeg),
-            web.get("/api/mjpeg", server.handle_mjpeg),
             web.post("/webrtc/offer", server.handle_offer),
             web.get("/ws", server.handle_ws),
         ]
@@ -4920,10 +4623,7 @@ async def _run_server():
             "Use auth_mode=dev or oidc before exposing this endpoint outside a trusted lab."
         )
     hub.get_logger().info(f"Swarm FPV UI dev_login_enabled={dev_login_enabled}")
-    if hub.webrtc_main_only:
-        hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_only_main")
-    else:
-        hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_primary_mjpeg_fallback")
+    hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_only_main")
     if site_id:
         hub.get_logger().info(f"Swarm FPV UI site_id={site_id}")
     urls = _detect_ipv4_addresses()

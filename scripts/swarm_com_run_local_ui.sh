@@ -175,25 +175,11 @@ export SWARM_COM_AUTH_MODE="off"
 export SWARM_COM_ALLOW_ANON_READONLY="false"
 export SWARM_COM_WEBRTC_ICE_SERVERS_JSON='[]'
 export SWARM_COM_WEBRTC_ICE_TRANSPORT_POLICY="all"
-export SWARM_COM_MAIN_STREAM_FPS="${SWARM_COM_MAIN_STREAM_FPS:-15.0}"
 export SWARM_COM_WEBRTC_FPS="${SWARM_COM_WEBRTC_FPS:-15.0}"
-export SWARM_COM_WEBRTC_MAIN_ONLY="${SWARM_COM_WEBRTC_MAIN_ONLY:-0}"
 export SWARM_COM_THUMB_REFRESH_HZ="${SWARM_COM_THUMB_REFRESH_HZ:-0.5}"
-export SWARM_COM_IMAGE_SUBSCRIPTION_MODE="${SWARM_COM_IMAGE_SUBSCRIPTION_MODE:-all}"
+export SWARM_COM_IMAGE_SUBSCRIPTION_MODE="${SWARM_COM_IMAGE_SUBSCRIPTION_MODE:-active_only}"
 export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S="${SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S:-2.5}"
 export SWARM_COM_THUMB_ROBOTS_PER_TICK="${SWARM_COM_THUMB_ROBOTS_PER_TICK:-1}"
-case "${SWARM_COM_WEBRTC_MAIN_ONLY,,}" in
-  1|true|yes|on)
-    export SWARM_COM_WEBRTC_MAIN_ONLY="true"
-    ;;
-  0|false|no|off)
-    export SWARM_COM_WEBRTC_MAIN_ONLY="false"
-    ;;
-  *)
-    log "Invalid SWARM_COM_WEBRTC_MAIN_ONLY='${SWARM_COM_WEBRTC_MAIN_ONLY}', forcing true."
-    export SWARM_COM_WEBRTC_MAIN_ONLY="true"
-    ;;
-esac
 if ! [[ "${SWARM_COM_THUMB_ROBOTS_PER_TICK}" =~ ^-?[0-9]+$ ]]; then
   log "Invalid SWARM_COM_THUMB_ROBOTS_PER_TICK='${SWARM_COM_THUMB_ROBOTS_PER_TICK}', forcing 1."
   export SWARM_COM_THUMB_ROBOTS_PER_TICK="1"
@@ -208,14 +194,8 @@ log "discovery_env=cleared"
 log "ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY}"
 log "ROS_AUTOMATIC_DISCOVERY_RANGE=${ROS_AUTOMATIC_DISCOVERY_RANGE}"
 log "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-<unset>}"
-if [[ "${SWARM_COM_WEBRTC_MAIN_ONLY}" == "true" ]]; then
-  log "stream=WebRTC-only main stream (no MJPEG fallback)"
-else
-  log "stream=WebRTC primary main stream + MJPEG fallback"
-fi
-log "main_stream_fps=${SWARM_COM_MAIN_STREAM_FPS}"
+log "stream=WebRTC-only main stream"
 log "webrtc_fps=${SWARM_COM_WEBRTC_FPS}"
-log "webrtc_main_only=${SWARM_COM_WEBRTC_MAIN_ONLY}"
 log "thumb_refresh_hz=${SWARM_COM_THUMB_REFRESH_HZ}"
 log "image_subscription_mode=${SWARM_COM_IMAGE_SUBSCRIPTION_MODE}"
 log "image_thumb_interest_ttl_s=${SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S}"
@@ -265,9 +245,7 @@ if command -v setsid >/dev/null 2>&1; then
     ros_domain_id:="$ROS_DOMAIN_ID" \
     bind_host:="$SWARM_COM_BIND_HOST" \
     bind_port:="$SWARM_COM_BIND_PORT" \
-    main_stream_fps:="$SWARM_COM_MAIN_STREAM_FPS" \
     webrtc_fps:="$SWARM_COM_WEBRTC_FPS" \
-    webrtc_main_only:="$SWARM_COM_WEBRTC_MAIN_ONLY" \
     thumb_refresh_hz:="$SWARM_COM_THUMB_REFRESH_HZ" \
     image_subscription_mode:="$SWARM_COM_IMAGE_SUBSCRIPTION_MODE" \
     image_thumb_interest_ttl_s:="$SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S" \
@@ -277,9 +255,7 @@ else
     ros_domain_id:="$ROS_DOMAIN_ID" \
     bind_host:="$SWARM_COM_BIND_HOST" \
     bind_port:="$SWARM_COM_BIND_PORT" \
-    main_stream_fps:="$SWARM_COM_MAIN_STREAM_FPS" \
     webrtc_fps:="$SWARM_COM_WEBRTC_FPS" \
-    webrtc_main_only:="$SWARM_COM_WEBRTC_MAIN_ONLY" \
     thumb_refresh_hz:="$SWARM_COM_THUMB_REFRESH_HZ" \
     image_subscription_mode:="$SWARM_COM_IMAGE_SUBSCRIPTION_MODE" \
     image_thumb_interest_ttl_s:="$SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S" \

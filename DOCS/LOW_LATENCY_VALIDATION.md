@@ -9,7 +9,7 @@ Provide a repeatable validation procedure for low-latency FPV/control behavior a
 - Local/LAN deployment
 - `ROS_DOMAIN_ID=17`
 - WebRTC dependencies installed (`python3-aiortc`, `python3-av`)
-- `swarm_fpv_ui` running in strict WebRTC-only main-stream mode (`SWARM_COM_WEBRTC_MAIN_ONLY=1`)
+- `swarm_fpv_ui` running in its default strict WebRTC-only main-stream mode
 - Interest-driven balanced switch profile:
   - `SWARM_COM_IMAGE_SUBSCRIPTION_MODE=active_only`
   - `SWARM_COM_THUMB_ROBOTS_PER_TICK=1`

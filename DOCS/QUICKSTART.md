@@ -99,7 +99,7 @@ git fetch origin --prune
 git switch main || git checkout -b main origin/main
 git pull --ff-only origin main
 
-rg -n -- '--machine-role|--compat-mode|compat-stop-ufw|ROS_AUTOMATIC_DISCOVERY_RANGE|SWARM_COM_PROCESS_RESET_DONE|SWARM_COM_WEBRTC_FPS|SWARM_COM_WEBRTC_MAIN_ONLY|SWARM_COM_THUMB_REFRESH_HZ|SWARM_COM_IMAGE_SUBSCRIPTION_MODE|SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S|SWARM_COM_THUMB_ROBOTS_PER_TICK|SWARM_COM_DRIVE_CMD_RATE_HZ|SWARM_COM_DRIVE_HOLD_TIMEOUT_S' \
+rg -n -- '--machine-role|--compat-mode|compat-stop-ufw|ROS_AUTOMATIC_DISCOVERY_RANGE|SWARM_COM_PROCESS_RESET_DONE|SWARM_COM_WEBRTC_FPS|SWARM_COM_THUMB_REFRESH_HZ|SWARM_COM_IMAGE_SUBSCRIPTION_MODE|SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S|SWARM_COM_THUMB_ROBOTS_PER_TICK|SWARM_COM_DRIVE_CMD_RATE_HZ|SWARM_COM_DRIVE_HOLD_TIMEOUT_S' \
   "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
   "$WS/src/swarm_control_core/scripts/swarm_com_terminate_existing_robot_processes.sh" \
   "$WS/src/swarm_control_core/scripts/swarm_com_run_robot.sh" \
@@ -273,15 +273,14 @@ source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
 
 export SWARM_COM_ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
 # Multi-robot low-latency defaults (local/LAN):
-# - reduce WebRTC pacing to match low-latency camera clamp
+# - keep main-pane transport WebRTC-only
+# - pace WebRTC to match the low-latency camera clamp
 # - keep thumbnail polling bounded (1 robot/tick) so fleet tiles remain visible
-# - keep camera subscriptions stable for all robots to avoid no-signal flapping
+# - keep camera subscriptions interest-driven so control does not ingest full-fleet video continuously
 # - set explicit values (no `:-`) so old shell values cannot silently persist
-export SWARM_COM_MAIN_STREAM_FPS=15.0
 export SWARM_COM_WEBRTC_FPS=15.0
-export SWARM_COM_WEBRTC_MAIN_ONLY=0
 export SWARM_COM_THUMB_REFRESH_HZ=0.5
-export SWARM_COM_IMAGE_SUBSCRIPTION_MODE=all
+export SWARM_COM_IMAGE_SUBSCRIPTION_MODE=active_only
 export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=2.5
 export SWARM_COM_THUMB_ROBOTS_PER_TICK=1
 "$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
@@ -302,11 +301,11 @@ export SWARM_COM_THUMB_ROBOTS_PER_TICK=0
 
 Switch behavior (expected):
 
-- Active robot switch triggers WebRTC main-stream handoff while camera subscriptions stay warm across robots.
+- Active robot switch triggers WebRTC main-stream handoff while thumbnail requests keep short-lived interest windows warm on side tiles.
 - Keep `SWARM_COM_THUMB_ROBOTS_PER_TICK=1` for balanced fleet tile updates.
 - Use `SWARM_COM_THUMB_ROBOTS_PER_TICK=0` only when you care about one active robot and minimal background load.
 
-If rapid back-and-forth switching still feels sticky and you intentionally use `active_only` mode, use this switch-heavy profile:
+If rapid back-and-forth switching still feels sticky in `active_only` mode, use this switch-heavy profile:
 
 ```bash
 export SWARM_COM_THUMB_REFRESH_HZ=1.0
@@ -317,8 +316,8 @@ Open in browser:
 - `http://127.0.0.1:8080`
 
 Video path:
-- Main stream uses WebRTC with MJPEG fallback by default.
-- To force WebRTC-only main stream, set `SWARM_COM_WEBRTC_MAIN_ONLY=1`.
+- Main stream uses strict WebRTC-only transport by default.
+- To keep all robot camera streams subscribed continuously (higher load), set `SWARM_COM_IMAGE_SUBSCRIPTION_MODE=all`.
 - Fleet thumbnails stay in side tiles and do not take over the main pane.
 
 Optional private LAN bind:

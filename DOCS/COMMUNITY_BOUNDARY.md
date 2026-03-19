@@ -16,7 +16,7 @@ This package is intentionally scoped to local/LAN operation.
 
 ## Guardrails
 - `swarm_fpv_ui_com` forces `auth_mode=off`
-- main stream is strict local WebRTC-only (`SWARM_COM_WEBRTC_MAIN_ONLY=1` default)
+- main stream is strict local WebRTC-only
 - JPEG polling is limited to fleet thumbnails
 - default bind host is `127.0.0.1`
 - LAN bind requires explicit `SWARM_COM_ALLOW_LAN_BIND=1`

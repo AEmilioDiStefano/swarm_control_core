@@ -97,7 +97,7 @@ Design rule for future features:
 - Runtime wrappers fail-fast when `ufw.service` is active under LAN discovery defaults, to avoid silent DDS traffic loss.
 - Quickstart applies an idempotent Wi-Fi check (`iw`): if `wlan0` power save is ON, it is switched OFF before bringup to avoid camera/control jitter on Wi-Fi links.
 - Runtime behavior is scoped to `SWARM_COM_*` env names; proprietary env names are only cleared by reset scripts, not consumed for behavior.
-- Main pane is strict WebRTC-only (`SWARM_COM_WEBRTC_MAIN_ONLY=1` default).
+- Main pane is strict WebRTC-only.
 - Thumbnail rail stays bounded with JPEG polling budgets and does not replace main-stream video.
 - Recommended multi-robot switching profile keeps `thumb_robots_per_tick=1`; `0` is a single-robot focus mode with lower background load but slower switches.
 - Commands are constrained by robot drive and hardware limits in profiles.

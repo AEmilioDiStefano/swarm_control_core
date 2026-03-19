@@ -20,7 +20,7 @@ After you complete the steps in this doucment you will be able to power on one (
 - `ROS_DOMAIN_ID` is `17`.
 - No `.bashrc` dependency. Do not add required runtime exports to `.bashrc`.
 - Dependency install is script-driven and idempotent (installs only missing packages).
-- UI streaming is local WebRTC primary with automatic MJPEG fallback.
+- UI main-streaming is local WebRTC-only; JPEG polling is limited to fleet thumbnails.
 
 ## Deep-Dive Engineering Docs
 
@@ -265,7 +265,11 @@ source "$WS_DEV/install/setup.bash"
 set -u || true
 
 export ROS_DOMAIN_ID=17
-export SWARM_COM_MAIN_STREAM_FPS="${SWARM_COM_MAIN_STREAM_FPS:-20.0}"
+export SWARM_COM_WEBRTC_FPS="${SWARM_COM_WEBRTC_FPS:-15.0}"
+export SWARM_COM_THUMB_REFRESH_HZ="${SWARM_COM_THUMB_REFRESH_HZ:-0.5}"
+export SWARM_COM_IMAGE_SUBSCRIPTION_MODE="${SWARM_COM_IMAGE_SUBSCRIPTION_MODE:-active_only}"
+export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S="${SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S:-2.5}"
+export SWARM_COM_THUMB_ROBOTS_PER_TICK="${SWARM_COM_THUMB_ROBOTS_PER_TICK:-1}"
 "$WS_DEV/src/swarm_control_core/scripts/swarm_com_free_ui_port.sh" --port 8080
 "$WS_DEV/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
 ```

@@ -60,7 +60,7 @@ Decode path changes:
 - `SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S` (`6.0` default; runtime also applies a dynamic lower bound from `thumb_refresh_hz` and `thumb_robots_per_tick` to prevent subscription flapping)
 - `SWARM_COM_THUMB_ROBOTS_PER_TICK` (`1` balanced default for multi-robot switching; `0` is single-robot focus mode with lower background load but slower switches)
 - `SWARM_COM_WEBRTC_FPS` (`15.0` default)
-- `SWARM_COM_WEBRTC_MAIN_ONLY` (`1` default; strict WebRTC-only main stream)
+- Main pane is always strict WebRTC-only
 - `SWARM_COM_THUMB_REFRESH_HZ` (`0.5` default)
 - `swarm_com_reset_env.sh` clears these tuning env vars to prevent stale cross-session carryover.
 - Community runtime knobs are scoped to `SWARM_COM_*`; proprietary env names are not used for community runtime behavior.

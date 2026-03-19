@@ -29,7 +29,7 @@ Local operation needs low-latency operator video while avoiding duplicated main-
 
 - `TURN entries: 0` is expected in many local runs where direct connectivity succeeds.
 - TURN is typically required for restrictive NAT/WAN cases, not for same-LAN paths.
-- `SWARM_COM_WEBRTC_MAIN_ONLY=1` is the default strict mode for community quickstart.
+- Community quickstart runs the main pane in strict WebRTC-only mode.
 
 ## Related
 
