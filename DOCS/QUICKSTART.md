@@ -21,6 +21,13 @@ Suggested terminal layout on the control machine:
 - `R2`: `ssh <robot2_user>@<robot2_host>.local`
 - `R3`: `ssh <robot3_user>@<robot3_host>.local`
 
+Run once in each terminal before Step 0:
+
+```bash
+export WS="${WS:-$HOME/ros2_ws_dev}"   # set to your workspace root if different
+export SC="${SC:-$WS/src/swarm_control_core}"
+```
+
 # Quickstart Path:
 
 <a id="step-0"></a>
@@ -29,14 +36,14 @@ Suggested terminal layout on the control machine:
 ### Run on control machine:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
+"$SC/scripts/swarm_com_check_install_dependencies.sh" \
   --machine-role control
 ```
 
 ### Run in each dedicated robot SSH terminal (`R1`, `R2`, `R3`):
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
+"$SC/scripts/swarm_com_check_install_dependencies.sh" \
   --machine-role robot
 ```
 
@@ -61,22 +68,22 @@ Proceed to Step 1.
 ### Run on control machine, then run the same sync/build block in each dedicated robot SSH terminal:
 
 ```bash
-cd "$HOME/ros2_ws_dev/src/swarm_control_core"
+cd "$SC"
 git fetch origin --prune
 git switch main || git checkout -b main origin/main
 git pull --ff-only origin main
 
 rg -n -- '--machine-role|--compat-mode|compat-stop-ufw|ROS_AUTOMATIC_DISCOVERY_RANGE|SWARM_COM_PROCESS_RESET_DONE|SWARM_COM_WEBRTC_FPS|SWARM_COM_WEBRTC_MAIN_ONLY|SWARM_COM_THUMB_REFRESH_HZ|SWARM_COM_IMAGE_SUBSCRIPTION_MODE|SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S|SWARM_COM_THUMB_ROBOTS_PER_TICK|SWARM_COM_DRIVE_CMD_RATE_HZ|SWARM_COM_DRIVE_HOLD_TIMEOUT_S' \
-  "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
-  "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_terminate_existing_robot_processes.sh" \
-  "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_run_robot.sh" \
-  "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
+  "$SC/scripts/swarm_com_reset_env.sh" \
+  "$SC/scripts/swarm_com_terminate_existing_robot_processes.sh" \
+  "$SC/scripts/swarm_com_run_robot.sh" \
+  "$SC/scripts/swarm_com_run_local_ui.sh"
 
-cd "$HOME/ros2_ws_dev"
+cd "$WS"
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 colcon build --packages-select swarm_control_core
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS/install/setup.bash"
 set -u || true
 ```
 
@@ -108,7 +115,7 @@ Proceed to Step 2.
 # - applies runtime-only proprietary service masks (auto-cleared on reboot)
 # - in compat mode, may stop ufw runtime so DDS discovery is not blocked
 #   (reboot restores ufw policy)
-source "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
+source "$SC/scripts/swarm_com_reset_env.sh" \
   --scope deep \
   --machine-role robot \
   --compat-mode \
@@ -149,10 +156,10 @@ fi
 # NOTE:
 #   explicit menu selection is now respected even if probe warns.
 #   (set SWARM_COM_CAMERA_ALLOW_PROBE_FALLBACK=1 to allow auto-fallback)
-cd "$HOME/ros2_ws_dev"
+cd "$WS"
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS/install/setup.bash"
 set -u || true
 ros2 run swarm_control_core save_camera_profile_com --robot "$SWARM_COM_ROBOT_NAME"
 ```
@@ -163,7 +170,7 @@ ros2 run swarm_control_core save_camera_profile_com --robot "$SWARM_COM_ROBOT_NA
 
 ```bash
 # Block C: launch robot bringup
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_run_robot.sh" "$SWARM_COM_ROBOT_NAME"
+"$SC/scripts/swarm_com_run_robot.sh" "$SWARM_COM_ROBOT_NAME"
 ```
 
 ### Verify success
@@ -209,7 +216,7 @@ Proceed to Step 3.
 ```bash
 # Compatibility prep for mixed-use control machine state:
 # - in compat mode, may stop ufw runtime if needed for DDS discovery
-source "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
+source "$SC/scripts/swarm_com_reset_env.sh" \
   --scope deep \
   --machine-role control \
   --compat-mode \
@@ -234,7 +241,7 @@ export SWARM_COM_THUMB_ROBOTS_PER_TICK=1
 # Drive command pacing/hold tuned for noisy Wi-Fi multi-robot sessions.
 export SWARM_COM_DRIVE_CMD_RATE_HZ=20.0
 export SWARM_COM_DRIVE_HOLD_TIMEOUT_S=0.35
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
+"$SC/scripts/swarm_com_run_local_ui.sh"
 ```
 
 Terminal usage requirement:
@@ -280,7 +287,7 @@ Optional private LAN bind:
 ```bash
 export SWARM_COM_ALLOW_LAN_BIND=1
 export SWARM_COM_BIND_HOST=0.0.0.0
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
+"$SC/scripts/swarm_com_run_local_ui.sh"
 ```
 
 ### IF UI does not load or bind
@@ -297,7 +304,7 @@ Run on control machine:
 ```bash
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS/install/setup.bash"
 set -u || true
 
 env | rg -E '^(ROS_DOMAIN_ID|ROS_LOCALHOST_ONLY|ROS_AUTOMATIC_DISCOVERY_RANGE|ROS_STATIC_PEERS|ROS_DISCOVERY_SERVER|RMW_IMPLEMENTATION)=' || true
@@ -349,7 +356,7 @@ Run:
 
 ```bash
 sudo apt-get update
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
+"$SC/scripts/swarm_com_check_install_dependencies.sh" \
   --machine-role control
 ```
 
@@ -361,12 +368,12 @@ Then return to [Step 0](#step-0).
 Run clean rebuild:
 
 ```bash
-cd "$HOME/ros2_ws_dev"
+cd "$WS"
 rm -rf build/swarm_control_core install/swarm_control_core log/latest_build/swarm_control_core
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 colcon build --packages-select swarm_control_core --event-handlers console_direct+
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS/install/setup.bash"
 set -u || true
 ```
 
@@ -380,7 +387,7 @@ Run on affected robot:
 ```bash
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS/install/setup.bash"
 set -u || true
 
 ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
@@ -397,9 +404,9 @@ Then return to [Step 2](#step-2).
 Run on control machine:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_free_ui_port.sh" --port 8080
+"$SC/scripts/swarm_com_free_ui_port.sh" --port 8080
 export ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
+"$SC/scripts/swarm_com_run_local_ui.sh"
 ```
 
 If LAN access is needed, set:
@@ -438,7 +445,7 @@ If reset script prints `Unknown argument: --machine-role`, your robot/control ch
 Run on each machine:
 
 ```bash
-cd "$HOME/ros2_ws_dev/src/swarm_control_core"
+cd "$SC"
 git fetch origin --prune
 git switch main || git checkout -b main origin/main
 git pull --ff-only origin main
@@ -454,7 +461,7 @@ Run on control machine:
 ```bash
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
+source "$WS/install/setup.bash"
 set -u || true
 
 ros2 topic list | rg "/.*/cmd_vel"
