@@ -105,7 +105,7 @@ class TeleopState:
     wheel_separation: float
 
 
-class RobotLegionTeleop(Node):
+class SwarmTeleop(Node):
     def __init__(self):
         super().__init__("swarm_control_core_teleop")
 
@@ -400,7 +400,7 @@ class RobotLegionTeleop(Node):
     def render_instructions(self, topic_name: Optional[str]) -> str:
         lines = []
         lines.append("-------------------------------")
-        lines.append("      ROBOT LEGION TELEOP      ")
+        lines.append("        SWARM TELEOP UI        ")
         lines.append("-------------------------------")
         if topic_name:
             lines.append(f"Publishing Twist on: {topic_name}")
@@ -1179,7 +1179,7 @@ class RobotLegionTeleop(Node):
 def main(args=None):
     ensure_ros_domain_id()
     rclpy.init(args=args)
-    node = RobotLegionTeleop()
+    node = SwarmTeleop()
     try:
         node.run()
     finally:
