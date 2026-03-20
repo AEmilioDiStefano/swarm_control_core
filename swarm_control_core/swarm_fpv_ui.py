@@ -108,7 +108,6 @@ HAS_WEBRTC = len(_MISSING_WEBRTC_DEPS) == 0
 HAS_REQUIRED_WEB_DEPS = len(_MISSING_REQUIRED_DEPS) == 0
 
 
-CMD_VEL_RE = re.compile(r"^/([^/]+)/cmd_vel$")
 IMG_CAMERA_RE = re.compile(r"^/([^/]+)/camera/image_raw$")
 IMG_FLAT_RE = re.compile(r"^/([^/]+)/image_raw$")
 IMG_CAMERA_COMP_RE = re.compile(r"^/([^/]+)/camera/image_raw/compressed$")
@@ -462,10 +461,6 @@ class RosFleetHub(Node):
                     % str(exc)
                 )
         for t, _types in topics:
-            m = CMD_VEL_RE.match(t)
-            if m:
-                robots.add(m.group(1))
-                continue
             m = (
                 IMG_CAMERA_COMP_RE.match(t)
                 or IMG_FLAT_COMP_RE.match(t)
