@@ -2,7 +2,11 @@
 
 Community local/LAN FPV and robot control for ROS 2 fleets.
 
-`swarm_control_core` is the open-source community package for low-latency first-person video, manual drive control, and local fleet visibility on a private network. Its current focus is local/LAN operation, while `swarm_control_pro` covers the more remote-operations-oriented workflows used in the broader project.
+`swarm_control_core` is the public, source-available community package for
+low-latency first-person video, manual drive control, and local fleet
+visibility on a private network. It focuses on local/LAN operation, while
+`swarm_control_pro` covers the broader remote-operations workflows used in the
+larger project.
 
 ![demo](media/hide-and-seek-GIF.gif)
 
@@ -23,6 +27,39 @@ Community local/LAN FPV and robot control for ROS 2 fleets.
 
 Those capabilities are generally handled in `swarm_control_pro` today.
 
+## License Summary
+
+- Free for personal use
+- Free for academic and research use
+- Free for internal evaluation
+- Free for entities below USD $1,000,000 annual gross revenue, including
+  commercial use while they remain below that threshold
+- Commercial license required once the licensee and its Affiliates reach or
+  exceed USD $1,000,000 annual gross revenue for continued commercial use
+
+If you cross the USD $1,000,000 annual gross revenue threshold, see COMMERCIAL_LICENSE.md for the required notice
+and transition procedure.
+
+The legal terms are in [LICENSE](./LICENSE). Practical business-use guidance is
+in [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md).
+
+
+
+## Contribution Summary
+
+Contributions are welcome.
+
+Accepted contributions may be publicly credited and may receive non-monetary
+career-support benefits described in this repository. Contributors are not
+entitled to financial compensation, royalties, or profit-sharing unless
+separately agreed in writing.
+
+See:
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md)
+- [CONTRIBUTOR_BENEFITS.md](./CONTRIBUTOR_BENEFITS.md)
+- [CONTRIBUTORS.md](./CONTRIBUTORS.md)
+
 ## Quick Start
 
 For the fastest path to a working local deployment:
@@ -33,7 +70,9 @@ For the fastest path to a working local deployment:
 4. Launch robot bringup on the robots.
 5. Launch the local FPV UI on the control machine.
 
-If you are assembling a reference robot and want the longer hardware + software walkthrough, use [DOCS/QUICKSTART.md](./DOCS/QUICKSTART.md) as the main guide.
+If you are assembling a reference robot and want the longer hardware plus
+software walkthrough, use [DOCS/QUICKSTART.md](./DOCS/QUICKSTART.md) as the
+main guide.
 
 ## Supported Environment
 
@@ -47,7 +86,8 @@ If you are assembling a reference robot and want the longer hardware + software 
 - `ROS_DOMAIN_ID=17`
 - No required `.bashrc` exports
 - Dependency install is script-driven and idempotent
-- Main video uses local WebRTC; thumbnail video is bounded to protect control latency
+- Main video uses local WebRTC; thumbnail video is bounded to protect control
+  latency
 
 ## Documentation
 
@@ -56,6 +96,8 @@ If you are assembling a reference robot and want the longer hardware + software 
 - Community boundary: [DOCS/COMMUNITY_BOUNDARY.md](./DOCS/COMMUNITY_BOUNDARY.md)
 - ADR index: [DOCS/ADR/README.md](./DOCS/ADR/README.md)
 - Low-latency validation: [DOCS/LOW_LATENCY_VALIDATION.md](./DOCS/LOW_LATENCY_VALIDATION.md)
+- Security policy: [SECURITY.md](./SECURITY.md)
+- Code of conduct: [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
 
 ## Repository Layout
 
@@ -65,24 +107,7 @@ If you are assembling a reference robot and want the longer hardware + software 
 - `config/`: baseline robot/control/capability profile templates
 - `DOCS/`: runbooks, architecture notes, and ADRs
 
-## Release Boundary
+## Contact
 
-This repository is the community edition. It is designed for:
-
-- local operator-driven robot control
-- local FPV
-- community experimentation on private networks
-
-This repository is the community-facing local/LAN package in the current project split. In practice, features like public ingress, persistent operational ownership of the robots, and stronger remote security controls are usually developed in `swarm_control_pro`.
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
-
-## Security
-
-See [SECURITY.md](./SECURITY.md).
-
-## License
-
-Apache-2.0. See [LICENSE](./LICENSE).
+- Commercial licensing: `emilio@vitruvian.systems`
+- Security reports: see [SECURITY.md](./SECURITY.md)

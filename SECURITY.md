@@ -1,36 +1,17 @@
 # Security Policy
 
-`swarm_control_core` is the community local/LAN package. In the current project split, the internet-facing and remote-operations-heavy workflows are generally handled in `swarm_control_pro`.
+Please report suspected vulnerabilities privately to:
 
-## Supported Scope
-
-Security reports for this repository are most useful when they focus on issues such as:
-
-- local/LAN authentication or authorization bypass
-- unintended exposure of robot control APIs on non-local interfaces
-- unsafe default configuration in the community package
-- credential handling bugs in local development flows
-- package boundary leaks that reintroduce remote/internet-facing behavior into `swarm_control_core`
-
-## Reporting a Vulnerability
-
-Please report suspected vulnerabilities privately to `opensource@vitruvian.systems`.
+`emilio@vitruvian.systems`
 
 When possible, include:
 
-- affected file(s) or feature(s)
+- affected files or features
 - reproduction steps
 - expected behavior
 - observed behavior
-- severity/impact assessment
+- impact assessment
+- whether the issue is local/LAN only or could affect broader deployment
 
-## Notes On Scope
-
-The following topics are usually handled in `swarm_control_pro` rather than this repository:
-
-- internet ingress setup
-- TURN/certificate/tunneling automation
-- persistent remote operations services
-- deployment-specific `swarm_control_pro` features
-
-If you are unsure where something fits, it is still reasonable to ask first and sort out the boundary from there.
+Please do not open a public issue for a suspected security vulnerability until
+Vitruvian Systems LLC has had a reasonable opportunity to review it.

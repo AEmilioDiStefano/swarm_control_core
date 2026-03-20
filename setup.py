@@ -32,9 +32,9 @@ setup(
     ],
     zip_safe=True,
     maintainer="Vitruvian Systems",
-    maintainer_email="opensource@vitruvian.systems",
+    maintainer_email="emilio@vitruvian.systems",
     description="Community local-only swarm control package.",
-    license="Apache-2.0",
+    license="LicenseRef-Vitruvian-Community-1.0",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [

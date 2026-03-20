@@ -4,8 +4,8 @@
   <version>0.1.0</version>
   <description>Community local-only swarm control package for ROS 2 robot fleets.</description>
 
-  <maintainer email="opensource@vitruvian.systems">Vitruvian Systems</maintainer>
-  <license>Apache-2.0</license>
+  <maintainer email="emilio@vitruvian.systems">Vitruvian Systems</maintainer>
+  <license>LicenseRef-Vitruvian-Community-1.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
 
