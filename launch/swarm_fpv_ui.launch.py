@@ -50,23 +50,23 @@ def _default_image_subscription_mode() -> str:
 
 
 def _default_image_thumb_interest_ttl_s() -> str:
-    raw = str(os.environ.get("SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S", "2.5")).strip()
+    raw = str(os.environ.get("SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S", "0.75")).strip()
     if not raw:
-        return "2.5"
+        return "0.75"
     try:
         return str(float(raw))
     except ValueError:
-        return "2.5"
+        return "0.75"
 
 
 def _default_thumb_robots_per_tick() -> str:
-    raw = str(os.environ.get("SWARM_COM_THUMB_ROBOTS_PER_TICK", "1")).strip()
+    raw = str(os.environ.get("SWARM_COM_THUMB_ROBOTS_PER_TICK", "0")).strip()
     if not raw:
-        return "1"
+        return "0"
     try:
         return str(max(0, int(raw)))
     except ValueError:
-        return "1"
+        return "0"
 
 
 def _default_drive_cmd_rate_hz() -> str:

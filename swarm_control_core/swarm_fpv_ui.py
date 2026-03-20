@@ -344,8 +344,8 @@ class RosFleetHub(Node):
         self.declare_parameter("drive_hold_timeout_s", 0.35)
         self.declare_parameter("drive_rate_ema_alpha", 0.25)
         self.declare_parameter("image_subscription_mode", "active_only")
-        self.declare_parameter("image_thumb_interest_ttl_s", 2.5)
-        self.declare_parameter("thumb_robots_per_tick", 1)
+        self.declare_parameter("image_thumb_interest_ttl_s", 0.75)
+        self.declare_parameter("thumb_robots_per_tick", 0)
 
         self.webrtc_fps = float(self.get_parameter("webrtc_fps").value)
         self.thumb_jpeg_quality = int(self.get_parameter("thumb_jpeg_quality").value)
@@ -400,7 +400,9 @@ class RosFleetHub(Node):
         self._cam_diag_payload: Dict[str, Dict[str, Any]] = {}
 
         self._hb_subs: Dict[str, Any] = {}
+        self._hb_last_seen_s: Dict[str, float] = {}
         self._robot_meta: Dict[str, Dict[str, str]] = {}
+        self._topic_seen_s: Dict[str, float] = {}
 
         self._cmd_pubs: Dict[str, Any] = {}
         self._mode_pubs: Dict[str, Any] = {}
@@ -414,7 +416,12 @@ class RosFleetHub(Node):
         self._discovery_stale_hold_s: float = 120.0
         self._discovery_last_nonempty_s: float = 0.0
         self._discovery_scan_error_streak: int = 0
+        self._robot_presence_timeout_s: float = 5.0
+        self._robot_presence_bootstrap_grace_s: float = 3.0
         self.create_timer(1.0, self._refresh_discovery)
+        # Fast interest-sync keeps active robot switching snappy and allows
+        # short-lived thumbnail subscriptions without waiting a full discovery tick.
+        self.create_timer(0.25, self._sync_image_subscriptions)
         self.create_timer(1.0 / self.drive_cmd_rate_hz, self._drive_publish_tick)
         self.get_logger().info(
             "[swarm_fpv_ui] image_subscription_mode=%s thumb_interest_ttl_s=%.2f thumb_robots_per_tick=%d"
@@ -473,6 +480,8 @@ class RosFleetHub(Node):
                 robots.add(m.group(1))
 
         t_now = now_s()
+        for robot in robots:
+            self._topic_seen_s[robot] = t_now
         if robots:
             self._known_robots = set(robots)
             self._discovery_last_nonempty_s = t_now
@@ -490,7 +499,18 @@ class RosFleetHub(Node):
         self._sync_image_subscriptions()
 
     def list_robots(self) -> Set[str]:
-        return set(self._known_robots)
+        t_now = now_s()
+        live: Set[str] = set()
+        for robot in set(self._known_robots):
+            hb_last = float(self._hb_last_seen_s.get(robot, 0.0))
+            if hb_last > 0.0:
+                if (t_now - hb_last) <= self._robot_presence_timeout_s:
+                    live.add(robot)
+                continue
+            topic_last = float(self._topic_seen_s.get(robot, 0.0))
+            if topic_last > 0.0 and (t_now - topic_last) <= self._robot_presence_bootstrap_grace_s:
+                live.add(robot)
+        return live
 
     def mark_image_interest(self, robot: str, ttl_s: Optional[float] = None) -> None:
         robot = str(robot or "").strip()
@@ -506,25 +526,26 @@ class RosFleetHub(Node):
             self._img_interest_until_s[robot] = until
 
     def _desired_image_subscription_robots(self) -> Set[str]:
+        live_robots = self.list_robots()
         if self.image_subscription_mode == "all":
-            return set(self._known_robots)
+            return set(live_robots)
 
         desired: Set[str] = set()
         active = str(self.active_robot or "").strip()
-        if active and active in self._known_robots:
+        if active and active in live_robots:
             desired.add(active)
 
         t_now = now_s()
         for robot, until in list(self._img_interest_until_s.items()):
-            if until >= t_now and robot in self._known_robots:
+            if until >= t_now and robot in live_robots:
                 desired.add(robot)
             elif until < t_now:
                 self._img_interest_until_s.pop(robot, None)
 
         # Keep one stream warm when no robot is selected yet, so first-frame
         # latency remains low after UI startup.
-        if not desired and self._known_robots:
-            desired.add(sorted(self._known_robots)[0])
+        if not desired and live_robots:
+            desired.add(sorted(live_robots)[0])
         return desired
 
     def _drop_image_subscription(self, robot: str) -> None:
@@ -550,6 +571,7 @@ class RosFleetHub(Node):
     def _sync_image_subscriptions(self) -> None:
         desired = self._desired_image_subscription_robots()
         current = set(self._img_subs.keys())
+        live_robots = self.list_robots()
         for robot in sorted(desired - current):
             self.ensure_image_subscription(robot)
         t_now = now_s()
@@ -559,7 +581,7 @@ class RosFleetHub(Node):
             if self.image_subscription_mode != "all":
                 last = float(self._img_last_frame_s.get(robot, 0.0))
                 recent_frame = (t_now - last) <= 8.0 if last > 0.0 else False
-                if robot in self._known_robots and recent_frame:
+                if robot in live_robots and recent_frame:
                     continue
                 if float(self._img_interest_until_s.get(robot, 0.0)) >= t_now:
                     continue
@@ -797,6 +819,7 @@ class RosFleetHub(Node):
                 payload = json.loads(msg.data or "{}")
             except Exception:
                 return
+            self._hb_last_seen_s[r] = now_s()
             self._robot_meta[r] = {
                 "drive_type": str(payload.get("drive_type", "unknown")),
                 "hardware": str(payload.get("hardware", "unknown")),
@@ -2706,16 +2729,19 @@ let webrtcAttemptInFlight = false;
 let webrtcRetryAtMs = 0;
 let webrtcSwitchNonce = 0;
 let webrtcOfferAbortController = null;
+let mainVideoLastFrameAtMs = 0;
+let mainVideoFrameWatchStarted = false;
 let activeRobotSwitchAtMs = 0;
 let localRobotSwitchTimer = null;
 let pendingLocalRobotSelection = null;
 let robotsSig = "";
 let locksSig = "";
+let stateRefreshInFlight = false;
 const DRIVE_HOLD_INTERVAL_MS = 100;
 const ROBOT_SWITCH_DEBOUNCE_MS = 140;
 const ROBOT_SWITCH_GRACE_MS = 500;
 const WEBRTC_RETRY_INTERVAL_MS = 900;
-const THUMB_DRIVE_SUPPRESS_MS = 700;
+const THUMB_DRIVE_SUPPRESS_MS = 2000;
 const driveHoldTimers = new Map();
 const driveHoldCommands = new Map();
 const driveHoldButtonTokens = new Map();
@@ -2897,6 +2923,24 @@ function clearDriveButtonActiveStates(){
     }
   }
   activeDriveButtonTokens.clear();
+}
+
+function startMainVideoFrameWatch(){
+  if (mainVideoFrameWatchStarted) return;
+  const video = $("mainVideo");
+  if (!video || typeof video.requestVideoFrameCallback !== "function"){
+    return;
+  }
+  mainVideoFrameWatchStarted = true;
+  const pump = () => {
+    try{
+      video.requestVideoFrameCallback(() => {
+        mainVideoLastFrameAtMs = Date.now();
+        pump();
+      });
+    }catch(_e){}
+  };
+  pump();
 }
 
 function driveButtonTokenForEvent(event){
@@ -3960,12 +4004,14 @@ function renderWebrtcDiagnostics(){
 
 function hasWebRtcFrameNow(){
   const v = $("mainVideo");
+  const freshFrame = (!mainVideoFrameWatchStarted) || ((Date.now() - Number(mainVideoLastFrameAtMs || 0)) <= 1200);
   return Boolean(
     features.webrtc &&
     activeRobot &&
     v &&
     v.srcObject &&
     v.readyState >= 2 &&
+    freshFrame &&
     v.videoWidth > 0 &&
     v.videoHeight > 0
   );
@@ -4019,6 +4065,7 @@ function closePeerConnection(targetPc=null){
   try { candidate.close(); } catch(_e){}
   if (pc === candidate){
     pc = null;
+    mainVideoLastFrameAtMs = 0;
     const v = $("mainVideo");
     if (v && v.srcObject){
       try { v.srcObject = null; } catch(_e){}
@@ -4103,6 +4150,7 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       }
       if (evt.track.kind === "video"){
         $("mainVideo").srcObject = evt.streams[0];
+        mainVideoLastFrameAtMs = Date.now();
       }
       webrtcRetryAtMs = 0;
       sendWebrtcTelemetry("track");
@@ -4429,6 +4477,8 @@ async function main(){
   const thumbHz = Math.max(0.1, _toNumber(s.thumb_hz, 0.5));
   setInterval(refreshThumbs, Math.floor(1000 / thumbHz));
   setInterval(async () => {
+    if (stateRefreshInFlight) return;
+    stateRefreshInFlight = true;
     try{
       const st = await fetchState();
       const newRobots = st.robots || robots;
@@ -4466,10 +4516,13 @@ async function main(){
       if (err && err.message){
         setStatus(`State refresh failed: ${err.message}`);
       }
+    } finally {
+      stateRefreshInFlight = false;
     }
   }, 1000);
   startHeartbeat();
   startWebrtcRetryLoop();
+  startMainVideoFrameWatch();
 }
 
 main();
@@ -4553,10 +4606,21 @@ def _install_aiohttp_disconnect_exception_filter() -> None:
 
         handle_txt = str(context.get("handle") or "")
         msg_txt = str(context.get("message") or "")
-        is_known_aioice_stun_retry_race = (
-            isinstance(exc, asyncio.InvalidStateError)
-            and ("transaction.__retry" in handle_txt.lower() or "transaction.__retry" in msg_txt.lower())
-            and "invalid state" in str(exc).lower()
+        retry_ctx = ("transaction.__retry" in handle_txt.lower() or "transaction.__retry" in msg_txt.lower())
+        exc_txt = str(exc or "")
+        is_known_aioice_stun_retry_race = retry_ctx and (
+            (
+                isinstance(exc, asyncio.InvalidStateError)
+                and "invalid state" in exc_txt.lower()
+            )
+            or (
+                isinstance(exc, AttributeError)
+                and "'nonetype' object has no attribute 'sendto'" in exc_txt.lower()
+            )
+            or (
+                isinstance(exc, AttributeError)
+                and "'nonetype' object has no attribute 'call_exception_handler'" in exc_txt.lower()
+            )
         )
 
         if is_known_aiohttp_disconnect_race:
@@ -4572,8 +4636,8 @@ def _install_aiohttp_disconnect_exception_filter() -> None:
             if not warned_once.get("aioice"):
                 warned_once["aioice"] = True
                 print(
-                    "[swarm_fpv_ui] Noted and suppressing known aioice STUN retry race "
-                    "(Transaction.__retry InvalidStateError)."
+                    "[swarm_fpv_ui] Noted and suppressing known aioice STUN retry close race "
+                    "(Transaction.__retry transport/loop teardown)."
                 )
             return
 

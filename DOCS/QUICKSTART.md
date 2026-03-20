@@ -275,15 +275,15 @@ export SWARM_COM_ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
 # Multi-robot low-latency defaults (local/LAN):
 # - keep main-pane transport WebRTC-only
 # - pace WebRTC to match the low-latency camera clamp
-# - keep thumbnail polling bounded (1 robot/tick) so fleet tiles remain visible
+# - keep fleet thumbnails in sparse liveness mode so background camera traffic stays low
 # - keep camera subscriptions interest-driven so control does not ingest full-fleet video continuously
 # - keep drive target refresh aligned with the last stable community defaults
 # - set explicit values (no `:-`) so old shell values cannot silently persist
 export SWARM_COM_WEBRTC_FPS=15.0
 export SWARM_COM_THUMB_REFRESH_HZ=0.5
 export SWARM_COM_IMAGE_SUBSCRIPTION_MODE=active_only
-export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=2.5
-export SWARM_COM_THUMB_ROBOTS_PER_TICK=1
+export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=0.75
+export SWARM_COM_THUMB_ROBOTS_PER_TICK=0
 export SWARM_COM_DRIVE_CMD_RATE_HZ=20.0
 export SWARM_COM_DRIVE_HOLD_TIMEOUT_S=0.35
 "$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
