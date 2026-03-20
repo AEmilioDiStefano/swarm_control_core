@@ -468,17 +468,19 @@ class RosFleetHub(Node):
                 or IMG_FLAT_RE.match(t)
             )
             if m:
-                robots.add(m.group(1))
+                if self._topic_publishers(t) > 0:
+                    robots.add(m.group(1))
                 continue
             m = HB_RE.match(t)
             if m:
-                robots.add(m.group(1))
+                if self._topic_publishers(t) > 0:
+                    robots.add(m.group(1))
 
         t_now = now_s()
         for robot in robots:
             self._topic_seen_s[robot] = t_now
         if robots:
-            self._known_robots = set(robots)
+            self._known_robots.update(robots)
             self._discovery_last_nonempty_s = t_now
         elif not scan_ok:
             robots = set(self._known_robots)
@@ -488,6 +490,13 @@ class RosFleetHub(Node):
             self._known_robots = set()
             robots = set()
 
+        # Keep recently alive robots through brief DDS/topic graph churn so the
+        # UI does not flap active selection or tear down WebRTC unnecessarily.
+        known_live = {robot for robot in set(self._known_robots) if self._robot_recently_alive(robot, t_now)}
+        if known_live:
+            robots.update(known_live)
+            self._known_robots = set(known_live)
+
         for robot in sorted(robots):
             self.ensure_heartbeat_subscription(robot)
             self.ensure_camera_diag_subscription(robot)
@@ -495,17 +504,23 @@ class RosFleetHub(Node):
 
     def list_robots(self) -> Set[str]:
         t_now = now_s()
-        live: Set[str] = set()
-        for robot in set(self._known_robots):
-            hb_last = float(self._hb_last_seen_s.get(robot, 0.0))
-            if hb_last > 0.0:
-                if (t_now - hb_last) <= self._robot_presence_timeout_s:
-                    live.add(robot)
-                continue
-            topic_last = float(self._topic_seen_s.get(robot, 0.0))
-            if topic_last > 0.0 and (t_now - topic_last) <= self._robot_presence_bootstrap_grace_s:
-                live.add(robot)
-        return live
+        return {
+            robot for robot in set(self._known_robots)
+            if self._robot_recently_alive(robot, t_now)
+        }
+
+    def _robot_recently_alive(self, robot: str, t_now: Optional[float] = None) -> bool:
+        t_now = now_s() if t_now is None else float(t_now)
+        hb_last = float(self._hb_last_seen_s.get(robot, 0.0))
+        if hb_last > 0.0 and (t_now - hb_last) <= self._robot_presence_timeout_s:
+            return True
+        frame_last = float(self._img_last_frame_s.get(robot, 0.0))
+        if frame_last > 0.0 and (t_now - frame_last) <= max(2.0, self._robot_presence_timeout_s):
+            return True
+        topic_last = float(self._topic_seen_s.get(robot, 0.0))
+        if topic_last > 0.0 and (t_now - topic_last) <= self._robot_presence_bootstrap_grace_s:
+            return True
+        return False
 
     def mark_image_interest(self, robot: str, ttl_s: Optional[float] = None) -> None:
         robot = str(robot or "").strip()
@@ -536,11 +551,6 @@ class RosFleetHub(Node):
                 desired.add(robot)
             elif until < t_now:
                 self._img_interest_until_s.pop(robot, None)
-
-        # Keep one stream warm when no robot is selected yet, so first-frame
-        # latency remains low after UI startup.
-        if not desired and live_robots:
-            desired.add(sorted(live_robots)[0])
         return desired
 
     def _drop_image_subscription(self, robot: str) -> None:
@@ -604,6 +614,22 @@ class RosFleetHub(Node):
     def _record_drive_pub(self, robot: str, now: float) -> None:
         self._update_rate_ema(robot, now, self._drive_last_pub_s, self._drive_pub_hz_ema)
 
+    def _rate_ema_snapshot(
+        self,
+        robot: str,
+        now: float,
+        last_seen: Dict[str, float],
+        rate_ema: Dict[str, float],
+        *,
+        stale_after_s: float,
+    ) -> float:
+        last = float(last_seen.get(robot, 0.0))
+        if last <= 0.0:
+            return 0.0
+        if (now - last) > max(0.1, float(stale_after_s)):
+            return 0.0
+        return float(rate_ema.get(robot, 0.0))
+
     def drive_telemetry(self, robot: str) -> Dict[str, Any]:
         robot = str(robot or "").strip()
         now = now_s()
@@ -611,8 +637,21 @@ class RosFleetHub(Node):
         updated_s = float(target.get("updated_s", 0.0))
         age = (now - updated_s) if updated_s > 0.0 else None
         active = bool(age is not None and age <= self.drive_hold_timeout_s)
-        cmd_pub_hz = float(self._drive_pub_hz_ema.get(robot, 0.0))
         target_hz = float(self.drive_cmd_rate_hz)
+        ws_rx_hz = self._rate_ema_snapshot(
+            robot,
+            now,
+            self._drive_last_rx_s,
+            self._drive_rx_hz_ema,
+            stale_after_s=max(1.0, 2.0 * self.drive_hold_timeout_s),
+        )
+        cmd_pub_hz = self._rate_ema_snapshot(
+            robot,
+            now,
+            self._drive_last_pub_s,
+            self._drive_pub_hz_ema,
+            stale_after_s=max(1.0, 3.0 / max(1.0, target_hz)),
+        )
         if active and cmd_pub_hz < (0.6 * target_hz):
             rate_status = "degraded"
         elif active:
@@ -620,7 +659,7 @@ class RosFleetHub(Node):
         else:
             rate_status = "idle"
         return {
-            "ws_rx_hz": float(self._drive_rx_hz_ema.get(robot, 0.0)),
+            "ws_rx_hz": ws_rx_hz,
             "cmd_pub_hz": cmd_pub_hz,
             "target_age_s": age,
             "hold_active": active,
@@ -1118,7 +1157,13 @@ class RosFleetHub(Node):
             "camera_last_error": str(diag.get("last_error", "")),
         })
 
-    def latest_rgb(self, robot: str) -> Optional[np.ndarray]:
+    def latest_rgb(self, robot: str, max_age_s: Optional[float] = None) -> Optional[np.ndarray]:
+        if max_age_s is not None:
+            last = self._img_last_frame_s.get(robot)
+            if last is None:
+                return None
+            if (now_s() - float(last)) > max(0.05, float(max_age_s)):
+                return None
         frame_stamp = float(self._img_last_frame_s.get(robot, 0.0))
         cached_stamp = float(self._latest_rgb_cache_stamp.get(robot, -1.0))
         if frame_stamp > 0.0 and cached_stamp == frame_stamp:
@@ -1388,15 +1433,16 @@ class RosVideoTrack(VideoStreamTrack):  # type: ignore[misc]
         self._last_sent = 0.0
 
     async def recv(self):
+        frame = None
+        while frame is None:
+            frame = self.hub.latest_rgb(self.robot, max_age_s=max(1.0, 4.0 * self.period))
+            if frame is None:
+                await asyncio.sleep(min(self.period, 0.2))
         now = time.time()
         dt = now - self._last_sent
         if dt < self.period:
             await asyncio.sleep(self.period - dt)
         self._last_sent = time.time()
-
-        frame = self.hub.latest_rgb(self.robot)
-        if frame is None:
-            frame = np.zeros((240, 320, 3), dtype=np.uint8)
         vf = VideoFrame.from_ndarray(frame, format="rgb24")
         vf.pts, vf.time_base = await self.next_timestamp()
         return vf
@@ -1517,6 +1563,13 @@ class BrowserServer:
             },
             "telemetry": self._webrtc_telemetry_public(),
         }
+
+    def _public_active_robot(self, robots: Optional[List[str]] = None) -> Optional[str]:
+        live = set(robots if robots is not None else sorted(self.hub.list_robots()))
+        active = str(self.hub.active_robot or "").strip()
+        if active and active in live:
+            return active
+        return None
 
     def _record_webrtc_offer(self, *, ok: bool, robot: str, client_id: str = "", error: str = "") -> None:
         self._webrtc_offer_total += 1
@@ -2023,6 +2076,7 @@ class BrowserServer:
         assert principal is not None
 
         robots = sorted(self.hub.list_robots())
+        active_robot = self._public_active_robot(robots)
         contract = fleet_contract_manifest()
         return web.json_response(
             {
@@ -2036,7 +2090,7 @@ class BrowserServer:
                 },
                 "principal": self._principal_public(principal),
                 "robots": robots,
-                "active_robot": self.hub.active_robot,
+                "active_robot": active_robot,
                 "locks": self._locks_public(),
                 "lock_meta": self._locks_meta_public(),
                 "robot_caps": {r: self.hub.robot_capabilities(r) for r in robots},
@@ -2067,6 +2121,7 @@ class BrowserServer:
 
         source = "swarm_control_core.fpv_ui"
         robots = sorted(self.hub.list_robots())
+        active_robot = self._public_active_robot(robots)
 
         robot_registry = []
         robot_state = []
@@ -2099,7 +2154,7 @@ class BrowserServer:
                 robot=robot,
                 source=source,
                 control_mode="manual",
-                active=(robot == self.hub.active_robot),
+                active=(robot == active_robot),
                 lock_owner=owner,
             )
             st_payload = st_event.get("payload")
@@ -2285,6 +2340,8 @@ class BrowserServer:
         self.ws_clients[client_id] = ws
         self.ws_principals[client_id] = principal
 
+        robots = sorted(self.hub.list_robots())
+        active_robot = self._public_active_robot(robots)
         await ws.send_str(
             json.dumps(
                 {
@@ -2293,12 +2350,12 @@ class BrowserServer:
                     "principal": self._principal_public(principal),
                     "api": api_schema_info(),
                     "site_id": self.site_id,
-                    "robots": sorted(self.hub.list_robots()),
-                    "active_robot": self.hub.active_robot,
+                    "robots": robots,
+                    "active_robot": active_robot,
                     "locks": self._locks_public(),
                     "lock_meta": self._locks_meta_public(),
-                    "robot_caps": {r: self.hub.robot_capabilities(r) for r in sorted(self.hub.list_robots())},
-                    "robot_health": {r: self.hub.camera_health(r) for r in sorted(self.hub.list_robots())},
+                    "robot_caps": {r: self.hub.robot_capabilities(r) for r in robots},
+                    "robot_health": {r: self.hub.camera_health(r) for r in robots},
                     "drive_telemetry": self.hub.drive_telemetry_snapshot(),
                     "features": {"webrtc": bool(HAS_WEBRTC), "auth_mode": self.auth_config.mode},
                     "stream": {
@@ -3450,6 +3507,32 @@ function applyThumbPolicy(payload){
   thumbRobotsPerTick = Math.max(0, n);
 }
 
+function normalizeRobotChoice(robot, available){
+  const name = String(robot || "").trim();
+  if (!name) return null;
+  return Array.isArray(available) && available.includes(name) ? name : null;
+}
+
+function pickActiveRobot(preferredRobot, available, fallbackToFirst=true){
+  const chosen = normalizeRobotChoice(preferredRobot, available);
+  if (chosen) return chosen;
+  if (fallbackToFirst && Array.isArray(available) && available.length){
+    const first = String(available[0] || "").trim();
+    return first || null;
+  }
+  return null;
+}
+
+function reconcileActiveRobotChoice(preferredRobot, available, currentRobot=null){
+  const chosen = normalizeRobotChoice(preferredRobot, available);
+  if (chosen) return chosen;
+  const current = normalizeRobotChoice(currentRobot, available);
+  if (current) return current;
+  const pinned = String(currentRobot || "").trim();
+  if (pinned) return pinned;
+  return pickActiveRobot(null, available, true);
+}
+
 function _toBool(v){
   if (typeof v === "boolean") return v;
   if (typeof v === "number") return v !== 0;
@@ -4270,7 +4353,10 @@ function setActiveRobot(robot, announce=true, source="local"){
   }
 
   if (effectiveSource === "server" && localActiveRobotPinned && robot && robot !== activeRobot){
-    return;
+    const currentStillAvailable = Boolean(activeRobot && robots.includes(activeRobot));
+    if (currentStillAvailable){
+      return;
+    }
   }
   const changed = robot !== activeRobot;
   if (changed){
@@ -4396,11 +4482,7 @@ async function main(){
   applyWebrtcState(s);
   applyStreamState(s);
   applyThumbPolicy(s);
-  activeRobot = s.active_robot || (robots[0] || null);
-  if (activeRobot && !robots.includes(activeRobot)){
-    activeRobot = null;
-    localActiveRobotPinned = false;
-  }
+  const bootstrapRobot = pickActiveRobot(s.active_robot, robots, true);
 
   renderThumbRail();
   renderCapabilityMeta();
@@ -4408,7 +4490,7 @@ async function main(){
   renderModeControls();
   renderWebrtcDiagnostics();
   renderHealthPanel();
-  if (activeRobot) setActiveRobot(activeRobot, false, "bootstrap");
+  setActiveRobot(bootstrapRobot, false, "bootstrap");
   hookKeyboardDrive();
 
   const wsParams = new URLSearchParams();
@@ -4438,11 +4520,12 @@ async function main(){
       applyWebrtcState(d);
       applyStreamState(d);
       applyThumbPolicy(d);
+      let nextActiveRobot = activeRobot;
       if (d.active_robot && (!localActiveRobotPinned || !activeRobot)){
-        activeRobot = d.active_robot;
+        nextActiveRobot = d.active_robot;
       }
-      if (activeRobot && !robots.includes(activeRobot)){
-        activeRobot = null;
+      nextActiveRobot = reconcileActiveRobotChoice(nextActiveRobot, robots, activeRobot);
+      if (!nextActiveRobot){
         localActiveRobotPinned = false;
       }
       if (newSig !== robotsSig){
@@ -4454,7 +4537,9 @@ async function main(){
       renderModeControls();
       renderWebrtcDiagnostics();
       renderHealthPanel();
-      if (activeRobot) setActiveRobot(activeRobot, false, "server");
+      if (nextActiveRobot !== activeRobot){
+        setActiveRobot(nextActiveRobot, false, "server");
+      }
       return;
     }
     if (d.type === "active_robot"){
@@ -4498,11 +4583,12 @@ async function main(){
       applyWebrtcState(st);
       applyStreamState(st);
       applyThumbPolicy(st);
-      if (!activeRobot && robots.length){
-        activeRobot = robots[0];
+      let nextActiveRobot = activeRobot;
+      if (!localActiveRobotPinned && st.active_robot){
+        nextActiveRobot = st.active_robot;
       }
-      if (activeRobot && !robots.includes(activeRobot)){
-        activeRobot = null;
+      nextActiveRobot = reconcileActiveRobotChoice(nextActiveRobot, robots, activeRobot);
+      if (!nextActiveRobot){
         localActiveRobotPinned = false;
       }
       if (newSig !== robotsSig){
@@ -4512,6 +4598,9 @@ async function main(){
       renderCapabilityMeta();
       renderWebrtcDiagnostics();
       renderHealthPanel();
+      if (nextActiveRobot !== activeRobot){
+        setActiveRobot(nextActiveRobot, false, "server");
+      }
     }catch(err){
       const status = Number(err && err.status);
       if (status === 401){

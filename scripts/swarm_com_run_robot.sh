@@ -57,11 +57,15 @@ set -u || true
 unset ROS_DISCOVERY_SERVER
 unset ROS_SUPER_CLIENT
 unset ROS_STATIC_PEERS
+export SWARM_DISCOVERY_MODE="multicast"
+export SWARM_ROLE="robot"
 export ROS_LOCALHOST_ONLY=0
 export ROS_AUTOMATIC_DISCOVERY_RANGE="${SWARM_COM_AUTOMATIC_DISCOVERY_RANGE:-SUBNET}"
+export RMW_IMPLEMENTATION="${SWARM_COM_RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
 
 echo "[swarm_com_run_robot] ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
 echo "[swarm_com_run_robot] discovery_env=cleared"
+echo "[swarm_com_run_robot] SWARM_DISCOVERY_MODE=${SWARM_DISCOVERY_MODE}"
 echo "[swarm_com_run_robot] ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY}"
 echo "[swarm_com_run_robot] ROS_AUTOMATIC_DISCOVERY_RANGE=${ROS_AUTOMATIC_DISCOVERY_RANGE}"
 echo "[swarm_com_run_robot] RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-<unset>}"

@@ -273,6 +273,8 @@ check_cmd_dependency "jq" "jq" jq || true
 check_cmd_dependency "rg (ripgrep)" "rg" ripgrep || true
 check_colcon_dependency || true
 check_ros_setup_dependency || true
+check_apt_package_dependency "ros-${ros_distro}-cyclonedds" "ros-${ros_distro}-cyclonedds" || true
+check_apt_package_dependency "ros-${ros_distro}-rmw-cyclonedds-cpp" "ros-${ros_distro}-rmw-cyclonedds-cpp" || true
 check_apt_package_dependency "python3-yaml" "python3-yaml" || true
 check_cmd_dependency "ffmpeg" "ffmpeg" ffmpeg || true
 check_cmd_dependency "iw" "iw" iw || true

@@ -33,8 +33,9 @@ Options:
 
 Behavior:
   - Clears stale ROS/discovery/auth/profile variables from current shell.
-  - Deep scope also clears shell overlay vars (AMENT/CMAKE/COLCON) and sets
-    ROS_DOMAIN_ID to --domain-id (17 by default) for community defaults.
+  - Deep scope also clears shell overlay vars (AMENT/CMAKE/COLCON plus
+    PYTHON/LD/ROS_PACKAGE/PKG_CONFIG) and sets ROS_DOMAIN_ID to --domain-id
+    (17 by default) for community defaults.
   - By default, calls swarm_com_terminate_existing_robot_processes.sh to stop
     prior package processes/services.
 USAGE
@@ -209,6 +210,10 @@ deep_overlay_vars=(
   CMAKE_PREFIX_PATH
   COLCON_CURRENT_PREFIX
   _colcon_cd_root
+  PYTHONPATH
+  LD_LIBRARY_PATH
+  ROS_PACKAGE_PATH
+  PKG_CONFIG_PATH
 )
 
 vars=("${runtime_vars[@]}")

@@ -59,6 +59,30 @@ fi
 unset SWARM_CORE_BOOTSTRAP
 ```
 
+### Step 0.1: Deep reset terminal environment (run in each terminal after bootstrap)
+
+Use `source` so the current terminal actually drops stale ROS/overlay state before build or bringup.
+
+Run on control machine:
+
+```bash
+source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
+  --scope deep \
+  --machine-role control \
+  --compat-mode \
+  --domain-id "${SWARM_COM_ROS_DOMAIN_ID:-17}"
+```
+
+Run in each dedicated robot SSH terminal:
+
+```bash
+source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
+  --scope deep \
+  --machine-role robot \
+  --compat-mode \
+  --domain-id "${SWARM_COM_ROS_DOMAIN_ID:-17}"
+```
+
 ### Run on control machine:
 
 ```bash
@@ -276,6 +300,7 @@ export SWARM_COM_ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
 # - keep main-pane transport WebRTC-only
 # - pace WebRTC to match the low-latency camera clamp
 # - disable passive thumbnail probing so non-active robot video stays completely off
+# - use CycloneDDS multicast defaults (enforced by the run script) for stable multi-robot LAN discovery
 # - keep camera subscriptions interest-driven so control does not ingest full-fleet video continuously
 # - keep drive target refresh aligned with the last stable community defaults
 # - set explicit values (no `:-`) so old shell values cannot silently persist
@@ -304,8 +329,8 @@ export SWARM_COM_THUMB_ROBOTS_PER_TICK=0
 
 Switch behavior (expected):
 
-- Active robot switch triggers WebRTC main-stream handoff while thumbnail requests keep short-lived interest windows warm on side tiles.
-- Keep `SWARM_COM_THUMB_ROBOTS_PER_TICK=1` for balanced fleet tile updates.
+- Active robot switch triggers WebRTC main-stream handoff.
+- Keep `SWARM_COM_THUMB_ROBOTS_PER_TICK=1` for balanced fleet tile updates with passive side-tile probing.
 - Use `SWARM_COM_THUMB_ROBOTS_PER_TICK=0` only when you care about one active robot and minimal background load.
 
 If rapid back-and-forth switching still feels sticky in `active_only` mode, use this switch-heavy profile:
