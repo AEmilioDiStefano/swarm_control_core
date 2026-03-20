@@ -124,13 +124,32 @@ if [[ "$compat_mode" == "1" ]]; then
   service_names+=("swarm-agent")
 fi
 
+_service_catalog_loaded="0"
+_service_catalog_text=""
+
+load_service_catalog() {
+  [[ "$_service_catalog_loaded" == "1" ]] && return 0
+  _service_catalog_loaded="1"
+  if ! command -v systemctl >/dev/null 2>&1; then
+    _service_catalog_text=""
+    return 0
+  fi
+  _service_catalog_text="$(
+    systemctl list-unit-files --type=service --no-legend 2>/dev/null \
+      | awk '{print $1}' \
+      || true
+  )"
+}
+
 service_exists() {
   local service_name="$1"
-  systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "${service_name}.service"
+  load_service_catalog
+  grep -Fxq "${service_name}.service" <<< "${_service_catalog_text}"
 }
 
 ufw_service_exists() {
-  systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "ufw.service"
+  load_service_catalog
+  grep -Fxq "ufw.service" <<< "${_service_catalog_text}"
 }
 
 ufw_is_active() {
