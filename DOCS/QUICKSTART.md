@@ -63,7 +63,7 @@ unset SWARM_CORE_BOOTSTRAP
 
 Use `source` so the current terminal actually drops stale ROS/overlay state before build or bringup.
 
-Run on control machine:
+### Run on control machine:
 
 ```bash
 source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
@@ -73,7 +73,7 @@ source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
   --domain-id "${SWARM_COM_ROS_DOMAIN_ID:-17}"
 ```
 
-Run in each dedicated robot SSH terminal:
+### Run in each dedicated robot SSH terminal (one per robot):
 
 ```bash
 source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
@@ -82,6 +82,8 @@ source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
   --compat-mode \
   --domain-id "${SWARM_COM_ROS_DOMAIN_ID:-17}"
 ```
+
+### Step 0.2: Dependency Check/Install
 
 ### Run on control machine:
 
