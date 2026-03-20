@@ -1,4 +1,4 @@
-# ADR-0007: Interest-Driven Video Scaling for Multi-Robot FPV
+# ADR-0004: Interest-Driven Video Scaling for Multi-Robot FPV
 
 - Status: Accepted
 - Date: 2026-03-16
@@ -73,4 +73,5 @@ Decode path changes:
 
 - [ADR-0001: Local Video Transport Strategy](./ADR-0001-local-video-transport.md)
 - [ADR-0002: Low-Latency Robot-Switch Hardening](./ADR-0002-low-latency-switch-hardening.md)
+- [ADR-0005: Local/LAN Runtime Stabilization](./ADR-0005-runtime-stabilization.md)
 - [LOW_LATENCY_VALIDATION.md](../LOW_LATENCY_VALIDATION.md)

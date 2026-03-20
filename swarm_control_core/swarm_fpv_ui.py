@@ -2573,7 +2573,7 @@ video{
   grid-template-columns:repeat(3,minmax(0,1fr));
 }
 .drive-pad.with-strafe{
-  grid-template-columns:repeat(5,minmax(0,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
 }
 .drive-spacer{
   visibility:hidden;
@@ -3206,8 +3206,14 @@ function driveCommandForToken(token){
 
   if (token === "arrow_up") return { lin: +S, yaw: 0.0, lat: 0.0, vert: 0.0 };
   if (token === "arrow_down") return { lin: -S, yaw: 0.0, lat: 0.0, vert: 0.0 };
-  if (token === "arrow_left") return { lin: 0.0, yaw: +A, lat: 0.0, vert: 0.0 };
-  if (token === "arrow_right") return { lin: 0.0, yaw: -A, lat: 0.0, vert: 0.0 };
+  if (token === "arrow_left"){
+    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: +S, vert: 0.0 };
+    return { lin: 0.0, yaw: +A, lat: 0.0, vert: 0.0 };
+  }
+  if (token === "arrow_right"){
+    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: -S, vert: 0.0 };
+    return { lin: 0.0, yaw: -A, lat: 0.0, vert: 0.0 };
+  }
 
   if (token === "8") return { lin: +S, yaw: 0.0, lat: 0.0, vert: 0.0 };
   if (token === "2") return { lin: -S, yaw: 0.0, lat: 0.0, vert: 0.0 };
@@ -3235,6 +3241,25 @@ function driveCommandForToken(token){
   }
 
   return null;
+}
+
+function toggleStrafeMode(){
+  if (!activeRobot) return false;
+  const c = capFor(activeRobot);
+  if (!c.can_strafe){
+    strafeMode = false;
+    setStatus("[STRAFE] Disabled: active robot is not mecanum/omni.");
+    renderCapabilityMeta();
+    renderDriveControls();
+    return true;
+  }
+  strafeMode = !strafeMode;
+  stopAllDriveHolds(true);
+  pressedDriveKeys.clear();
+  setStatus(`[STRAFE] ${strafeMode ? "ENABLED" : "DISABLED"} ${_speedSummary()}`);
+  renderCapabilityMeta();
+  renderDriveControls();
+  return true;
 }
 
 function driveCommandForEvent(event){
@@ -3278,21 +3303,9 @@ function handleTeleopSpeedAndModeKey(event){
   }
 
   if (!activeRobot) return false;
-  const c = capFor(activeRobot);
 
   if (k === "0" || code === "Numpad0"){
-    if (!c.can_strafe){
-      strafeMode = false;
-      setStatus("[STRAFE] Disabled: active robot is not mecanum/omni.");
-      renderCapabilityMeta();
-      return true;
-    }
-    strafeMode = !strafeMode;
-    stopAllDriveHolds(true);
-    pressedDriveKeys.clear();
-    setStatus(`[STRAFE] ${strafeMode ? "ENABLED" : "DISABLED"} ${_speedSummary()}`);
-    renderCapabilityMeta();
-    return true;
+    return toggleStrafeMode();
   }
 
   if (k === "i"){
@@ -3795,6 +3808,9 @@ function renderDriveControls(){
     if (btnToken){
       driveButtonsByToken.set(btnToken, b);
     }
+    if (opts.gridColumn){
+      b.style.gridColumn = String(opts.gridColumn);
+    }
     const holdTag = opts.holdTag || `btn:${activeRobot || "none"}:${txt}:${btnSeq++}`;
     const start = (e) => {
       e.preventDefault();
@@ -3843,27 +3859,34 @@ function renderDriveControls(){
     if (!cmd) return;
     drive(cmd.lin, cmd.yaw, cmd.lat, cmd.vert);
   };
+  const leftMidLabel = (c.can_strafe && strafeMode) ? "STRAFE LEFT" : "ROTATE LEFT";
+  const rightMidLabel = (c.can_strafe && strafeMode) ? "STRAFE RIGHT" : "ROTATE RIGHT";
 
   mkBtn("LEFT-FORWARD", () => sendToken("7"), stopFn, "", pad, { token: "7" });
   mkBtn("FORWARD", () => sendToken("8"), stopFn, "primary", pad, { token: "8" });
   mkBtn("RIGHT-FORWARD", () => sendToken("9"), stopFn, "", pad, { token: "9" });
 
-  mkBtn("ROTATE LEFT", () => sendToken("arrow_left"), stopFn, "", pad, { token: "arrow_left" });
+  mkBtn(leftMidLabel, () => sendToken("arrow_left"), stopFn, "", pad, { token: "arrow_left" });
   mkBtn("STOP", stopFn, stopFn, "danger", pad, { continuous: false, token: "stop" });
-  mkBtn("ROTATE RIGHT", () => sendToken("arrow_right"), stopFn, "", pad, { token: "arrow_right" });
+  mkBtn(rightMidLabel, () => sendToken("arrow_right"), stopFn, "", pad, { token: "arrow_right" });
 
   mkBtn("LEFT-BACKWARD", () => sendToken("1"), stopFn, "", pad, { token: "1" });
   mkBtn("BACKWARD", () => sendToken("2"), stopFn, "primary", pad, { token: "2" });
   mkBtn("RIGHT-BACKWARD", () => sendToken("3"), stopFn, "", pad, { token: "3" });
 
   if (c.can_strafe){
-    const auxStrafe = document.createElement("div");
-    auxStrafe.className = "drive-pad no-strafe";
-    auxStrafe.style.marginTop = "8px";
-    wrap.appendChild(auxStrafe);
-    mkBtn("STRAFE LEFT", () => drive(0, 0, Math.abs(driveLinearSpeed), 0), stopFn, "", auxStrafe, { token: "strafe_left" });
-    mkBtn("STOP STRAFE", stopFn, stopFn, "danger", auxStrafe, { continuous: false, token: "stop_strafe" });
-    mkBtn("STRAFE RIGHT", () => drive(0, 0, -Math.abs(driveLinearSpeed), 0), stopFn, "", auxStrafe, { token: "strafe_right" });
+    const auxMode = document.createElement("div");
+    auxMode.className = "drive-pad no-strafe";
+    auxMode.style.marginTop = "8px";
+    wrap.appendChild(auxMode);
+    mkBtn(
+      strafeMode ? "SWITCH TO NORMAL DRIVE" : "SWITCH TO STRAFE DRIVE",
+      () => { toggleStrafeMode(); },
+      () => {},
+      strafeMode ? "primary active" : "primary",
+      auxMode,
+      { continuous: false, token: "toggle_strafe", gridColumn: "1 / -1" },
+    );
   }
   if (c.can_vertical){
     const aux = document.createElement("div");
