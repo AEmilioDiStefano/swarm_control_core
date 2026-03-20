@@ -275,7 +275,7 @@ export SWARM_COM_ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
 # Multi-robot low-latency defaults (local/LAN):
 # - keep main-pane transport WebRTC-only
 # - pace WebRTC to match the low-latency camera clamp
-# - keep fleet thumbnails in sparse liveness mode so background camera traffic stays low
+# - disable passive thumbnail probing so non-active robot video stays completely off
 # - keep camera subscriptions interest-driven so control does not ingest full-fleet video continuously
 # - keep drive target refresh aligned with the last stable community defaults
 # - set explicit values (no `:-`) so old shell values cannot silently persist

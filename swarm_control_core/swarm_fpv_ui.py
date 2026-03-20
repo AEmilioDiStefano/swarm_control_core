@@ -2734,8 +2734,9 @@ let locksSig = "";
 let stateRefreshInFlight = false;
 const DRIVE_HOLD_INTERVAL_MS = 100;
 const ROBOT_SWITCH_DEBOUNCE_MS = 140;
-const ROBOT_SWITCH_GRACE_MS = 500;
-const WEBRTC_RETRY_INTERVAL_MS = 900;
+const ROBOT_SWITCH_GRACE_MS = 1400;
+const WEBRTC_RETRY_INTERVAL_MS = 1600;
+const WEBRTC_STALE_FRAME_MS = 3200;
 const THUMB_DRIVE_SUPPRESS_MS = 2000;
 const driveHoldTimers = new Map();
 const driveHoldCommands = new Map();
@@ -3470,11 +3471,7 @@ function isDriveSessionActive(){
 function startWebrtcRetryLoop(){
   setInterval(() => {
     if (document.hidden) return;
-    if (!activeRobot) return;
-    if (!features.webrtc) return;
-    if (webrtcAttemptInFlight) return;
-    if (hasWebRtcFrameNow()) return;
-    if (Date.now() < webrtcRetryAtMs) return;
+    if (!shouldRetryWebRTC()) return;
     setupWebRTC(activeRobot, webrtcSwitchNonce);
   }, 200);
 }
@@ -4012,6 +4009,31 @@ function hasWebRtcFrameNow(){
   );
 }
 
+function shouldRetryWebRTC(){
+  if (!activeRobot) return false;
+  if (!features.webrtc) return false;
+  if (webrtcAttemptInFlight) return false;
+  if (Date.now() < webrtcRetryAtMs) return false;
+  if (!pc) return true;
+  const conn = String(pc.connectionState || "").toLowerCase();
+  const ice = String(pc.iceConnectionState || "").toLowerCase();
+  if (conn === "failed" || conn === "disconnected" || conn === "closed"){
+    return true;
+  }
+  if (ice === "failed" || ice === "disconnected" || ice === "closed"){
+    return true;
+  }
+  if (hasWebRtcFrameNow()){
+    return false;
+  }
+  const sinceSwitchMs = Date.now() - Number(activeRobotSwitchAtMs || 0);
+  if (sinceSwitchMs < WEBRTC_STALE_FRAME_MS){
+    return false;
+  }
+  const sinceFrameMs = Date.now() - Number(mainVideoLastFrameAtMs || 0);
+  return sinceFrameMs >= WEBRTC_STALE_FRAME_MS;
+}
+
 function updateTransportBadge(){
   const badge = $("transportBadge");
   if (!badge) return;
@@ -4314,24 +4336,14 @@ function refreshThumbs(){
     return;
   }
   const configuredLimit = Math.max(0, Math.floor(Number(thumbRobotsPerTick) || 0));
-  let pool = tiles;
-  let limit = configuredLimit;
   if (configuredLimit <= 0){
-    // Active-only + zero budget can otherwise leave the rail permanently black.
-    // Keep a sparse liveness refresh without returning to full background polling.
-    const STALE_AFTER_MS = 10000;
-    const staleTiles = tiles.filter((row) => {
-      const seenMs = Number((row.img && row.img.dataset && row.img.dataset.lastFrameMs) || "0");
-      if (!Number.isFinite(seenMs) || seenMs <= 0) return true;
-      return (nowMs - seenMs) >= STALE_AFTER_MS;
-    });
-    if (!staleTiles.length){
-      thumbRoundRobinCursor = 0;
-      return;
-    }
-    pool = staleTiles;
-    limit = 1;
+    // Zero means "no passive thumbnail probing". This keeps background camera
+    // subscriptions completely off unless the operator explicitly selects a robot.
+    thumbRoundRobinCursor = 0;
+    return;
   }
+  const pool = tiles;
+  const limit = configuredLimit;
   const total = pool.length;
   const start = ((thumbRoundRobinCursor % total) + total) % total;
   const count = Math.min(limit, total);
@@ -4617,6 +4629,13 @@ def _install_aiohttp_disconnect_exception_filter() -> None:
                 and "'nonetype' object has no attribute 'call_exception_handler'" in exc_txt.lower()
             )
         )
+        is_known_aiortc_connect_close_race = (
+            msg_txt.strip().lower() == "task exception was never retrieved"
+            and isinstance(exc, asyncio.InvalidStateError)
+            and "rtcicetransport is closed" in exc_txt.lower()
+            and coro_qualname == "RTCPeerConnection.__connect"
+            and "aiortc.rtcpeerconnection" in coro_module
+        )
 
         if is_known_aiohttp_disconnect_race:
             if not warned_once["value"]:
@@ -4633,6 +4652,15 @@ def _install_aiohttp_disconnect_exception_filter() -> None:
                 print(
                     "[swarm_fpv_ui] Noted and suppressing known aioice STUN retry close race "
                     "(Transaction.__retry transport/loop teardown)."
+                )
+            return
+
+        if is_known_aiortc_connect_close_race:
+            if not warned_once.get("aiortc_connect"):
+                warned_once["aiortc_connect"] = True
+                print(
+                    "[swarm_fpv_ui] Noted and suppressing known aiortc connect/close race "
+                    "(RTCPeerConnection.__connect after transport teardown)."
                 )
             return
 
