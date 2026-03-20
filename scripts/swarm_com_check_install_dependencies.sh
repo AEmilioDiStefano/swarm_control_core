@@ -307,7 +307,7 @@ fi
 
 if [[ ${#failures[@]} -eq 0 ]]; then
   echo
-  echo "All community dependencies have been successfully installed."
+  echo "All dependencies have been successfully installed."
   exit 0
 fi
 

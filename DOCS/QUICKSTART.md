@@ -103,7 +103,7 @@ source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
 
 Expected output ends with:
 
-`All community dependencies have been successfully installed.`
+`All dependencies have been successfully installed.`
 
 And includes:
 - `[iw] is already installed.` (or installed during this step), so Wi-Fi power-save checks are available on robots.
