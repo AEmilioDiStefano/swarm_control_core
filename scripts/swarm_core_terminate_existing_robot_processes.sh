@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_com_terminate_existing_robot_processes.sh [options]
+  swarm_core_terminate_existing_robot_processes.sh [options]
 
 Options:
   --machine-role <control|robot|auto>
@@ -16,10 +16,10 @@ Options:
                                    In compat mode, optionally stop ufw at runtime
                                    so DDS traffic is not blocked by restrictive
                                    firewall policy. Defaults to env
-                                   SWARM_COM_COMPAT_STOP_UFW or auto.
+                                   SWARM_CORE_COMPAT_STOP_UFW or auto.
   --service-name <name>            Existing robot service name to stop.
                                    Repeat to pass multiple names.
-                                   Defaults: swarm-robot, com-swarm-robot
+                                   Defaults: swarm-robot, swarm-core-robot
   --runtime-mask-service <name>    Service to runtime-mask in compat mode (robot role).
                                    Repeatable. Default: swarm-robot, swarm-agent
   --skip-user-process-kill         Do not kill non-systemd ROS launch processes.
@@ -35,7 +35,7 @@ USAGE
 }
 
 log() {
-  echo "[swarm_com_terminate_existing_robot_processes] $*" >&2
+  echo "[swarm_core_terminate_existing_robot_processes] $*" >&2
 }
 
 run_root() {
@@ -61,7 +61,7 @@ dry_run="0"
 kill_user_processes="1"
 machine_role="auto"
 compat_mode="0"
-compat_stop_ufw="${SWARM_COM_COMPAT_STOP_UFW:-auto}"
+compat_stop_ufw="${SWARM_CORE_COMPAT_STOP_UFW:-auto}"
 declare -a service_names=()
 declare -a runtime_mask_services=()
 
@@ -97,7 +97,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      echo "[swarm_com_terminate_existing_robot_processes] ERROR: Unknown argument: $1" >&2
+      echo "[swarm_core_terminate_existing_robot_processes] ERROR: Unknown argument: $1" >&2
       usage >&2
       exit 2
       ;;
@@ -107,17 +107,17 @@ done
 
 machine_role="$(printf '%s' "$(trim "$machine_role")" | tr '[:upper:]' '[:lower:]')"
 [[ "$machine_role" == "auto" || "$machine_role" == "control" || "$machine_role" == "robot" ]] || {
-  echo "[swarm_com_terminate_existing_robot_processes] ERROR: --machine-role must be control, robot, or auto." >&2
+  echo "[swarm_core_terminate_existing_robot_processes] ERROR: --machine-role must be control, robot, or auto." >&2
   exit 2
 }
 compat_stop_ufw="$(printf '%s' "$(trim "$compat_stop_ufw")" | tr '[:upper:]' '[:lower:]')"
 [[ "$compat_stop_ufw" == "auto" || "$compat_stop_ufw" == "always" || "$compat_stop_ufw" == "never" ]] || {
-  echo "[swarm_com_terminate_existing_robot_processes] ERROR: --compat-stop-ufw must be auto, always, or never." >&2
+  echo "[swarm_core_terminate_existing_robot_processes] ERROR: --compat-stop-ufw must be auto, always, or never." >&2
   exit 2
 }
 
 if [[ "${#service_names[@]}" -eq 0 ]]; then
-  service_names=("swarm-robot" "com-swarm-robot")
+  service_names=("swarm-robot" "swarm-core-robot")
 fi
 
 if [[ "$compat_mode" == "1" ]]; then
@@ -158,7 +158,7 @@ ufw_is_active() {
 
 effective_machine_role="$machine_role"
 if [[ "$effective_machine_role" == "auto" ]]; then
-  if [[ -e /dev/gpiomem ]] || service_exists "swarm-robot" || service_exists "com-swarm-robot" || service_exists "swarm-agent"; then
+  if [[ -e /dev/gpiomem ]] || service_exists "swarm-robot" || service_exists "swarm-core-robot" || service_exists "swarm-agent"; then
     effective_machine_role="robot"
   else
     effective_machine_role="control"
@@ -245,9 +245,9 @@ kill_user_launches() {
     "ros2 run .*swarm_control_core.*swarm_fpv_ui"
     "ros2 run .*swarm_control_core.*swarm_teleop"
     "ros2 run .*swarm_control_core.*terminal_orchestrator"
-    "swarm_control_core/.*/swarm_fpv_ui_com"
-    "swarm_control_core/.*/swarm_teleop_com"
-    "swarm_control_core/.*/terminal_orchestrator_com"
+    "swarm_control_core/.*/swarm_fpv_ui_core"
+    "swarm_control_core/.*/swarm_teleop_core"
+    "swarm_control_core/.*/terminal_orchestrator_core"
     "ros2 run .*swarm_control.*swarm_fpv_ui"
     "ros2 run .*swarm_control.*swarm_teleop"
     "ros2 run .*swarm_control.*terminal_orchestrator"

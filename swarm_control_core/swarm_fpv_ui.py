@@ -179,7 +179,7 @@ def _detect_ipv4_addresses() -> List[str]:
 
 
 def _community_allow_lan_bind() -> bool:
-    return str(os.environ.get("SWARM_COM_ALLOW_LAN_BIND", "0")).strip().lower() in (
+    return str(os.environ.get("SWARM_CORE_ALLOW_LAN_BIND", "0")).strip().lower() in (
         "1",
         "true",
         "yes",
@@ -1494,7 +1494,7 @@ class BrowserServer:
         self.pcs: Set[RTCPeerConnection] = set() if HAS_WEBRTC else set()
         if webrtc_ice_err:
             self.hub.get_logger().warn(
-                f"[swarm_fpv_ui] Invalid SWARM_COM_WEBRTC_ICE_SERVERS_JSON ({webrtc_ice_err}); using []"
+                f"[swarm_fpv_ui] Invalid SWARM_CORE_WEBRTC_ICE_SERVERS_JSON ({webrtc_ice_err}); using []"
             )
         self.hub.get_logger().info(
             "[swarm_fpv_ui] WebRTC ICE config: "
@@ -3207,11 +3207,11 @@ function driveCommandForToken(token){
   if (token === "arrow_up") return { lin: +S, yaw: 0.0, lat: 0.0, vert: 0.0 };
   if (token === "arrow_down") return { lin: -S, yaw: 0.0, lat: 0.0, vert: 0.0 };
   if (token === "arrow_left"){
-    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: +S, vert: 0.0 };
+    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: -S, vert: 0.0 };
     return { lin: 0.0, yaw: +A, lat: 0.0, vert: 0.0 };
   }
   if (token === "arrow_right"){
-    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: -S, vert: 0.0 };
+    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: +S, vert: 0.0 };
     return { lin: 0.0, yaw: -A, lat: 0.0, vert: 0.0 };
   }
 
@@ -3219,20 +3219,20 @@ function driveCommandForToken(token){
   if (token === "2") return { lin: -S, yaw: 0.0, lat: 0.0, vert: 0.0 };
 
   if (token === "4"){
-    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: +S, vert: 0.0 };
+    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: -S, vert: 0.0 };
     return { lin: 0.0, yaw: +A, lat: 0.0, vert: 0.0 };
   }
   if (token === "6"){
-    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: -S, vert: 0.0 };
+    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: +S, vert: 0.0 };
     return { lin: 0.0, yaw: -A, lat: 0.0, vert: 0.0 };
   }
 
   if (token === "7" || token === "9" || token === "1" || token === "3"){
     if (strafeMode && c.can_strafe){
-      if (token === "7") return { lin: +S, yaw: 0.0, lat: +S, vert: 0.0 };
-      if (token === "9") return { lin: +S, yaw: 0.0, lat: -S, vert: 0.0 };
-      if (token === "1") return { lin: -S, yaw: 0.0, lat: +S, vert: 0.0 };
-      if (token === "3") return { lin: -S, yaw: 0.0, lat: -S, vert: 0.0 };
+      if (token === "7") return { lin: +S, yaw: 0.0, lat: -S, vert: 0.0 };
+      if (token === "9") return { lin: +S, yaw: 0.0, lat: +S, vert: 0.0 };
+      if (token === "1") return { lin: -S, yaw: 0.0, lat: -S, vert: 0.0 };
+      if (token === "3") return { lin: -S, yaw: 0.0, lat: +S, vert: 0.0 };
     }
     if (_isDiffDrive(c)){
       return _diffArcCommand(token, S);
@@ -4789,28 +4789,28 @@ async def _run_server():
     ensure_ros_domain_id()
     rclpy.init(args=None)
     hub = RosFleetHub()
-    bind_host_default = str(os.environ.get("SWARM_COM_BIND_HOST", "127.0.0.1")).strip() or "127.0.0.1"
-    bind_port_default_raw = str(os.environ.get("SWARM_COM_BIND_PORT", "8080")).strip()
+    bind_host_default = str(os.environ.get("SWARM_CORE_BIND_HOST", "127.0.0.1")).strip() or "127.0.0.1"
+    bind_port_default_raw = str(os.environ.get("SWARM_CORE_BIND_PORT", "8080")).strip()
     try:
         bind_port_default = int(bind_port_default_raw)
     except Exception:
         bind_port_default = 8080
     hub.declare_parameter("bind_host", bind_host_default)
     hub.declare_parameter("bind_port", bind_port_default)
-    hub.declare_parameter("auth_mode", os.environ.get("SWARM_COM_AUTH_MODE", AUTH_MODE_OFF))
-    hub.declare_parameter("auth_issuer", os.environ.get("SWARM_COM_AUTH_ISSUER", ""))
-    hub.declare_parameter("auth_audience", os.environ.get("SWARM_COM_AUTH_AUDIENCE", ""))
-    hub.declare_parameter("auth_jwks_url", os.environ.get("SWARM_COM_AUTH_JWKS_URL", ""))
+    hub.declare_parameter("auth_mode", os.environ.get("SWARM_CORE_AUTH_MODE", AUTH_MODE_OFF))
+    hub.declare_parameter("auth_issuer", os.environ.get("SWARM_CORE_AUTH_ISSUER", ""))
+    hub.declare_parameter("auth_audience", os.environ.get("SWARM_CORE_AUTH_AUDIENCE", ""))
+    hub.declare_parameter("auth_jwks_url", os.environ.get("SWARM_CORE_AUTH_JWKS_URL", ""))
     hub.declare_parameter(
         "allow_anonymous_readonly",
-        str(os.environ.get("SWARM_COM_ALLOW_ANON_READONLY", "true")).strip().lower() in ("1", "true", "yes", "on"),
+        str(os.environ.get("SWARM_CORE_ALLOW_ANON_READONLY", "true")).strip().lower() in ("1", "true", "yes", "on"),
     )
     hub.declare_parameter("site_id", os.environ.get("SWARM_EDGE_SITE_ID", ""))
     hub.declare_parameter(
         "dev_login_enabled",
-        str(os.environ.get("SWARM_COM_DEV_LOGIN_ENABLED", "true")).strip().lower() in ("1", "true", "yes", "on"),
+        str(os.environ.get("SWARM_CORE_DEV_LOGIN_ENABLED", "true")).strip().lower() in ("1", "true", "yes", "on"),
     )
-    hub.declare_parameter("dev_users_json", os.environ.get("SWARM_COM_DEV_USERS_JSON", ""))
+    hub.declare_parameter("dev_users_json", os.environ.get("SWARM_CORE_DEV_USERS_JSON", ""))
     bind_host = str(hub.get_parameter("bind_host").value).strip() or "127.0.0.1"
     bind_port = int(hub.get_parameter("bind_port").value)
     auth_mode = str(hub.get_parameter("auth_mode").value).strip().lower() or AUTH_MODE_OFF
@@ -4838,7 +4838,7 @@ async def _run_server():
     else:
         hub.get_logger().warn(
             f"[community] bind_host '{bind_host}' is not allowed. "
-            "Forcing loopback 127.0.0.1 (set SWARM_COM_ALLOW_LAN_BIND=1 for private LAN bind)."
+            "Forcing loopback 127.0.0.1 (set SWARM_CORE_ALLOW_LAN_BIND=1 for private LAN bind)."
         )
         bind_host = "127.0.0.1"
 

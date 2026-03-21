@@ -8,7 +8,6 @@
 # - Referenced by `robot_instances.yaml` via `control_interface`.
 # - Resolved by `swarm_control_core/drive_profiles.py` into the runtime hardware block.
 # - Designed to be transport/backend-agnostic (ground/air/marine capable naming).
-# - Used with `adapter_profiles.yaml` to separate local actuation from external integration paths.
 #
 # MUTABILITY / OWNERSHIP
 # - Repository copy is the baseline template library.
@@ -16,7 +15,7 @@
 #
 # WHAT THIS OFFERS
 # - Reusable backend definitions across multiple control types and vendors.
-# - Decouples kinematics from low-level interface wiring/limits.
+# - Decouples kinematics from low-level wiring and safety limits.
 
 schema_version: "1.0"
 

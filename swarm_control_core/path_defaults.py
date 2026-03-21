@@ -46,7 +46,7 @@ def _workspace_from_config_path(raw_path: str) -> Optional[Path]:
 
 
 def _community_config_dir() -> Path:
-    value = _first_env_value(("SWARM_COM_CONFIG_DIR",))
+    value = _first_env_value(("SWARM_CORE_CONFIG_DIR",))
     if value:
         return Path(value).expanduser()
     return Path.home() / ".config" / "swarm_control_core"
@@ -83,39 +83,39 @@ def detect_workspace_root() -> Path:
     """
     Resolve workspace root only from explicit configuration.
     """
-    workspace_env = _first_env_value(("SWARM_COM_WORKSPACE_ROOT",))
+    workspace_env = _first_env_value(("SWARM_CORE_WORKSPACE_ROOT",))
     if workspace_env:
         return Path(workspace_env).expanduser()
 
     for env_key in (
         "PROFILES_PATH",
         "CAMERA_PROFILES_PATH",
-        "SWARM_COM_PROFILES_PATH",
-        "SWARM_COM_CAMERA_PROFILES_PATH",
+        "SWARM_CORE_PROFILES_PATH",
+        "SWARM_CORE_CAMERA_PROFILES_PATH",
         "CONTROL_TYPES_PATH",
         "CONTROL_INTERFACES_PATH",
         "CONTROL_INTERFACE_PATH",
         "CAPABILITY_PROFILES_PATH",
         "ADAPTER_PROFILES_PATH",
-        "SWARM_COM_CONTROL_TYPES_PATH",
-        "SWARM_COM_CONTROL_INTERFACES_PATH",
-        "SWARM_COM_CONTROL_INTERFACE_PATH",
-        "SWARM_COM_CAPABILITY_PROFILES_PATH",
-        "SWARM_COM_ADAPTER_PROFILES_PATH",
+        "SWARM_CORE_CONTROL_TYPES_PATH",
+        "SWARM_CORE_CONTROL_INTERFACES_PATH",
+        "SWARM_CORE_CONTROL_INTERFACE_PATH",
+        "SWARM_CORE_CAPABILITY_PROFILES_PATH",
+        "SWARM_CORE_ADAPTER_PROFILES_PATH",
     ):
         from_config = _workspace_from_config_path(os.environ.get(env_key, ""))
         if from_config is not None:
             return from_config
 
     raise MissingConfigError(
-        "Missing workspace root configuration. Set SWARM_COM_WORKSPACE_ROOT "
+        "Missing workspace root configuration. Set SWARM_CORE_WORKSPACE_ROOT "
         "or provide PROFILES_PATH/CAMERA_PROFILES_PATH under "
         "<workspace>/src/swarm_control_core/config/."
     )
 
 
 def default_profiles_path() -> str:
-    value = _first_env_value(("PROFILES_PATH", "SWARM_COM_PROFILES_PATH"))
+    value = _first_env_value(("PROFILES_PATH", "SWARM_CORE_PROFILES_PATH"))
     if value:
         return str(Path(value).expanduser())
 
@@ -139,7 +139,7 @@ def default_profiles_path() -> str:
 
 
 def default_camera_profiles_path() -> str:
-    value = _first_env_value(("CAMERA_PROFILES_PATH", "SWARM_COM_CAMERA_PROFILES_PATH"))
+    value = _first_env_value(("CAMERA_PROFILES_PATH", "SWARM_CORE_CAMERA_PROFILES_PATH"))
     if value:
         return str(Path(value).expanduser())
 
@@ -159,15 +159,15 @@ def default_camera_profiles_path() -> str:
 
 
 def default_presets_dir() -> str:
-    presets_env = _first_env_value(("SWARM_COM_PRESETS_DIR",))
+    presets_env = _first_env_value(("SWARM_CORE_PRESETS_DIR",))
     if presets_env:
         return str(Path(presets_env).expanduser())
 
-    workspace_env = _first_env_value(("SWARM_COM_WORKSPACE_ROOT",))
+    workspace_env = _first_env_value(("SWARM_CORE_WORKSPACE_ROOT",))
     if workspace_env:
         return str(Path(workspace_env).expanduser() / "src" / "swarm_control_core" / "config" / "presets")
 
-    profiles_path = _first_env_value(("PROFILES_PATH", "SWARM_COM_PROFILES_PATH"))
+    profiles_path = _first_env_value(("PROFILES_PATH", "SWARM_CORE_PROFILES_PATH"))
     from_config = _workspace_from_config_path(profiles_path)
     if from_config is not None:
         return str(from_config / "src" / "swarm_control_core" / "config" / "presets")
@@ -186,18 +186,18 @@ def default_presets_dir() -> str:
         pass
 
     raise MissingConfigError(
-        "Missing presets directory configuration. Set SWARM_COM_PRESETS_DIR, "
-        "or set SWARM_COM_WORKSPACE_ROOT, or set PROFILES_PATH."
+        "Missing presets directory configuration. Set SWARM_CORE_PRESETS_DIR, "
+        "or set SWARM_CORE_WORKSPACE_ROOT, or set PROFILES_PATH."
     )
 
 
 def default_robot_name() -> str:
-    value = _first_env_value(("SWARM_COM_ROBOT_NAME", "ROBOT_NAME"))
+    value = _first_env_value(("SWARM_CORE_ROBOT_NAME", "ROBOT_NAME"))
     sanitized = sanitize_ros_name(value)
     if sanitized:
         return sanitized
 
     raise MissingConfigError(
-        "Missing robot identity. Set SWARM_COM_ROBOT_NAME (or ROBOT_NAME), "
+        "Missing robot identity. Set SWARM_CORE_ROBOT_NAME (or ROBOT_NAME), "
         "or pass robot_name explicitly."
     )

@@ -1199,7 +1199,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     if manual_menu_selected:
         # Respect explicit operator camera selection by default.
         # Opt in to auto-fallback only when explicitly requested.
-        force_fallback = _parse_bool(os.environ.get("SWARM_COM_CAMERA_ALLOW_PROBE_FALLBACK", "").strip())
+        force_fallback = _parse_bool(os.environ.get("SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK", "").strip())
         allow_probe_fallback = bool(force_fallback is True)
 
     if probe_ok is False and selected_candidate is not None and candidates and allow_probe_fallback:
@@ -1236,7 +1236,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             (
                 f"selected device {device} looked unstable ({probe_note}); "
                 "keeping explicit menu selection. "
-                "Set SWARM_COM_CAMERA_ALLOW_PROBE_FALLBACK=1 to allow automatic fallback."
+                "Set SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK=1 to allow automatic fallback."
             ),
         )
 

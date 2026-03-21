@@ -126,7 +126,7 @@ def _make_nodes(context, *args, **kwargs):
     if not robot_name:
         raise RuntimeError(
             "robot_name resolved empty after sanitization. "
-            "Set SWARM_COM_ROBOT_NAME/ROBOT_NAME or pass robot_name:=<name>."
+            "Set SWARM_CORE_ROBOT_NAME/ROBOT_NAME or pass robot_name:=<name>."
         )
 
     use_camera = LaunchConfiguration("use_camera").perform(context).lower() in ("1", "true", "yes", "on")
@@ -336,7 +336,7 @@ def _make_nodes(context, *args, **kwargs):
 
     _try_node(
         package="swarm_control_core",
-        executable="motor_driver_node_com",
+        executable="motor_driver_node_core",
         name="motor_driver_node",
         namespace=robot_name,
         output="screen",
@@ -346,7 +346,7 @@ def _make_nodes(context, *args, **kwargs):
     # Heartbeat publisher under /<robot_name>/heartbeat so teleop/control can discover
     _try_node(
         package="swarm_control_core",
-        executable="heartbeat_node_com",
+        executable="heartbeat_node_core",
         name="heartbeat_node",
         namespace=robot_name,
         output="screen",
@@ -361,7 +361,7 @@ def _make_nodes(context, *args, **kwargs):
     # Playbook action executor under /<robot_name>/execute_playbook
     _try_node(
         package="swarm_control_core",
-        executable="unit_executor_action_server_com",
+        executable="unit_executor_action_server_core",
         name="unit_executor_action_server",
         namespace=robot_name,
         output="screen",
@@ -400,7 +400,7 @@ def _make_nodes(context, *args, **kwargs):
         )
         _try_node(
             package="swarm_control_core",
-            executable="swarm_camera_node_com",
+            executable="swarm_camera_node_core",
             name="camera",
             namespace=robot_name,
             output="screen",
@@ -422,7 +422,7 @@ def _make_nodes(context, *args, **kwargs):
     if use_camera_autonomy:
         _try_node(
             package="swarm_control_core",
-            executable="camera_autonomy_node_com",
+            executable="camera_autonomy_node_core",
             name="camera_autonomy_node",
             namespace=robot_name,
             output="screen",
@@ -448,7 +448,7 @@ def generate_launch_description():
                 default_value="",
                 description=(
                     "Robot identity used for namespace and profile lookup. "
-                    "Set explicitly or via SWARM_COM_ROBOT_NAME/ROBOT_NAME."
+                    "Set explicitly or via SWARM_CORE_ROBOT_NAME/ROBOT_NAME."
                 ),
             ),
             DeclareLaunchArgument("video_device", default_value=""),

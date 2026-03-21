@@ -11,11 +11,11 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _default_bind_host() -> str:
-    return str(os.environ.get("SWARM_COM_BIND_HOST", "127.0.0.1")).strip() or "127.0.0.1"
+    return str(os.environ.get("SWARM_CORE_BIND_HOST", "127.0.0.1")).strip() or "127.0.0.1"
 
 
 def _default_bind_port() -> str:
-    return str(os.environ.get("SWARM_COM_BIND_PORT", "8080")).strip() or "8080"
+    return str(os.environ.get("SWARM_CORE_BIND_PORT", "8080")).strip() or "8080"
 
 
 def _default_ros_domain_id() -> str:
@@ -23,7 +23,7 @@ def _default_ros_domain_id() -> str:
 
 
 def _default_webrtc_fps() -> str:
-    raw = str(os.environ.get("SWARM_COM_WEBRTC_FPS", "15.0")).strip()
+    raw = str(os.environ.get("SWARM_CORE_WEBRTC_FPS", "15.0")).strip()
     if not raw:
         return "15.0"
     try:
@@ -33,7 +33,7 @@ def _default_webrtc_fps() -> str:
 
 
 def _default_thumb_refresh_hz() -> str:
-    raw = str(os.environ.get("SWARM_COM_THUMB_REFRESH_HZ", "0.5")).strip()
+    raw = str(os.environ.get("SWARM_CORE_THUMB_REFRESH_HZ", "0.5")).strip()
     if not raw:
         return "0.5"
     try:
@@ -43,14 +43,14 @@ def _default_thumb_refresh_hz() -> str:
 
 
 def _default_image_subscription_mode() -> str:
-    raw = str(os.environ.get("SWARM_COM_IMAGE_SUBSCRIPTION_MODE", "active_only")).strip().lower()
+    raw = str(os.environ.get("SWARM_CORE_IMAGE_SUBSCRIPTION_MODE", "active_only")).strip().lower()
     if raw in ("all", "all_robots", "full"):
         return "all"
     return "active_only"
 
 
 def _default_image_thumb_interest_ttl_s() -> str:
-    raw = str(os.environ.get("SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S", "0.75")).strip()
+    raw = str(os.environ.get("SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S", "0.75")).strip()
     if not raw:
         return "0.75"
     try:
@@ -60,7 +60,7 @@ def _default_image_thumb_interest_ttl_s() -> str:
 
 
 def _default_thumb_robots_per_tick() -> str:
-    raw = str(os.environ.get("SWARM_COM_THUMB_ROBOTS_PER_TICK", "0")).strip()
+    raw = str(os.environ.get("SWARM_CORE_THUMB_ROBOTS_PER_TICK", "0")).strip()
     if not raw:
         return "0"
     try:
@@ -70,7 +70,7 @@ def _default_thumb_robots_per_tick() -> str:
 
 
 def _default_drive_cmd_rate_hz() -> str:
-    raw = str(os.environ.get("SWARM_COM_DRIVE_CMD_RATE_HZ", "20.0")).strip()
+    raw = str(os.environ.get("SWARM_CORE_DRIVE_CMD_RATE_HZ", "20.0")).strip()
     if not raw:
         return "20.0"
     try:
@@ -80,7 +80,7 @@ def _default_drive_cmd_rate_hz() -> str:
 
 
 def _default_drive_hold_timeout_s() -> str:
-    raw = str(os.environ.get("SWARM_COM_DRIVE_HOLD_TIMEOUT_S", "0.35")).strip()
+    raw = str(os.environ.get("SWARM_CORE_DRIVE_HOLD_TIMEOUT_S", "0.35")).strip()
     if not raw:
         return "0.35"
     try:
@@ -114,7 +114,7 @@ def generate_launch_description() -> LaunchDescription:
 
     node = Node(
         package="swarm_control_core",
-        executable="swarm_fpv_ui_com",
+        executable="swarm_fpv_ui_core",
         name="swarm_fpv_ui",
         output="screen",
         parameters=[

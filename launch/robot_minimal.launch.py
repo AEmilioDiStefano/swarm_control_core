@@ -38,7 +38,7 @@ def generate_launch_description() -> LaunchDescription:
     robot_name_arg = DeclareLaunchArgument(
         "robot_name",
         default_value="",
-        description="Robot identity name. Set explicitly or via SWARM_COM_ROBOT_NAME/ROBOT_NAME.",
+        description="Robot identity name. Set explicitly or via SWARM_CORE_ROBOT_NAME/ROBOT_NAME.",
     )
 
     profiles_path_arg = DeclareLaunchArgument(
@@ -54,7 +54,7 @@ def generate_launch_description() -> LaunchDescription:
 
     motor_driver = Node(
         package="swarm_control_core",
-        executable="motor_driver_node_com",
+        executable="motor_driver_node_core",
         name="motor_driver_node",
         output="screen",
         parameters=common_params,
@@ -62,7 +62,7 @@ def generate_launch_description() -> LaunchDescription:
 
     heartbeat = Node(
         package="swarm_control_core",
-        executable="heartbeat_node_com",
+        executable="heartbeat_node_core",
         name="heartbeat_node",
         output="screen",
         parameters=common_params,

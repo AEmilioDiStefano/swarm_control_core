@@ -536,7 +536,7 @@ class TerminalOrchestrator(Node):
         Resolve per-robot duration calibration scales.
 
         Order of precedence:
-        1) robot_profiles.yaml per-robot drive params:
+        1) robot_instances.yaml + control_types.yaml per-robot drive params:
            - orchestrator_linear_duration_scale
            - orchestrator_angular_duration_scale
         2) node parameters:

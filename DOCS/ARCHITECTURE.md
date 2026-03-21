@@ -23,13 +23,13 @@
 
 ## Runtime Components
 
-- `motor_driver_node_com`: consumes `/robot/cmd_vel` and drives hardware interface.
-- `heartbeat_node_com`: publishes robot liveness and profile identity.
-- `unit_executor_action_server_com`: executes robot playbooks.
-- `swarm_camera_node_com`: camera publishing.
-- `swarm_fpv_ui_com`: browser UI server and fleet state bridge.
-- `swarm_teleop_com`: keyboard terminal teleop node.
-- `terminal_orchestrator_com`: menu-driven terminal playbook node.
+- `motor_driver_node_core`: consumes `/robot/cmd_vel` and drives hardware interface.
+- `heartbeat_node_core`: publishes robot liveness and profile identity.
+- `unit_executor_action_server_core`: executes robot playbooks.
+- `swarm_camera_node_core`: camera publishing.
+- `swarm_fpv_ui_core`: browser UI server and fleet state bridge.
+- `swarm_teleop_core`: keyboard terminal teleop node.
+- `terminal_orchestrator_core`: menu-driven terminal playbook node.
 
 ## Data and Control Flow
 
@@ -43,7 +43,7 @@
 The runtime now uses an **interest-driven active set** model so robot-count growth does
 not force full-fleet hot-path work at all times.
 
-### Video Plane (`swarm_fpv_ui_com`)
+### Video Plane (`swarm_fpv_ui_core`)
 
 - Camera subscriptions are interest-driven by default (`active_only`):
   - always keep active robot stream,
@@ -73,7 +73,7 @@ Decode path:
   - `C`: WebRTC consumers
   - `W`: WebRTC send pacing
 
-### Orchestration/Control Plane (`terminal_orchestrator_com` / swarm_orchestrator workflow)
+### Orchestration/Control Plane (`terminal_orchestrator_core` / swarm_orchestrator workflow)
 
 - Drive commands and mode updates remain per-robot constant-time operations (`O(1)` per event).
 - Control loops operate over active robot targets, not over full-fleet camera payloads.
@@ -83,20 +83,20 @@ Design rule for future features:
 
 - Keep hot loops bounded by active-interest sets and explicit budgets.
 - Avoid full-fleet scans inside high-frequency paths unless required for correctness.
-- Reset scripts clear both community and proprietary FPV tuning env vars so mode switches do not inherit stale runtime budgets.
+- Reset scripts clear both core and proprietary FPV tuning env vars so mode switches do not inherit stale runtime budgets.
 
 ## Configuration Model
 
 - Robot behavior is profile-driven from `config/*.yaml`.
 - Runtime overrides can be placed in machine-local config paths.
-- Camera profile persistence is supported through `save_camera_profile_com`.
+- Camera profile persistence is supported through `save_camera_profile_core`.
 
 ## Safety and Constraints
 
 - Browser UI enforces local security defaults (`auth_mode=off` with local binding defaults).
 - Runtime wrappers fail-fast when `ufw.service` is active under LAN discovery defaults, to avoid silent DDS traffic loss.
 - Quickstart applies an idempotent Wi-Fi check (`iw`): if `wlan0` power save is ON, it is switched OFF before bringup to avoid camera/control jitter on Wi-Fi links.
-- Runtime behavior is scoped to `SWARM_COM_*` env names; proprietary env names are only cleared by reset scripts, not consumed for behavior.
+- Runtime behavior is scoped to `SWARM_CORE_*` env names; proprietary env names are only cleared by reset scripts, not consumed for behavior.
 - Main pane is strict WebRTC-only.
 - Thumbnail rail stays bounded with JPEG polling budgets and does not replace main-stream video.
 - Recommended multi-robot switching profile keeps `thumb_robots_per_tick=1`; `0` is a single-robot focus mode with lower background load but slower switches.

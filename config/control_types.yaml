@@ -8,7 +8,6 @@
 # - Referenced by `robot_instances.yaml` via `control_type`.
 # - Resolved by `swarm_control_core/drive_profiles.py` into the runtime drive block.
 # - Works with `control_interfaces.yaml` to produce effective robot behavior.
-# - Combined with `adapter_profiles.yaml` to define robot-edge integration mode.
 #
 # MUTABILITY / OWNERSHIP
 # - Repository copy is the engineering baseline.
@@ -17,7 +16,7 @@
 #
 # WHAT THIS OFFERS
 # - Reuse of motion models across multiple robots/vendors.
-# - Separation of kinematics from controller wiring/backends.
+# - Separation of kinematics from controller wiring.
 
 schema_version: "1.0"
 

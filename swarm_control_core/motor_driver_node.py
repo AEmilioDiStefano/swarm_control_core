@@ -206,7 +206,7 @@ class MotorDriverNode(Node):
         try:
             self.audit_cmd_vel_min_period_s = max(
                 0.0,
-                float(os.environ.get("SWARM_COM_AUDIT_CMD_VEL_MIN_PERIOD_S", "2.0")),
+                float(os.environ.get("SWARM_CORE_AUDIT_CMD_VEL_MIN_PERIOD_S", "2.0")),
             )
         except Exception:
             self.audit_cmd_vel_min_period_s = 2.0

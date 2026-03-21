@@ -652,7 +652,7 @@ class SwarmTeleop(Node):
                 f"(effective drive_type='{diag['effective_drive_type'] or 'unknown'}')."
             )
             self._tprint(
-                "[STRAFE] Check robot_profiles.yaml drive_profile.type and/or heartbeat_node drive_type."
+                "[STRAFE] Check robot_instances.yaml control_type, the matching control_types.yaml entry, and/or heartbeat_node drive_type."
             )
             return
 

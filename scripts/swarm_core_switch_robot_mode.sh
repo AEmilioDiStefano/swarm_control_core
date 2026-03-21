@@ -2,13 +2,13 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./lib/swarm_com_workspace.sh
-source "${script_dir}/lib/swarm_com_workspace.sh"
+# shellcheck source=./lib/swarm_core_workspace.sh
+source "${script_dir}/lib/swarm_core_workspace.sh"
 
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_com_switch_robot_mode.sh [options] <command>
+  swarm_core_switch_robot_mode.sh [options] <command>
 
 Commands:
   status       Show service status summary.
@@ -17,7 +17,7 @@ Commands:
   restart      Restart community service.
 
 Options:
-  --community-service-name <name>  Community service name (default: com-swarm-robot)
+  --community-service-name <name>  Community service name (default: swarm-core-robot)
   --existing-service-name <name>   Existing service to stop before activate
                                    (default: swarm-robot)
   --workspace <path>               Workspace root (default: auto-detect)
@@ -29,11 +29,11 @@ USAGE
 }
 
 log() {
-  echo "[swarm_com_switch_robot_mode] $*" >&2
+  echo "[swarm_core_switch_robot_mode] $*" >&2
 }
 
 fail() {
-  echo "[swarm_com_switch_robot_mode] ERROR: $*" >&2
+  echo "[swarm_core_switch_robot_mode] ERROR: $*" >&2
   exit 1
 }
 
@@ -46,12 +46,12 @@ run_root() {
   sudo "$@"
 }
 
-community_service_name="com-swarm-robot"
-existing_service_name="${SWARM_COM_EXISTING_ROBOT_SERVICE:-swarm-robot}"
+community_service_name="swarm-core-robot"
+existing_service_name="${SWARM_CORE_EXISTING_ROBOT_SERVICE:-swarm-robot}"
 workspace=""
 install_if_missing="0"
 domain_id="17"
-robot_name="${SWARM_COM_ROBOT_NAME:-${USER:-$(id -un)}}"
+robot_name="${SWARM_CORE_ROBOT_NAME:-${USER:-$(id -un)}}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -89,8 +89,8 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-workspace="$(swarm_com_detect_workspace_root "$workspace" || true)"
-[[ -n "$workspace" ]] || fail "Unable to detect workspace root. Pass --workspace or set SWARM_COM_WORKSPACE_ROOT."
+workspace="$(swarm_core_detect_workspace_root "$workspace" || true)"
+[[ -n "$workspace" ]] || fail "Unable to detect workspace root. Pass --workspace or set SWARM_CORE_WORKSPACE_ROOT."
 
 [[ $# -ge 1 ]] || fail "Expected <command>."
 command_name="$1"
@@ -122,7 +122,7 @@ maybe_install_service() {
   if [[ "$install_if_missing" != "1" ]]; then
     fail "Missing ${community_service_name}.service (use --install-if-missing)."
   fi
-  "${script_dir}/swarm_com_install_robot_service.sh" \
+  "${script_dir}/swarm_core_install_robot_service.sh" \
     --workspace "$workspace" \
     --service-name "$community_service_name" \
     --existing-service-name "$existing_service_name" \
@@ -135,7 +135,7 @@ case "$command_name" in
     print_status
     ;;
   activate)
-    "${script_dir}/swarm_com_terminate_existing_robot_processes.sh" \
+    "${script_dir}/swarm_core_terminate_existing_robot_processes.sh" \
       --service-name "$existing_service_name" \
       --service-name "$community_service_name"
     maybe_install_service

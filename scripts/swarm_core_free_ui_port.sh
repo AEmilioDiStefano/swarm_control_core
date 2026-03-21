@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_com_free_ui_port.sh [options]
+  swarm_core_free_ui_port.sh [options]
 
 Options:
   --port <port>        TCP port to free (default: 8080)
@@ -21,11 +21,11 @@ USAGE
 }
 
 log() {
-  echo "[swarm_com_free_ui_port] $*" >&2
+  echo "[swarm_core_free_ui_port] $*" >&2
 }
 
 fail() {
-  echo "[swarm_com_free_ui_port] ERROR: $*" >&2
+  echo "[swarm_core_free_ui_port] ERROR: $*" >&2
   exit 1
 }
 
@@ -132,7 +132,7 @@ kill_known_ui_processes() {
   local -a patterns=(
     "ros2 launch .*swarm_control_core.*swarm_fpv_ui.launch.py"
     "ros2 run .*swarm_control_core.*swarm_fpv_ui"
-    "/swarm_control_core/.*/swarm_fpv_ui_com"
+    "/swarm_control_core/.*/swarm_fpv_ui_core"
   )
 
   local killed="0"

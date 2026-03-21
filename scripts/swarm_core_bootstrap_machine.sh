@@ -2,13 +2,13 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./lib/swarm_com_workspace.sh
-source "${script_dir}/lib/swarm_com_workspace.sh"
+# shellcheck source=./lib/swarm_core_workspace.sh
+source "${script_dir}/lib/swarm_core_workspace.sh"
 
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_com_bootstrap_machine.sh [options]
+  swarm_core_bootstrap_machine.sh [options]
 
 Options:
   --machine-role <control|robot>  Target machine role (default: robot)
@@ -32,11 +32,11 @@ USAGE
 }
 
 log() {
-  echo "[swarm_com_bootstrap_machine] $*" >&2
+  echo "[swarm_core_bootstrap_machine] $*" >&2
 }
 
 fail() {
-  echo "[swarm_com_bootstrap_machine] ERROR: $*" >&2
+  echo "[swarm_core_bootstrap_machine] ERROR: $*" >&2
   exit 1
 }
 
@@ -44,7 +44,7 @@ current_step="initialization"
 
 on_error() {
   local exit_code=$?
-  echo "[swarm_com_bootstrap_machine] ERROR: bootstrap failed during step: ${current_step}" >&2
+  echo "[swarm_core_bootstrap_machine] ERROR: bootstrap failed during step: ${current_step}" >&2
   exit "$exit_code"
 }
 
@@ -75,8 +75,6 @@ print_current_setup_summary() {
   local camera_profiles_file="${runtime_cfg_dir}/camera_profiles.yaml"
   local control_types_file="${runtime_cfg_dir}/control_types.yaml"
   local control_interfaces_file="${runtime_cfg_dir}/control_interfaces.yaml"
-  local capability_profiles_file="${runtime_cfg_dir}/capability_profiles.yaml"
-  local adapter_profiles_file="${runtime_cfg_dir}/adapter_profiles.yaml"
 
   local git_head="unknown"
   if command -v git >/dev/null 2>&1; then
@@ -104,9 +102,9 @@ print_current_setup_summary() {
 
   local com_service_installed="no"
   local com_service_active="n/a"
-  if service_installed "com-swarm-robot"; then
+  if service_installed "swarm-core-robot"; then
     com_service_installed="yes"
-    com_service_active="$(service_active_state "com-swarm-robot")"
+    com_service_active="$(service_active_state "swarm-core-robot")"
   fi
 
   echo
@@ -124,8 +122,6 @@ print_current_setup_summary() {
   echo "CAMERA_PROFILES_FILE = ${camera_profiles_file} (exists=$( [[ -f "$camera_profiles_file" ]] && echo yes || echo no ))"
   echo "CONTROL_TYPES_FILE = ${control_types_file} (exists=$( [[ -f "$control_types_file" ]] && echo yes || echo no ))"
   echo "CONTROL_INTERFACES_FILE = ${control_interfaces_file} (exists=$( [[ -f "$control_interfaces_file" ]] && echo yes || echo no ))"
-  echo "CAPABILITY_PROFILES_FILE = ${capability_profiles_file} (exists=$( [[ -f "$capability_profiles_file" ]] && echo yes || echo no ))"
-  echo "ADAPTER_PROFILES_FILE = ${adapter_profiles_file} (exists=$( [[ -f "$adapter_profiles_file" ]] && echo yes || echo no ))"
   echo "BUILD_STATUS = ${build_status}"
   echo "GPIO_STATUS = ${gpio_status}"
   echo "GPIO_GROUP_MEMBER = ${gpio_membership}"
@@ -145,8 +141,8 @@ skip_gpio="0"
 skip_build="0"
 install_service="0"
 enable_service_now="0"
-domain_id="${SWARM_COM_ROS_DOMAIN_ID:-17}"
-robot_name="${SWARM_COM_ROBOT_NAME:-$(id -un)}"
+domain_id="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
+robot_name="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
 build_status="skipped"
 gpio_status="skipped"
 service_status="not-requested"
@@ -214,8 +210,8 @@ esac
 [[ -n "$domain_id" ]] || fail "--domain-id cannot be empty"
 [[ -n "$robot_name" ]] || fail "--robot-name cannot be empty"
 
-workspace="$(swarm_com_detect_workspace_root "$workspace" || true)"
-[[ -n "$workspace" ]] || fail "Unable to detect workspace root. Pass --workspace or set SWARM_COM_WORKSPACE_ROOT."
+workspace="$(swarm_core_detect_workspace_root "$workspace" || true)"
+[[ -n "$workspace" ]] || fail "Unable to detect workspace root. Pass --workspace or set SWARM_CORE_WORKSPACE_ROOT."
 
 target_pkg_dir="${workspace}/src/swarm_control_core"
 if [[ ! -d "$target_pkg_dir" ]]; then
@@ -236,12 +232,12 @@ if [[ ! -d "$target_pkg_dir" ]]; then
   git clone "$repo_url" "$target_pkg_dir"
 fi
 
-if [[ ! -x "${target_pkg_dir}/scripts/swarm_com_check_install_dependencies.sh" ]]; then
-  fail "Expected dependency script at ${target_pkg_dir}/scripts/swarm_com_check_install_dependencies.sh"
+if [[ ! -x "${target_pkg_dir}/scripts/swarm_core_check_install_dependencies.sh" ]]; then
+  fail "Expected dependency script at ${target_pkg_dir}/scripts/swarm_core_check_install_dependencies.sh"
 fi
 
-if [[ ! -x "${target_pkg_dir}/scripts/swarm_com_seed_runtime_config.sh" ]]; then
-  fail "Expected runtime config seed script at ${target_pkg_dir}/scripts/swarm_com_seed_runtime_config.sh"
+if [[ ! -x "${target_pkg_dir}/scripts/swarm_core_seed_runtime_config.sh" ]]; then
+  fail "Expected runtime config seed script at ${target_pkg_dir}/scripts/swarm_core_seed_runtime_config.sh"
 fi
 
 log "Workspace=${workspace}"
@@ -249,17 +245,17 @@ log "Role=${machine_role}"
 log "Domain ID=${domain_id}"
 
 current_step="dependency-check"
-"${target_pkg_dir}/scripts/swarm_com_check_install_dependencies.sh" \
+"${target_pkg_dir}/scripts/swarm_core_check_install_dependencies.sh" \
   --machine-role "$machine_role" \
   --summary-file "$dep_summary_file"
 
 current_step="seed-runtime-config"
-"${target_pkg_dir}/scripts/swarm_com_seed_runtime_config.sh" \
+"${target_pkg_dir}/scripts/swarm_core_seed_runtime_config.sh" \
   --workspace "$workspace"
 
 if [[ "$machine_role" == "robot" && "$skip_gpio" != "1" ]]; then
   current_step="gpio-setup"
-  "${target_pkg_dir}/scripts/swarm_com_enable_gpio_access.sh" --user "${USER:-$(id -un)}"
+  "${target_pkg_dir}/scripts/swarm_core_enable_gpio_access.sh" --user "${USER:-$(id -un)}"
   gpio_status="configured"
 fi
 
@@ -279,7 +275,7 @@ fi
 if [[ "$machine_role" == "robot" && "$install_service" == "1" ]]; then
   current_step="install-service"
   install_cmd=(
-    "${target_pkg_dir}/scripts/swarm_com_install_robot_service.sh"
+    "${target_pkg_dir}/scripts/swarm_core_install_robot_service.sh"
     --workspace "$workspace"
     --domain-id "$domain_id"
     --robot-name "$robot_name"
@@ -301,7 +297,7 @@ else
   echo "(dependency summary unavailable)"
 fi
 
-runtime_cfg_dir="${SWARM_COM_CONFIG_DIR:-$HOME/.config/swarm_control_core}"
+runtime_cfg_dir="${SWARM_CORE_CONFIG_DIR:-$HOME/.config/swarm_control_core}"
 print_current_setup_summary "$runtime_cfg_dir" "$build_status" "$gpio_status" "$service_status"
 
 current_step="complete"

@@ -1,10 +1,15 @@
-# Community FPV QUICKSTART
+# Local FPV Quickstart
 
 Status: active local/LAN quickstart for `swarm_control_core`.
 
 Use this for the shortest path to local robot FPV + control.
 For full detail and extended troubleshooting, use:
 - [`LOCAL_FPV_runbook.md`](LOCAL_FPV_runbook.md)
+
+If you are still assembling the reference robot or doing first-time machine
+setup, start with:
+- [`setup_instructions_ASSEMBLY.md`](setup_instructions_ASSEMBLY.md)
+- [`setup_instructions_SOFTWARE.md`](setup_instructions_SOFTWARE.md)
 
 This runbook is split into two parts:
 1. **Quickstart Path** at the top.
@@ -50,7 +55,7 @@ sudo systemctl is-active swarm-robot.service || true
 ### Step 0.0: Workspace bootstrap (run in each terminal)
 
 ```bash
-SWARM_CORE_BOOTSTRAP="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_com_workspace_bootstrap.sh" 2>/dev/null | sort | head -n1)"
+SWARM_CORE_BOOTSTRAP="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh" 2>/dev/null | sort | head -n1)"
 if [[ -z "$SWARM_CORE_BOOTSTRAP" ]]; then
   echo "[FAIL] Could not locate swarm_control_core workspace bootstrap script under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
 else
@@ -66,21 +71,21 @@ Use `source` so the current terminal actually drops stale ROS/overlay state befo
 ### Run on control machine:
 
 ```bash
-source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
+source "$WS/src/swarm_control_core/scripts/swarm_core_reset_env.sh" \
   --scope deep \
   --machine-role control \
   --compat-mode \
-  --domain-id "${SWARM_COM_ROS_DOMAIN_ID:-17}"
+  --domain-id "${SWARM_CORE_ROS_DOMAIN_ID:-17}"
 ```
 
 ### Run in each dedicated robot SSH terminal (one per robot):
 
 ```bash
-source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
+source "$WS/src/swarm_control_core/scripts/swarm_core_reset_env.sh" \
   --scope deep \
   --machine-role robot \
   --compat-mode \
-  --domain-id "${SWARM_COM_ROS_DOMAIN_ID:-17}"
+  --domain-id "${SWARM_CORE_ROS_DOMAIN_ID:-17}"
 ```
 
 ### Step 0.2: Dependency Check/Install
@@ -88,14 +93,14 @@ source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
 ### Run on control machine:
 
 ```bash
-"$WS/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
+"$WS/src/swarm_control_core/scripts/swarm_core_check_install_dependencies.sh" \
   --machine-role control
 ```
 
 ### Run in each dedicated robot SSH terminal (one terminal per robot):
 
 ```bash
-"$WS/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
+"$WS/src/swarm_control_core/scripts/swarm_core_check_install_dependencies.sh" \
   --machine-role robot
 ```
 
@@ -125,11 +130,11 @@ git fetch origin --prune
 git switch main || git checkout -b main origin/main
 git pull --ff-only origin main
 
-rg -n -- '--machine-role|--compat-mode|compat-stop-ufw|ROS_AUTOMATIC_DISCOVERY_RANGE|SWARM_COM_PROCESS_RESET_DONE|SWARM_COM_WEBRTC_FPS|SWARM_COM_THUMB_REFRESH_HZ|SWARM_COM_IMAGE_SUBSCRIPTION_MODE|SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S|SWARM_COM_THUMB_ROBOTS_PER_TICK|SWARM_COM_DRIVE_CMD_RATE_HZ|SWARM_COM_DRIVE_HOLD_TIMEOUT_S' \
-  "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
-  "$WS/src/swarm_control_core/scripts/swarm_com_terminate_existing_robot_processes.sh" \
-  "$WS/src/swarm_control_core/scripts/swarm_com_run_robot.sh" \
-  "$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
+rg -n -- '--machine-role|--compat-mode|compat-stop-ufw|ROS_AUTOMATIC_DISCOVERY_RANGE|SWARM_CORE_PROCESS_RESET_DONE|SWARM_CORE_WEBRTC_FPS|SWARM_CORE_THUMB_REFRESH_HZ|SWARM_CORE_IMAGE_SUBSCRIPTION_MODE|SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S|SWARM_CORE_THUMB_ROBOTS_PER_TICK|SWARM_CORE_DRIVE_CMD_RATE_HZ|SWARM_CORE_DRIVE_HOLD_TIMEOUT_S' \
+  "$WS/src/swarm_control_core/scripts/swarm_core_reset_env.sh" \
+  "$WS/src/swarm_control_core/scripts/swarm_core_terminate_existing_robot_processes.sh" \
+  "$WS/src/swarm_control_core/scripts/swarm_core_run_robot.sh" \
+  "$WS/src/swarm_control_core/scripts/swarm_core_run_local_ui.sh"
 
 cd "$WS"
 set +u
@@ -146,7 +151,7 @@ Expected:
 - no missing `swarm_control_core` package errors
 - compatibility script check prints matches for:
   `--machine-role`, `--compat-mode`, `compat-stop-ufw`,
-  `ROS_AUTOMATIC_DISCOVERY_RANGE`, and `SWARM_COM_PROCESS_RESET_DONE`
+  `ROS_AUTOMATIC_DISCOVERY_RANGE`, and `SWARM_CORE_PROCESS_RESET_DONE`
 
 ### IF build/source fails
 
@@ -161,25 +166,25 @@ Proceed to Step 2.
 
 ```bash
 # Block A: compatibility prep + robot identity exports
-# Compatibility prep for mixed-use robots (community + proprietary):
+# Compatibility prep for mixed-use robots (`swarm_control_core` + proprietary stack):
 # - clears conflicting env/session vars
 # - stops conflicting services/processes
 # - applies runtime-only proprietary service masks (auto-cleared on reboot)
 # - in compat mode, may stop ufw runtime so DDS discovery is not blocked
 #   (reboot restores ufw policy)
-source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
+source "$WS/src/swarm_control_core/scripts/swarm_core_reset_env.sh" \
   --scope deep \
   --machine-role robot \
   --compat-mode \
-  --domain-id "${SWARM_COM_ROS_DOMAIN_ID:-17}" || {
-    echo "[FAIL] community compatibility reset failed; sync/pull latest swarm_control_core and retry."
+  --domain-id "${SWARM_CORE_ROS_DOMAIN_ID:-17}" || {
+    echo "[FAIL] core compatibility reset failed; sync/pull latest swarm_control_core and retry."
     return 1 2>/dev/null || exit 1
   }
 
-export SWARM_COM_ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
-export SWARM_COM_ROBOT_NAME="${SWARM_COM_ROBOT_NAME:-$(id -un)}"
+export SWARM_CORE_ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
+export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
 # Optional camera bypass for noisy camera devices:
-# export SWARM_COM_USE_CAMERA=false
+# export SWARM_CORE_USE_CAMERA=false
 
 # Verify robot firewall/power-save state (required for stable local DDS + Wi-Fi latency):
 systemctl is-active ufw.service || true
@@ -207,14 +212,14 @@ fi
 #   choose the camera entry that should be used for this robot when prompted.
 # NOTE:
 #   explicit menu selection is now respected even if probe warns.
-#   (set SWARM_COM_CAMERA_ALLOW_PROBE_FALLBACK=1 to allow auto-fallback)
+#   (set SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK=1 to allow auto-fallback)
 cd "$WS"
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
-ROBOT_NAME="${SWARM_COM_ROBOT_NAME:-${USER:-$(id -un)}}"
-ros2 run swarm_control_core save_camera_profile_com --robot "$ROBOT_NAME"
+ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-${USER:-$(id -un)}}"
+ros2 run swarm_control_core save_camera_profile_core --robot "$ROBOT_NAME"
 ```
 
 Expected from save step:
@@ -226,17 +231,19 @@ Expected from save step:
 
 ```bash
 # Block C: launch robot bringup
-ROBOT_NAME="${SWARM_COM_ROBOT_NAME:-${USER:-$(id -un)}}"
-"$WS/src/swarm_control_core/scripts/swarm_com_run_robot.sh" "$ROBOT_NAME"
+ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-${USER:-$(id -un)}}"
+"$WS/src/swarm_control_core/scripts/swarm_core_run_robot.sh" "$ROBOT_NAME"
 ```
 
-Profile refresh behavior:
-- `swarm_com_run_robot.sh` refreshes core runtime profiles from Git each launch
-  (`robot_instances.yaml`, `control_types.yaml`, `control_interfaces.yaml`,
-  `capability_profiles.yaml`, `adapter_profiles.yaml`) while preserving
-  existing `camera_profiles.yaml`.
-- Disable this only if you intentionally maintain custom local runtime profiles:
-  `export SWARM_COM_SEED_OVERWRITE_CORE_PROFILES=0`
+Runtime config seeding behavior:
+- `swarm_core_run_robot.sh` seeds missing runtime config files from
+  `src/swarm_control_core/config` into `~/.config/swarm_control_core/`.
+- Existing runtime files are kept by default, including
+  `robot_instances.yaml`, `control_types.yaml`, `control_interfaces.yaml`,
+  and `camera_profiles.yaml`.
+- If you want to refresh the core profile files while preserving
+  `camera_profiles.yaml`, run:
+  `"$WS/src/swarm_control_core/scripts/swarm_core_seed_runtime_config.sh" --workspace "$WS" --overwrite-core-profiles`
 
 ### Verify success
 
@@ -266,7 +273,7 @@ If teleop/video feels laggy while motors are receiving frequent commands:
 - reduce cmd_vel audit overhead for this session:
 
 ```bash
-export SWARM_COM_AUDIT_CMD_VEL_MIN_PERIOD_S=2.0
+export SWARM_CORE_AUDIT_CMD_VEL_MIN_PERIOD_S=2.0
 ```
 
 Reboot behavior note:
@@ -288,32 +295,32 @@ Prerequisite (required):
 ```bash
 # Compatibility prep for mixed-use control machine state:
 # - in compat mode, may stop ufw runtime if needed for DDS discovery
-source "$WS/src/swarm_control_core/scripts/swarm_com_reset_env.sh" \
+source "$WS/src/swarm_control_core/scripts/swarm_core_reset_env.sh" \
   --scope deep \
   --machine-role control \
   --compat-mode \
-  --domain-id "${SWARM_COM_ROS_DOMAIN_ID:-17}" || {
-    echo "[FAIL] community compatibility reset failed; sync/pull latest swarm_control_core and retry."
+  --domain-id "${SWARM_CORE_ROS_DOMAIN_ID:-17}" || {
+    echo "[FAIL] core compatibility reset failed; sync/pull latest swarm_control_core and retry."
     return 1 2>/dev/null || exit 1
   }
 
-export SWARM_COM_ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
+export SWARM_CORE_ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
 # Multi-robot low-latency defaults (local/LAN):
 # - keep main-pane transport WebRTC-only
 # - pace WebRTC to match the low-latency camera clamp
 # - disable passive thumbnail probing so non-active robot video stays completely off
 # - use CycloneDDS multicast defaults (enforced by the run script) for stable multi-robot LAN discovery
 # - keep camera subscriptions interest-driven so control does not ingest full-fleet video continuously
-# - keep drive target refresh aligned with the last stable community defaults
+# - keep drive target refresh aligned with the current core defaults
 # - set explicit values (no `:-`) so old shell values cannot silently persist
-export SWARM_COM_WEBRTC_FPS=15.0
-export SWARM_COM_THUMB_REFRESH_HZ=0.5
-export SWARM_COM_IMAGE_SUBSCRIPTION_MODE=active_only
-export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=0.75
-export SWARM_COM_THUMB_ROBOTS_PER_TICK=0
-export SWARM_COM_DRIVE_CMD_RATE_HZ=20.0
-export SWARM_COM_DRIVE_HOLD_TIMEOUT_S=0.35
-"$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
+export SWARM_CORE_WEBRTC_FPS=15.0
+export SWARM_CORE_THUMB_REFRESH_HZ=0.5
+export SWARM_CORE_IMAGE_SUBSCRIPTION_MODE=active_only
+export SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S=0.75
+export SWARM_CORE_THUMB_ROBOTS_PER_TICK=0
+export SWARM_CORE_DRIVE_CMD_RATE_HZ=20.0
+export SWARM_CORE_DRIVE_HOLD_TIMEOUT_S=0.35
+"$WS/src/swarm_control_core/scripts/swarm_core_run_local_ui.sh"
 ```
 
 Terminal usage requirement:
@@ -326,20 +333,20 @@ Operator tip:
 For maximum active-robot latency reduction in single-robot focus mode (at the cost of much slower fleet-tile updates and slower robot switching):
 
 ```bash
-export SWARM_COM_THUMB_ROBOTS_PER_TICK=0
+export SWARM_CORE_THUMB_ROBOTS_PER_TICK=0
 ```
 
 Switch behavior (expected):
 
 - Active robot switch triggers WebRTC main-stream handoff.
-- Keep `SWARM_COM_THUMB_ROBOTS_PER_TICK=1` for balanced fleet tile updates with passive side-tile probing.
-- Use `SWARM_COM_THUMB_ROBOTS_PER_TICK=0` only when you care about one active robot and minimal background load.
+- Keep `SWARM_CORE_THUMB_ROBOTS_PER_TICK=1` for balanced fleet tile updates with passive side-tile probing.
+- Use `SWARM_CORE_THUMB_ROBOTS_PER_TICK=0` only when you care about one active robot and minimal background load.
 
 If rapid back-and-forth switching still feels sticky in `active_only` mode, use this switch-heavy profile:
 
 ```bash
-export SWARM_COM_THUMB_REFRESH_HZ=1.0
-export SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S=4.0
+export SWARM_CORE_THUMB_REFRESH_HZ=1.0
+export SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S=4.0
 ```
 
 Open in browser:
@@ -347,15 +354,15 @@ Open in browser:
 
 Video path:
 - Main stream uses strict WebRTC-only transport by default.
-- To keep all robot camera streams subscribed continuously (higher load), set `SWARM_COM_IMAGE_SUBSCRIPTION_MODE=all`.
+- To keep all robot camera streams subscribed continuously (higher load), set `SWARM_CORE_IMAGE_SUBSCRIPTION_MODE=all`.
 - Fleet thumbnails stay in side tiles and do not take over the main pane.
 
 Optional private LAN bind:
 
 ```bash
-export SWARM_COM_ALLOW_LAN_BIND=1
-export SWARM_COM_BIND_HOST=0.0.0.0
-"$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
+export SWARM_CORE_ALLOW_LAN_BIND=1
+export SWARM_CORE_BIND_HOST=0.0.0.0
+"$WS/src/swarm_control_core/scripts/swarm_core_run_local_ui.sh"
 ```
 
 ### IF UI does not load or bind
@@ -398,15 +405,15 @@ Proceed to Step 5.
 Terminal teleop:
 
 ```bash
-export ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
-ros2 run swarm_control_core swarm_teleop_com
+export ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
+ros2 run swarm_control_core swarm_teleop_core
 ```
 
 Terminal orchestrator:
 
 ```bash
-export ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
-ros2 run swarm_control_core terminal_orchestrator_com
+export ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
+ros2 run swarm_control_core terminal_orchestrator_core
 ```
 
 ### IF terminal control cannot discover robots
@@ -424,7 +431,7 @@ Run:
 
 ```bash
 sudo apt-get update
-"$WS/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
+"$WS/src/swarm_control_core/scripts/swarm_core_check_install_dependencies.sh" \
   --machine-role control
 ```
 
@@ -461,7 +468,7 @@ set -u || true
 ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
 ros2 node list
 ros2 topic list | rg "/${ROBOT_NAME}/(heartbeat|camera/image_raw|cmd_vel)"
-ros2 run swarm_control_core save_camera_profile_com --robot "$ROBOT_NAME"
+ros2 run swarm_control_core save_camera_profile_core --robot "$ROBOT_NAME"
 ```
 
 Then return to [Step 2](#step-2).
@@ -472,16 +479,16 @@ Then return to [Step 2](#step-2).
 Run on control machine:
 
 ```bash
-"$WS/src/swarm_control_core/scripts/swarm_com_free_ui_port.sh" --port 8080
-export ROS_DOMAIN_ID="${SWARM_COM_ROS_DOMAIN_ID:-17}"
-"$WS/src/swarm_control_core/scripts/swarm_com_run_local_ui.sh"
+"$WS/src/swarm_control_core/scripts/swarm_core_free_ui_port.sh" --port 8080
+export ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
+"$WS/src/swarm_control_core/scripts/swarm_core_run_local_ui.sh"
 ```
 
 If LAN access is needed, set:
 
 ```bash
-export SWARM_COM_ALLOW_LAN_BIND=1
-export SWARM_COM_BIND_HOST=0.0.0.0
+export SWARM_CORE_ALLOW_LAN_BIND=1
+export SWARM_CORE_BIND_HOST=0.0.0.0
 ```
 
 Then return to [Step 3](#step-3).
@@ -492,7 +499,7 @@ Then return to [Step 3](#step-3).
 Check domain and source consistency on control + robots:
 
 ```bash
-echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID (target=${SWARM_COM_ROS_DOMAIN_ID:-17})"
+echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID (target=${SWARM_CORE_ROS_DOMAIN_ID:-17})"
 env | rg -E '^(ROS_DOMAIN_ID|ROS_LOCALHOST_ONLY|ROS_AUTOMATIC_DISCOVERY_RANGE|ROS_STATIC_PEERS|ROS_DISCOVERY_SERVER|RMW_IMPLEMENTATION)=' || true
 ros2 topic list | rg "/.*/heartbeat"
 ```
@@ -506,7 +513,7 @@ Keep compat defaults and rerun [Step 2](#step-2) on robots + [Step 3](#step-3) o
 If you previously forced firewall preservation, remove that override:
 
 ```bash
-unset SWARM_COM_COMPAT_STOP_UFW
+unset SWARM_CORE_COMPAT_STOP_UFW
 ```
 
 If reset script prints `Unknown argument: --machine-role`, your robot/control checkout is stale.

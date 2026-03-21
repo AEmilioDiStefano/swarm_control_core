@@ -11,9 +11,9 @@ Provide a repeatable validation procedure for low-latency FPV/control behavior a
 - WebRTC dependencies installed (`python3-aiortc`, `python3-av`)
 - `swarm_fpv_ui` running in its default strict WebRTC-only main-stream mode
 - Interest-driven balanced switch profile:
-  - `SWARM_COM_IMAGE_SUBSCRIPTION_MODE=active_only`
-  - `SWARM_COM_THUMB_ROBOTS_PER_TICK=1`
-  - `SWARM_COM_THUMB_REFRESH_HZ=0.5`
+  - `SWARM_CORE_IMAGE_SUBSCRIPTION_MODE=active_only`
+  - `SWARM_CORE_THUMB_ROBOTS_PER_TICK=1`
+  - `SWARM_CORE_THUMB_REFRESH_HZ=0.5`
 
 ## Validation Procedure
 

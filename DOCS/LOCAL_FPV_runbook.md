@@ -7,19 +7,19 @@ Workspace bootstrap (run once per terminal before DRP steps):
 ```bash
 # Works from any directory:
 # - auto-detects the workspace that contains swarm_control_core
-# - set SWARM_COM_WORKSPACE_ROOT=/path/to/workspace to force selection
-if [[ -n "${SWARM_COM_WORKSPACE_ROOT:-}" ]] && [[ -f "${SWARM_COM_WORKSPACE_ROOT}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh" ]]; then
-  source "${SWARM_COM_WORKSPACE_ROOT}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh"
+# - set SWARM_CORE_WORKSPACE_ROOT=/path/to/workspace to force selection
+if [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]] && [[ -f "${SWARM_CORE_WORKSPACE_ROOT}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" ]]; then
+  source "${SWARM_CORE_WORKSPACE_ROOT}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh"
 else
   _swarm_search_root="${SWARM_SEARCH_ROOT:-$HOME}"
-  mapfile -t _sc_core_env_candidates < <(find "$_swarm_search_root" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_com_workspace_env.sh" 2>/dev/null | sort)
+  mapfile -t _sc_core_env_candidates < <(find "$_swarm_search_root" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" 2>/dev/null | sort)
   if (( ${#_sc_core_env_candidates[@]} == 0 )); then
     echo "[FAIL] Could not locate swarm_control_core workspace under $_swarm_search_root." >&2
     return 1 2>/dev/null || exit 1
   fi
   if (( ${#_sc_core_env_candidates[@]} > 1 )); then
     echo "[WARN] Multiple swarm_control_core workspaces found; using: ${_sc_core_env_candidates[0]}" >&2
-    echo "       Set SWARM_COM_WORKSPACE_ROOT=/path/to/workspace to force selection." >&2
+    echo "       Set SWARM_CORE_WORKSPACE_ROOT=/path/to/workspace to force selection." >&2
   fi
   source "${_sc_core_env_candidates[0]}"
   unset _sc_core_env_candidates _swarm_search_root
@@ -33,7 +33,7 @@ fi
 Run this on each machine:
 
 ```bash
-"$WS_DEV/src/swarm_control_core/scripts/swarm_com_check_install_dependencies.sh" \
+"$WS_DEV/src/swarm_control_core/scripts/swarm_core_check_install_dependencies.sh" \
   --machine-role control
 ```
 
@@ -65,7 +65,7 @@ Run on each robot:
 ```bash
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-17}"
 ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
-"$WS_DEV/src/swarm_control_core/scripts/swarm_com_terminate_existing_robot_processes.sh"
+"$WS_DEV/src/swarm_control_core/scripts/swarm_core_terminate_existing_robot_processes.sh"
 
 ros2 launch swarm_control_core swarm_bringup.launch.py \
   robot_name:="$ROBOT_NAME" \
@@ -93,8 +93,8 @@ Open:
 Optional private LAN bind:
 
 ```bash
-export SWARM_COM_ALLOW_LAN_BIND=1
-export SWARM_COM_BIND_HOST=0.0.0.0
+export SWARM_CORE_ALLOW_LAN_BIND=1
+export SWARM_CORE_BIND_HOST=0.0.0.0
 ros2 launch swarm_control_core swarm_fpv_ui.launch.py ros_domain_id:="$ROS_DOMAIN_ID"
 ```
 
@@ -107,14 +107,14 @@ Terminal teleop:
 
 ```bash
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-17}"
-ros2 run swarm_control_core swarm_teleop_com
+ros2 run swarm_control_core swarm_teleop_core
 ```
 
 Terminal orchestrator (simple playbooks):
 
 ```bash
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-17}"
-ros2 run swarm_control_core terminal_orchestrator_com
+ros2 run swarm_control_core terminal_orchestrator_core
 ```
 
 ### IF terminal nodes fail to discover robots
@@ -163,7 +163,7 @@ If camera topic is missing, verify camera profile and device path:
 
 ```bash
 ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
-ros2 run swarm_control_core save_camera_profile_com --robot "$ROBOT_NAME"
+ros2 run swarm_control_core save_camera_profile_core --robot "$ROBOT_NAME"
 ```
 
 ### 5.4 UI starts but no robots appear
@@ -187,13 +187,13 @@ ros2 topic list | rg "/.*/cmd_vel"
 ros2 action list | rg "/.*/execute_playbook"
 ```
 
-If actions are missing, verify `unit_executor_action_server_com` is running from Step 3.
+If actions are missing, verify `unit_executor_action_server_core` is running from Step 3.
 
 ### 5.6 Service-mode switch on shared robots
 
 If robots are shared between multiple stacks, use mode switching on the robot:
 
 ```bash
-"$WS_DEV/src/swarm_control_core/scripts/swarm_com_switch_robot_mode.sh" status
-"$WS_DEV/src/swarm_control_core/scripts/swarm_com_switch_robot_mode.sh" activate --install-if-missing
+"$WS_DEV/src/swarm_control_core/scripts/swarm_core_switch_robot_mode.sh" status
+"$WS_DEV/src/swarm_control_core/scripts/swarm_core_switch_robot_mode.sh" activate --install-if-missing
 ```

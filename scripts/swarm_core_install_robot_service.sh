@@ -2,22 +2,22 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./lib/swarm_com_workspace.sh
-source "${script_dir}/lib/swarm_com_workspace.sh"
+# shellcheck source=./lib/swarm_core_workspace.sh
+source "${script_dir}/lib/swarm_core_workspace.sh"
 
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_com_install_robot_service.sh [options]
+  swarm_core_install_robot_service.sh [options]
 
 Options:
   --workspace <path>               Workspace root (default: auto-detect)
-  --service-name <name>            Community service name (default: com-swarm-robot)
+  --service-name <name>            Community service name (default: swarm-core-robot)
   --service-user <user>            Service user (default: current user)
   --env-file <path>                Environment file (default: /etc/swarm_control_core/robot.env)
   --existing-service-name <name>   Existing robot service name to conflict with
                                    (default: swarm-robot)
-  --robot-name <name>              Robot identity (default: $SWARM_COM_ROBOT_NAME or $USER)
+  --robot-name <name>              Robot identity (default: $SWARM_CORE_ROBOT_NAME or $USER)
   --domain-id <id>                 ROS domain ID (default: 17)
   --profiles-path <path>           profiles file path (optional)
   --camera-profiles-path <path>    camera profiles file path (optional)
@@ -29,11 +29,11 @@ USAGE
 }
 
 log() {
-  echo "[swarm_com_install_robot_service] $*" >&2
+  echo "[swarm_core_install_robot_service] $*" >&2
 }
 
 fail() {
-  echo "[swarm_com_install_robot_service] ERROR: $*" >&2
+  echo "[swarm_core_install_robot_service] ERROR: $*" >&2
   exit 1
 }
 
@@ -54,12 +54,12 @@ trim() {
 }
 
 workspace=""
-service_name="com-swarm-robot"
+service_name="swarm-core-robot"
 service_user="${USER:-$(id -un)}"
 env_file="/etc/swarm_control_core/robot.env"
-existing_service_name="${SWARM_COM_EXISTING_ROBOT_SERVICE:-swarm-robot}"
-robot_name="${SWARM_COM_ROBOT_NAME:-${USER:-$(id -un)}}"
-domain_id="${SWARM_COM_ROS_DOMAIN_ID:-17}"
+existing_service_name="${SWARM_CORE_EXISTING_ROBOT_SERVICE:-swarm-robot}"
+robot_name="${SWARM_CORE_ROBOT_NAME:-${USER:-$(id -un)}}"
+domain_id="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
 profiles_path="${PROFILES_PATH:-}"
 camera_profiles_path="${CAMERA_PROFILES_PATH:-}"
 use_camera="true"
@@ -127,8 +127,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 workspace="$(trim "$workspace")"
-workspace="$(swarm_com_detect_workspace_root "$workspace" || true)"
-[[ -n "$workspace" ]] || fail "Unable to detect workspace root. Pass --workspace or set SWARM_COM_WORKSPACE_ROOT."
+workspace="$(swarm_core_detect_workspace_root "$workspace" || true)"
+[[ -n "$workspace" ]] || fail "Unable to detect workspace root. Pass --workspace or set SWARM_CORE_WORKSPACE_ROOT."
 service_name="$(trim "$service_name")"
 service_user="$(trim "$service_user")"
 env_file="$(trim "$env_file")"
@@ -157,11 +157,11 @@ trap 'rm -f "$tmp_env" "$tmp_unit"' EXIT
 cat > "$tmp_env" <<ENV
 WORKSPACE=${workspace}
 ROS_DOMAIN_ID=${domain_id}
-SWARM_COM_ROBOT_NAME=${robot_name}
-SWARM_COM_USE_CAMERA=${use_camera}
-SWARM_COM_CAMERA_PIPELINE=${camera_pipeline}
-SWARM_COM_PROFILES_PATH=${profiles_path}
-SWARM_COM_CAMERA_PROFILES_PATH=${camera_profiles_path}
+SWARM_CORE_ROBOT_NAME=${robot_name}
+SWARM_CORE_USE_CAMERA=${use_camera}
+SWARM_CORE_CAMERA_PIPELINE=${camera_pipeline}
+SWARM_CORE_PROFILES_PATH=${profiles_path}
+SWARM_CORE_CAMERA_PROFILES_PATH=${camera_profiles_path}
 ENV
 
 conflicts_line=""
@@ -181,7 +181,7 @@ Type=simple
 User=${service_user}
 WorkingDirectory=${workspace}
 EnvironmentFile=${env_file}
-ExecStart=/usr/bin/env bash -lc 'set -euo pipefail; source /opt/ros/\${ROS_DISTRO:-jazzy}/setup.bash; source "\${WORKSPACE}/install/setup.bash"; export ROS_DOMAIN_ID="\${ROS_DOMAIN_ID:-17}"; exec ros2 launch swarm_control_core swarm_bringup.launch.py robot_name:="\${SWARM_COM_ROBOT_NAME}" ros_domain_id:="\${ROS_DOMAIN_ID}" use_camera:="\${SWARM_COM_USE_CAMERA}" camera_pipeline:="\${SWARM_COM_CAMERA_PIPELINE}" profiles_path:="\${SWARM_COM_PROFILES_PATH}" camera_profiles_path:="\${SWARM_COM_CAMERA_PROFILES_PATH}"'
+ExecStart=/usr/bin/env bash -lc 'set -euo pipefail; source /opt/ros/\${ROS_DISTRO:-jazzy}/setup.bash; source "\${WORKSPACE}/install/setup.bash"; export ROS_DOMAIN_ID="\${ROS_DOMAIN_ID:-17}"; exec ros2 launch swarm_control_core swarm_bringup.launch.py robot_name:="\${SWARM_CORE_ROBOT_NAME}" ros_domain_id:="\${ROS_DOMAIN_ID}" use_camera:="\${SWARM_CORE_USE_CAMERA}" camera_pipeline:="\${SWARM_CORE_CAMERA_PIPELINE}" profiles_path:="\${SWARM_CORE_PROFILES_PATH}" camera_profiles_path:="\${SWARM_CORE_CAMERA_PROFILES_PATH}"'
 Restart=always
 RestartSec=2
 KillSignal=SIGINT

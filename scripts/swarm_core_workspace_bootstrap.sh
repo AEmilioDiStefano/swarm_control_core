@@ -4,13 +4,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./lib/swarm_com_workspace.sh
-source "${SCRIPT_DIR}/lib/swarm_com_workspace.sh"
+# shellcheck source=./lib/swarm_core_workspace.sh
+source "${SCRIPT_DIR}/lib/swarm_core_workspace.sh"
 
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_com_workspace_bootstrap.sh [--workspace <path>] [--search-root <path>] [--interactive|--non-interactive] [--emit-shell]
+  swarm_core_workspace_bootstrap.sh [--workspace <path>] [--search-root <path>] [--interactive|--non-interactive] [--emit-shell]
 
 Behavior:
   - Detects the workspace containing swarm_control_core from anywhere.
@@ -18,8 +18,8 @@ Behavior:
   - With --emit-shell, prints export commands to stdout for eval usage.
 
 Examples:
-  eval "$(/path/to/swarm_com_workspace_bootstrap.sh --interactive --emit-shell)"
-  /path/to/swarm_com_workspace_bootstrap.sh --workspace /home/user/my_workspace --non-interactive
+  eval "$(/path/to/swarm_core_workspace_bootstrap.sh --interactive --emit-shell)"
+  /path/to/swarm_core_workspace_bootstrap.sh --workspace /home/user/my_workspace --non-interactive
 USAGE
 }
 
@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      echo "[swarm_com_workspace_bootstrap] Unknown argument: $1" >&2
+      echo "[swarm_core_workspace_bootstrap] Unknown argument: $1" >&2
       usage >&2
       exit 2
       ;;
@@ -81,8 +81,8 @@ resolve_env_script() {
     return 1
   fi
   expanded="$(expand_core_path "$ws_candidate")"
-  if [[ -f "${expanded}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh" ]]; then
-    printf '%s' "${expanded}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh"
+  if [[ -f "${expanded}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" ]]; then
+    printf '%s' "${expanded}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh"
     return 0
   fi
   return 1
@@ -91,8 +91,8 @@ resolve_env_script() {
 resolve_from_pwd() {
   local cur="${PWD}"
   while [[ -n "$cur" && "$cur" != "/" ]]; do
-    if [[ -f "${cur}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh" ]]; then
-      printf '%s' "${cur}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh"
+    if [[ -f "${cur}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" ]]; then
+      printf '%s' "${cur}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh"
       return 0
     fi
     cur="$(dirname "$cur")"
@@ -107,28 +107,28 @@ if [[ -n "$workspace_override" ]]; then
   env_script="$(resolve_env_script "$workspace_override" || true)"
 elif env_from_pwd="$(resolve_from_pwd || true)"; [[ -n "$env_from_pwd" ]]; then
   env_script="$env_from_pwd"
-elif [[ -f "${script_workspace_root}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh" ]]; then
-  env_script="${script_workspace_root}/src/swarm_control_core/scripts/swarm_com_workspace_env.sh"
-elif [[ -n "${SWARM_COM_WORKSPACE_ROOT:-}" ]]; then
-  env_script="$(resolve_env_script "${SWARM_COM_WORKSPACE_ROOT}" || true)"
+elif [[ -f "${script_workspace_root}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" ]]; then
+  env_script="${script_workspace_root}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh"
+elif [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]]; then
+  env_script="$(resolve_env_script "${SWARM_CORE_WORKSPACE_ROOT}" || true)"
 fi
 
 if [[ -z "$env_script" ]]; then
-  mapfile -t env_candidates < <(find "$search_root" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_com_workspace_env.sh" 2>/dev/null | sort)
+  mapfile -t env_candidates < <(find "$search_root" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" 2>/dev/null | sort)
   if (( ${#env_candidates[@]} == 0 )); then
     echo "[FAIL] Could not locate swarm_control_core workspace under $search_root." >&2
     exit 1
   fi
   if (( ${#env_candidates[@]} > 1 )); then
     echo "[WARN] Multiple swarm_control_core workspaces found; using: ${env_candidates[0]}" >&2
-    echo "       Set SWARM_COM_WORKSPACE_ROOT=/path/to/workspace to force selection." >&2
+    echo "       Set SWARM_CORE_WORKSPACE_ROOT=/path/to/workspace to force selection." >&2
   fi
   env_script="${env_candidates[0]}"
 fi
 
 workspace_root="$(cd "$(dirname "$env_script")/../../.." && pwd)"
 if [[ ! -d "${workspace_root}/src/swarm_control_core" ]]; then
-  echo "[swarm_com_workspace_bootstrap] ERROR: Invalid workspace root derived from ${env_script}" >&2
+  echo "[swarm_core_workspace_bootstrap] ERROR: Invalid workspace root derived from ${env_script}" >&2
   exit 1
 fi
 
@@ -147,7 +147,7 @@ if [[ "$interactive_mode" == "yes" ]] || { [[ "$interactive_mode" == "auto" ]] &
           printf 'Enter workspace directory name: ' >&2
           read -r ws_input
           if [[ -z "${ws_input// }" ]]; then
-            echo "[swarm_com_workspace_bootstrap] Workspace directory name cannot be empty." >&2
+            echo "[swarm_core_workspace_bootstrap] Workspace directory name cannot be empty." >&2
             continue
           fi
           if [[ "$ws_input" == /* ]]; then
@@ -159,7 +159,7 @@ if [[ "$interactive_mode" == "yes" ]] || { [[ "$interactive_mode" == "auto" ]] &
           fi
           ws_candidate="${ws_candidate%/}"
           if [[ ! -d "${ws_candidate}/src/swarm_control_core" ]]; then
-            echo "[swarm_com_workspace_bootstrap] Path does not contain src/swarm_control_core: ${ws_candidate}" >&2
+            echo "[swarm_core_workspace_bootstrap] Path does not contain src/swarm_control_core: ${ws_candidate}" >&2
             continue
           fi
           workspace_root="$ws_candidate"
@@ -181,12 +181,12 @@ WORKSPACE_NAME="$(basename "$workspace_root")"
 if [[ "$emit_shell" == "1" ]]; then
   printf 'export WS=%q\n' "$workspace_root"
   printf 'export SC=%q\n' "$SC"
-  printf 'export SWARM_COM_WORKSPACE_ROOT=%q\n' "$workspace_root"
+  printf 'export SWARM_CORE_WORKSPACE_ROOT=%q\n' "$workspace_root"
   printf 'export WS_DEV=%q\n' "$workspace_root"
-  printf 'export SWARM_COM_WORKSPACE_NAME=%q\n' "$WORKSPACE_NAME"
+  printf 'export SWARM_CORE_WORKSPACE_NAME=%q\n' "$WORKSPACE_NAME"
   printf 'echo %q\n' "Workspace name has been set to: ${WORKSPACE_NAME}"
 else
-  echo "[swarm_com_workspace_bootstrap] WS=${workspace_root}"
-  echo "[swarm_com_workspace_bootstrap] SC=${SC}"
+  echo "[swarm_core_workspace_bootstrap] WS=${workspace_root}"
+  echo "[swarm_core_workspace_bootstrap] SC=${SC}"
   echo "Workspace name has been set to: ${WORKSPACE_NAME}"
 fi

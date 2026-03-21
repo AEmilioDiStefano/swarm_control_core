@@ -56,16 +56,19 @@ Decode path changes:
 
 ## Operational Knobs
 
-- `SWARM_COM_IMAGE_SUBSCRIPTION_MODE` (`active_only` default, optional `all`)
-- `SWARM_COM_IMAGE_THUMB_INTEREST_TTL_S` (`6.0` default; runtime also applies a dynamic lower bound from `thumb_refresh_hz` and `thumb_robots_per_tick` to prevent subscription flapping)
-- `SWARM_COM_THUMB_ROBOTS_PER_TICK` (`1` balanced default for multi-robot switching; `0` is single-robot focus mode with lower background load but slower switches)
-- `SWARM_COM_WEBRTC_FPS` (`15.0` default)
+- `SWARM_CORE_IMAGE_SUBSCRIPTION_MODE` (`active_only` default, optional `all`)
+- `SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S` (`6.0` default; runtime also applies a dynamic lower bound from `thumb_refresh_hz` and `thumb_robots_per_tick` to prevent subscription flapping)
+- `SWARM_CORE_THUMB_ROBOTS_PER_TICK` (`1` balanced default for multi-robot switching; `0` is single-robot focus mode with lower background load but slower switches)
+- `SWARM_CORE_WEBRTC_FPS` (`15.0` default)
 - Main pane is always strict WebRTC-only
-- `SWARM_COM_THUMB_REFRESH_HZ` (`0.5` default)
-- `swarm_com_reset_env.sh` clears these tuning env vars to prevent stale cross-session carryover.
-- Community runtime knobs are scoped to `SWARM_COM_*`; proprietary env names are not used for community runtime behavior.
-- `swarm_com_run_robot.sh` / `swarm_com_run_local_ui.sh` fail-fast on active `ufw` by default
-  (`SWARM_COM_REQUIRE_UFW_INACTIVE=1`) under LAN discovery settings.
+- `SWARM_CORE_THUMB_REFRESH_HZ` (`0.5` default)
+- `swarm_core_reset_env.sh` clears these tuning env vars to prevent stale cross-session carryover.
+- Core runtime knobs are scoped to `SWARM_CORE_*`; proprietary env names are not used for core runtime behavior.
+- `swarm_core_run_robot.sh` / `swarm_core_run_local_ui.sh` invoke
+  `swarm_core_terminate_existing_robot_processes.sh` in compat mode by default.
+- In compat mode, temporary `ufw` stop behavior is controlled by
+  `SWARM_CORE_COMPAT_STOP_UFW` (or `--compat-stop-ufw`) with `auto`,
+  `always`, and `never` options.
 - Quickstart robot setup includes an idempotent Wi-Fi power-save step:
   if `wlan0` power save is ON, it is set OFF before bringup.
 

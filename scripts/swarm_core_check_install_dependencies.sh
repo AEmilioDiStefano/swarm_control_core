@@ -4,7 +4,7 @@ set -uo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_com_check_install_dependencies.sh [options]
+  swarm_core_check_install_dependencies.sh [options]
 
 Options:
   --machine-role <control|robot>  Dependency profile (default: control)
@@ -41,7 +41,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      echo "[swarm_com_check_install_dependencies] ERROR: Unknown argument: $1" >&2
+      echo "[swarm_core_check_install_dependencies] ERROR: Unknown argument: $1" >&2
       usage >&2
       exit 2
       ;;
@@ -52,7 +52,7 @@ done
 case "$machine_role" in
   control|robot) ;;
   *)
-    echo "[swarm_com_check_install_dependencies] ERROR: --machine-role must be control or robot." >&2
+    echo "[swarm_core_check_install_dependencies] ERROR: --machine-role must be control or robot." >&2
     exit 2
     ;;
 esac
@@ -260,7 +260,7 @@ check_ros_setup_dependency() {
   return 1
 }
 
-echo "[swarm_com_check_install_dependencies] machine_role=${machine_role}"
+echo "[swarm_core_check_install_dependencies] machine_role=${machine_role}"
 
 if ! ensure_ros_apt_repository; then
   record_failure "ros-apt-repository"
@@ -313,6 +313,6 @@ fi
 
 echo
 for dep in "${failures[@]}"; do
-  echo "[swarm_com_check_install_dependencies] FAILED: ${dep}" >&2
+  echo "[swarm_core_check_install_dependencies] FAILED: ${dep}" >&2
 done
 exit 1

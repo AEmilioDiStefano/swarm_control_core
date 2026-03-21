@@ -35,7 +35,7 @@ _BUILTIN_ADAPTER_PROFILES: Dict[str, Dict[str, Any]] = {
 
 def _default_profiles_path() -> Path:
     """
-    Resolve robot_profiles.yaml from explicit environment configuration.
+    Resolve the robot profile entrypoint from explicit environment configuration.
     """
     try:
         return Path(default_profiles_path()).expanduser()
@@ -77,7 +77,8 @@ def load_profile_registry(profiles_path: Optional[str] = None) -> Dict[str, Any]
         return data
 
     # Split layout:
-    #   robot_instances.yaml + control_types.yaml + control_interfaces.yaml + capability_profiles.yaml
+    #   robot_instances.yaml + control_types.yaml + control_interfaces.yaml
+    #   (+ optional capability_profiles.yaml / adapter_profiles.yaml)
     reg = _load_split_registry(path, data)
     _assert_no_camera_settings_in_robot_registry(reg, path)
     return reg
@@ -116,32 +117,40 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
     control_types_path = _resolve_split_path(
         config_dir=config_dir,
         fallback_name="control_types.yaml",
-        env_keys=("CONTROL_TYPES_PATH", "SWARM_COM_CONTROL_TYPES_PATH"),
+        env_keys=("CONTROL_TYPES_PATH", "SWARM_CORE_CONTROL_TYPES_PATH"),
     )
     control_interface_path = _resolve_split_path(
         config_dir=config_dir,
         fallback_name="control_interfaces.yaml",
         env_keys=(
             "CONTROL_INTERFACES_PATH",
-            "SWARM_COM_CONTROL_INTERFACES_PATH",
+            "SWARM_CORE_CONTROL_INTERFACES_PATH",
             "CONTROL_INTERFACE_PATH",
-            "SWARM_COM_CONTROL_INTERFACE_PATH",
+            "SWARM_CORE_CONTROL_INTERFACE_PATH",
         ),
     )
-    capability_profiles_path = _resolve_split_path(
+    capability_profiles_path = _resolve_split_path_optional(
         config_dir=config_dir,
         fallback_name="capability_profiles.yaml",
-        env_keys=("CAPABILITY_PROFILES_PATH", "SWARM_COM_CAPABILITY_PROFILES_PATH"),
+        env_keys=("CAPABILITY_PROFILES_PATH", "SWARM_CORE_CAPABILITY_PROFILES_PATH"),
     )
     adapter_profiles_path = _resolve_split_path_optional(
         config_dir=config_dir,
         fallback_name="adapter_profiles.yaml",
-        env_keys=("ADAPTER_PROFILES_PATH", "SWARM_COM_ADAPTER_PROFILES_PATH"),
+        env_keys=("ADAPTER_PROFILES_PATH", "SWARM_CORE_ADAPTER_PROFILES_PATH"),
     )
 
     control_types_data = _load_yaml_mapping(control_types_path, "control_types")
     control_interface_data = _load_yaml_mapping(control_interface_path, "control_interface")
-    capability_profiles_data = _load_yaml_mapping(capability_profiles_path, "capability_profiles")
+    capability_profiles_data = (
+        _load_yaml_mapping(capability_profiles_path, "capability_profiles")
+        if capability_profiles_path is not None
+        else {
+            "schema_version": "1.0",
+            "defaults": {},
+            "capability_profiles": {},
+        }
+    )
     adapter_profiles_data = (
         _load_yaml_mapping(adapter_profiles_path, "adapter_profiles")
         if adapter_profiles_path is not None
@@ -165,9 +174,9 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
         raise ValueError(
             f"control_interfaces.yaml must define non-empty mapping 'control_interfaces'. File: {control_interface_path}"
         )
-    if not isinstance(capability_profiles, dict) or not capability_profiles:
+    if not isinstance(capability_profiles, dict):
         raise ValueError(
-            f"capability_profiles.yaml must define non-empty mapping 'capability_profiles'. File: {capability_profiles_path}"
+            f"capability_profiles.yaml must define mapping 'capability_profiles'. File: {capability_profiles_path}"
         )
     if not isinstance(adapter_profiles, dict) or not adapter_profiles:
         label = str(adapter_profiles_path) if adapter_profiles_path is not None else "<builtin>"
@@ -209,7 +218,11 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
         raise KeyError(
             f"Default control_interface '{default_control_interface}' not found in control_interfaces.yaml"
         )
-    if default_capability_profile and default_capability_profile not in capability_profiles:
+    if (
+        capability_profiles_path is not None
+        and default_capability_profile
+        and default_capability_profile not in capability_profiles
+    ):
         raise KeyError(
             f"Default capability_profile '{default_capability_profile}' not found in capability_profiles.yaml"
         )
@@ -258,7 +271,11 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
             raise KeyError(
                 f"robots.{robot_name}.control_interface '{control_interface_name}' not found in control_interfaces.yaml"
             )
-        if capability_name and capability_name not in capability_profiles:
+        if (
+            capability_profiles_path is not None
+            and capability_name
+            and capability_name not in capability_profiles
+        ):
             raise KeyError(
                 f"robots.{robot_name}.capability_profile '{capability_name}' not found in capability_profiles.yaml"
             )
@@ -303,7 +320,11 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
             "control_types": str(control_types_path),
             "control_interfaces": str(control_interface_path),
             "control_interface": str(control_interface_path),
-            "capability_profiles": str(capability_profiles_path),
+            "capability_profiles": (
+                str(capability_profiles_path)
+                if capability_profiles_path is not None
+                else "<omitted>"
+            ),
             "adapter_profiles": (
                 str(adapter_profiles_path)
                 if adapter_profiles_path is not None
@@ -361,10 +382,10 @@ def load_robot_profiles_yaml(profiles_path: Optional[str] = None) -> Dict[str, A
 
 def _assert_no_camera_settings_in_robot_registry(data: Dict[str, Any], path: Path) -> None:
     """
-    Prevent conflicting camera config in robot_profiles.yaml.
+    Prevent conflicting camera config in the robot profile registry.
 
     Camera source-of-truth is config/camera_profiles.yaml (or explicit launch args).
-    If camera keys are introduced in robot_profiles.yaml they create ambiguity for
+    If camera keys are introduced in the robot profile registry they create ambiguity for
     operators, so we fail fast with a clear error.
     """
     forbidden_exact = {
@@ -425,7 +446,7 @@ def _assert_no_camera_settings_in_robot_registry(data: Dict[str, Any], path: Pat
         preview = ", ".join(offenders[:8])
         more = "" if len(offenders) <= 8 else f" (+{len(offenders) - 8} more)"
         raise ValueError(
-            "Camera-related keys are not allowed in robot_profiles.yaml. "
+            "Camera-related keys are not allowed in the robot profile registry. "
             "Move camera settings to config/camera_profiles.yaml or pass explicit "
             "camera_* launch args. "
             f"File: {path}. Offending keys: {preview}{more}"

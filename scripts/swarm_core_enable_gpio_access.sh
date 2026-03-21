@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_com_enable_gpio_access.sh [options]
+  swarm_core_enable_gpio_access.sh [options]
 
 Options:
   --rule-file <path>   udev rule file path (default: /etc/udev/rules.d/99-gpiomem.rules)
@@ -21,11 +21,11 @@ USAGE
 }
 
 log() {
-  echo "[swarm_com_enable_gpio_access] $*" >&2
+  echo "[swarm_core_enable_gpio_access] $*" >&2
 }
 
 fail() {
-  echo "[swarm_com_enable_gpio_access] ERROR: $*" >&2
+  echo "[swarm_core_enable_gpio_access] ERROR: $*" >&2
   exit 1
 }
 

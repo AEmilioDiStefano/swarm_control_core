@@ -23,7 +23,7 @@ Stabilize the local/LAN runtime path first, and treat that as the foundation for
 
 Accepted changes that produced the best low-latency behavior:
 
-- Force a known-good community LAN transport path:
+- Force a known-good core LAN transport path:
   - CycloneDDS,
   - multicast discovery defaults,
   - consistent control/robot launch behavior.

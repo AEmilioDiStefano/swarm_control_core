@@ -2,15 +2,13 @@
 #
 # PURPOSE
 # - Defines per-robot instance bindings to control type, control interface,
-#   and capability profile templates.
+#   and per-robot tuning overrides.
 #
 # HOW THIS RELATES TO THE SYSTEM
 # - Primary profile entrypoint for runtime (`PROFILES_PATH`).
 # - Combined with sibling files in the same directory:
 #   - `control_types.yaml`
 #   - `control_interfaces.yaml`
-#   - `capability_profiles.yaml`
-#   - `adapter_profiles.yaml`
 # - Resolved by `swarm_control_core/drive_profiles.py` into effective runtime config.
 #
 # MUTABILITY / OWNERSHIP
@@ -32,8 +30,6 @@ schema_version: "1.0"
 defaults:
   control_type: diff_drive
   control_interface: L298N_diff
-  capability_profile: ground_diff_basic
-  adapter_profile: passthrough_local
 
 robots:
   robot1:
@@ -42,8 +38,6 @@ robots:
     ssh_target: robot1@legion1.local
     control_type: diff_drive
     control_interface: dual_tb6612_diff
-    capability_profile: ground_diff_basic
-    adapter_profile: passthrough_local
     params:
       control_type:
         # Test tune: stronger response while keeping conservative safety margins.
@@ -72,8 +66,6 @@ robots:
     ssh_target: robot2@legion2.local
     control_type: mecanum_drive
     control_interface: dual_tb6612_mecanum
-    capability_profile: ground_omni_basic
-    adapter_profile: passthrough_local
     params:
       control_type:
         orchestrator_linear_duration_scale: 1.55
@@ -95,8 +87,6 @@ robots:
     ssh_target: robot3@legion3.local
     control_type: diff_drive
     control_interface: L298N_diff
-    capability_profile: ground_diff_basic
-    adapter_profile: passthrough_local
     params:
       control_type:
         orchestrator_linear_duration_scale: 0.97
@@ -108,5 +98,3 @@ robots:
     ssh_target: robot_omni@legion-omni.local
     control_type: mecanum_drive
     control_interface: dual_tb6612_mecanum
-    capability_profile: ground_omni_basic
-    adapter_profile: passthrough_local

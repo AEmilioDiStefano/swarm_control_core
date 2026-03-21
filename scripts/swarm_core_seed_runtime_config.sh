@@ -2,13 +2,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./lib/swarm_com_workspace.sh
-source "${SCRIPT_DIR}/lib/swarm_com_workspace.sh"
+# shellcheck source=./lib/swarm_core_workspace.sh
+source "${SCRIPT_DIR}/lib/swarm_core_workspace.sh"
 
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_com_seed_runtime_config.sh [options]
+  swarm_core_seed_runtime_config.sh [options]
 
 Options:
   --workspace <path>      Workspace root (default: auto-detect)
@@ -29,11 +29,11 @@ USAGE
 }
 
 log() {
-  echo "[swarm_com_seed_runtime_config] $*" >&2
+  echo "[swarm_core_seed_runtime_config] $*" >&2
 }
 
 fail() {
-  echo "[swarm_com_seed_runtime_config] ERROR: $*" >&2
+  echo "[swarm_core_seed_runtime_config] ERROR: $*" >&2
   exit 1
 }
 
@@ -69,8 +69,8 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-workspace="$(swarm_com_detect_workspace_root "$workspace" || true)"
-[[ -n "$workspace" ]] || fail "Unable to detect workspace root. Pass --workspace or set SWARM_COM_WORKSPACE_ROOT."
+workspace="$(swarm_core_detect_workspace_root "$workspace" || true)"
+[[ -n "$workspace" ]] || fail "Unable to detect workspace root. Pass --workspace or set SWARM_CORE_WORKSPACE_ROOT."
 if [[ "${target_dir}" == "~/"* ]]; then
   target_dir="${HOME}/${target_dir#~/}"
 fi
@@ -85,8 +85,6 @@ required_files=(
   robot_instances.yaml
   control_types.yaml
   control_interfaces.yaml
-  capability_profiles.yaml
-  adapter_profiles.yaml
   camera_profiles.yaml
 )
 

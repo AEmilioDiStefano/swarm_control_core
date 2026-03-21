@@ -5,25 +5,25 @@
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   echo "This script must be sourced, not executed." >&2
-  echo "Example: source <workspace>/src/swarm_control_core/scripts/swarm_com_workspace_env.sh" >&2
+  echo "Example: source <workspace>/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" >&2
   exit 1
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./lib/swarm_com_workspace.sh
-source "${SCRIPT_DIR}/lib/swarm_com_workspace.sh"
+# shellcheck source=./lib/swarm_core_workspace.sh
+source "${SCRIPT_DIR}/lib/swarm_core_workspace.sh"
 
 usage() {
   cat <<'USAGE'
 Usage (must be sourced):
-  source swarm_com_workspace_env.sh [--workspace <path>] [--non-interactive]
+  source swarm_core_workspace_env.sh [--workspace <path>] [--non-interactive]
 
 Exports:
   WS                        Workspace root
   SC                        Core package path (${WS}/src/swarm_control_core)
-  SWARM_COM_WORKSPACE_ROOT  Workspace root (for core scripts)
+  SWARM_CORE_WORKSPACE_ROOT  Workspace root (for core scripts)
   WS_DEV                    Alias of WS for legacy doc compatibility
-  SWARM_COM_WORKSPACE_NAME  Workspace directory name (basename of WS)
+  SWARM_CORE_WORKSPACE_NAME  Workspace directory name (basename of WS)
 USAGE
 }
 
@@ -46,7 +46,7 @@ while [[ $# -gt 0 ]]; do
       return 0
       ;;
     *)
-      echo "[swarm_com_workspace_env] Unknown argument: $1" >&2
+      echo "[swarm_core_workspace_env] Unknown argument: $1" >&2
       usage >&2
       return 2
       ;;
@@ -54,16 +54,16 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-WS="$(swarm_com_detect_workspace_root "$workspace_override" || true)"
+WS="$(swarm_core_detect_workspace_root "$workspace_override" || true)"
 if [[ -z "$WS" ]]; then
-  echo "[swarm_com_workspace_env] ERROR: Unable to detect workspace root." >&2
-  echo "[swarm_com_workspace_env] Set --workspace <path> or SWARM_COM_WORKSPACE_ROOT and retry." >&2
+  echo "[swarm_core_workspace_env] ERROR: Unable to detect workspace root." >&2
+  echo "[swarm_core_workspace_env] Set --workspace <path> or SWARM_CORE_WORKSPACE_ROOT and retry." >&2
   return 1
 fi
 
 SC="${WS}/src/swarm_control_core"
 if [[ ! -d "$SC" ]]; then
-  echo "[swarm_com_workspace_env] ERROR: Core package directory not found: $SC" >&2
+  echo "[swarm_core_workspace_env] ERROR: Core package directory not found: $SC" >&2
   return 1
 fi
 
@@ -82,7 +82,7 @@ if [[ "$interactive_mode" == "yes" ]] || { [[ "$interactive_mode" == "auto" ]] &
           printf 'Enter workspace directory name: '
           read -r _ws_input
           if [[ -z "${_ws_input// }" ]]; then
-            echo "[swarm_com_workspace_env] Workspace directory name cannot be empty." >&2
+            echo "[swarm_core_workspace_env] Workspace directory name cannot be empty." >&2
             continue
           fi
           if [[ "$_ws_input" == /* ]]; then
@@ -94,7 +94,7 @@ if [[ "$interactive_mode" == "yes" ]] || { [[ "$interactive_mode" == "auto" ]] &
           fi
           _ws_candidate="${_ws_candidate%/}"
           if [[ ! -d "${_ws_candidate}/src/swarm_control_core" ]]; then
-            echo "[swarm_com_workspace_env] Path does not contain src/swarm_control_core: ${_ws_candidate}" >&2
+            echo "[swarm_core_workspace_env] Path does not contain src/swarm_control_core: ${_ws_candidate}" >&2
             continue
           fi
           WS="$_ws_candidate"
@@ -114,10 +114,10 @@ fi
 
 export WS
 export SC
-export SWARM_COM_WORKSPACE_ROOT="$WS"
+export SWARM_CORE_WORKSPACE_ROOT="$WS"
 export WS_DEV="$WS"
-export SWARM_COM_WORKSPACE_NAME="$(basename "$WS")"
+export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
 
-echo "[swarm_com_workspace_env] WS=${WS}"
-echo "[swarm_com_workspace_env] SC=${SC}"
-echo "Workspace name has been set to: ${SWARM_COM_WORKSPACE_NAME}"
+echo "[swarm_core_workspace_env] WS=${WS}"
+echo "[swarm_core_workspace_env] SC=${SC}"
+echo "Workspace name has been set to: ${SWARM_CORE_WORKSPACE_NAME}"
