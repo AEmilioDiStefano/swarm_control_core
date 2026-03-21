@@ -59,11 +59,6 @@ swarm_core_detect_workspace_root() {
     return 0
   fi
 
-  if candidate="$(swarm_core__search_workspace_upward "$PWD")"; then
-    printf '%s' "$candidate"
-    return 0
-  fi
-
   return 1
 }
 

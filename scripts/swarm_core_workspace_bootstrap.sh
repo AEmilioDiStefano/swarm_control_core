@@ -88,29 +88,15 @@ resolve_env_script() {
   return 1
 }
 
-resolve_from_pwd() {
-  local cur="${PWD}"
-  while [[ -n "$cur" && "$cur" != "/" ]]; do
-    if [[ -f "${cur}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" ]]; then
-      printf '%s' "${cur}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh"
-      return 0
-    fi
-    cur="$(dirname "$cur")"
-  done
-  return 1
-}
-
 env_script=""
 script_workspace_root="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 if [[ -n "$workspace_override" ]]; then
   env_script="$(resolve_env_script "$workspace_override" || true)"
-elif env_from_pwd="$(resolve_from_pwd || true)"; [[ -n "$env_from_pwd" ]]; then
-  env_script="$env_from_pwd"
-elif [[ -f "${script_workspace_root}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" ]]; then
-  env_script="${script_workspace_root}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh"
 elif [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]]; then
   env_script="$(resolve_env_script "${SWARM_CORE_WORKSPACE_ROOT}" || true)"
+elif [[ -f "${script_workspace_root}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" ]]; then
+  env_script="${script_workspace_root}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh"
 fi
 
 if [[ -z "$env_script" ]]; then

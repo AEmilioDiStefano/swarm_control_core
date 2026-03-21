@@ -43,19 +43,22 @@ Suggested labels:
 - `R-<robot-a>`
 - `R-<robot-b>`
 
-## 1. Optional Default Workspace Creation + First Checkout
+## 1. Workspace Creation / Checkout
 
 Important:
 
+- if this is a fresh machine and you do not already have a ROS 2 workspace,
+  run only the first command block in this step
 - if you already have a ROS 2 workspace that you want to use for
-  `swarm_control_core`, skip the command block in this step
-- instead, clone `swarm_control_core` into that existing workspace's `src`
-  directory on each machine where it will run, then continue with Step 2
+  `swarm_control_core`, skip the first command block and run only the second
+  command block
 - from Step 2 onward, the guide uses `WS` and `SC`, so the remaining steps work
   regardless of the workspace directory name
 
-If you are using an existing workspace, run this from that workspace root on
-each machine where `swarm_control_core` will run, then continue with Step 2:
+### 1.1 Fresh machine: create the default `~/ros2_ws_dev` workspace
+
+Run this in the control-machine terminal and in each robot SSH terminal if that
+machine does not already have a ROS 2 workspace you want to keep using:
 
 ```bash
 command -v git >/dev/null 2>&1 || {
@@ -63,29 +66,7 @@ command -v git >/dev/null 2>&1 || {
   sudo apt-get install -y git
 }
 
-install -d src
-
-if [[ -d src/swarm_control_core/.git ]]; then
-  git -C src/swarm_control_core fetch origin --prune
-  git -C src/swarm_control_core switch main || git -C src/swarm_control_core checkout -b main origin/main
-  git -C src/swarm_control_core pull --ff-only origin main
-else
-  git clone https://github.com/AEmilioDiStefano/swarm_control_core.git src/swarm_control_core
-fi
-```
-
-If you do not already have a ROS 2 workspace, run this in the control-machine
-terminal and in each robot SSH terminal. It creates the default
-`~/ros2_ws_dev` workspace path if needed and clones `swarm_control_core` into
-it:
-
-```bash
-command -v git >/dev/null 2>&1 || {
-  sudo apt-get update
-  sudo apt-get install -y git
-}
-
-WS="${SWARM_CORE_WORKSPACE_ROOT:-$HOME/ros2_ws_dev}"
+WS="$HOME/ros2_ws_dev"
 SC="$WS/src/swarm_control_core"
 
 install -d "$WS/src"
@@ -97,7 +78,65 @@ if [[ -d "$SC/.git" ]]; then
 else
   git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$SC"
 fi
+
+printf '[OK] Workspace root: %s\n' "$WS"
+printf '[OK] Package checkout: %s\n' "$SC"
 ```
+
+Expected after the fresh-machine block:
+
+- `~/ros2_ws_dev` exists
+- `~/ros2_ws_dev/src/swarm_control_core` exists
+
+### 1.2 Existing workspace: use the workspace you already have
+
+Run this only if you already have a ROS 2 workspace and you want to keep using
+it.
+
+From any directory, first set `SWARM_CORE_WORKSPACE_ROOT` to the absolute path
+of the workspace you want to use, then run the block below.
+
+This block refuses to guess from the current directory. If
+`SWARM_CORE_WORKSPACE_ROOT` is unset, or if the target workspace does not
+already contain `src/`, it stops and tells you what to fix.
+
+```bash
+command -v git >/dev/null 2>&1 || {
+  sudo apt-get update
+  sudo apt-get install -y git
+}
+
+WS="${SWARM_CORE_WORKSPACE_ROOT:-}"
+if [[ -z "$WS" ]]; then
+  echo "[FAIL] Set SWARM_CORE_WORKSPACE_ROOT to your existing workspace root before running this block." >&2
+  echo "[FAIL] Example: export SWARM_CORE_WORKSPACE_ROOT=\"$HOME/my_ws\"" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+SC="$WS/src/swarm_control_core"
+
+if [[ ! -d "$WS/src" ]]; then
+  echo "[FAIL] Existing workspace root must already contain src/: $WS" >&2
+  echo "[FAIL] Run the fresh-machine block above if you want ~/ros2_ws_dev to be created automatically." >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+if [[ -d "$SC/.git" ]]; then
+  git -C "$SC" fetch origin --prune
+  git -C "$SC" switch main || git -C "$SC" checkout -b main origin/main
+  git -C "$SC" pull --ff-only origin main
+else
+  git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$SC"
+fi
+
+printf '[OK] Workspace root: %s\n' "$WS"
+printf '[OK] Package checkout: %s\n' "$SC"
+```
+
+Expected after the existing-workspace block:
+
+- `<your-workspace>/src/swarm_control_core` exists
+- nothing is created in `~` unless your workspace is actually rooted there
 
 ## 2. Workspace Bootstrap in Each Terminal
 
@@ -105,9 +144,21 @@ Run this once in the control-machine terminal and once in each dedicated robot
 SSH terminal:
 
 ```bash
-SWARM_CORE_BOOTSTRAP="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh" 2>/dev/null | sort | head -n1)"
-if [[ -z "$SWARM_CORE_BOOTSTRAP" ]]; then
-  echo "[FAIL] Could not locate swarm_control_core workspace bootstrap script under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
+if [[ -n "${WS:-}" ]]; then
+  SWARM_CORE_BOOTSTRAP="$WS/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh"
+elif [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]]; then
+  SWARM_CORE_BOOTSTRAP="$SWARM_CORE_WORKSPACE_ROOT/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh"
+else
+  SWARM_CORE_BOOTSTRAP="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh" 2>/dev/null | sort | head -n1)"
+fi
+
+if [[ -z "${SWARM_CORE_BOOTSTRAP:-}" || ! -f "$SWARM_CORE_BOOTSTRAP" ]]; then
+  echo "[FAIL] Could not locate swarm_control_core workspace bootstrap script." >&2
+  echo "[FAIL] Set WS or SWARM_CORE_WORKSPACE_ROOT first, or make sure the workspace exists under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
+elif [[ -n "${WS:-}" ]]; then
+  eval "$("$SWARM_CORE_BOOTSTRAP" --workspace "$WS" --interactive --emit-shell)"
+elif [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]]; then
+  eval "$("$SWARM_CORE_BOOTSTRAP" --workspace "$SWARM_CORE_WORKSPACE_ROOT" --interactive --emit-shell)"
 else
   eval "$("$SWARM_CORE_BOOTSTRAP" --interactive --emit-shell)"
 fi
