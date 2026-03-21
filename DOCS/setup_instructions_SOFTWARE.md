@@ -12,6 +12,8 @@ When you finish this guide:
 - `swarm_control_core` will be built in the workspace on every machine
 - runtime config will be seeded into `~/.config/swarm_control_core/`
 - each robot will have a matching `robot_instances.yaml` entry
+- the control machine will have synced robot entries for UI metadata and
+  per-robot tuning
 - GPIO access will be prepared on each robot
 - each robot will have a saved camera profile
 - you can continue with [QUICKSTART.md](./QUICKSTART.md) without doing any
@@ -286,6 +288,39 @@ What this command does:
   camera chooser automatically if one is still missing
 - finishes by printing a ready message when the robot is prepared for
   [QUICKSTART.md](./QUICKSTART.md)
+
+### 6.1 Sync Robot Entries Back to the Control Machine
+
+After Step 6 has been completed on every robot, run this in the
+control-machine terminal:
+
+```bash
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
+```
+
+What this command does:
+
+- prompts for the robot sources that should be synced back to the control
+  machine
+- accepts one source per line in either of these forms:
+  - `robot_user@robot_host.local`
+  - `robot_name=robot_user@robot_host.local`
+- SSHes into each robot
+- pulls that robot's active runtime `robot_instances.yaml`
+- selects the matching robot entry automatically in the common case
+- merges the pulled entry into the control-machine workspace baseline
+  `robot_instances.yaml`
+- repairs the control-machine runtime `robot_instances.yaml` if it was missing
+  or stale
+
+Use the `robot_name=ssh_target` form if you intentionally set
+`SWARM_CORE_ROBOT_NAME` to something different from the robot's Linux username.
 
 ## 7. Quick Verification Before the Live Session
 
