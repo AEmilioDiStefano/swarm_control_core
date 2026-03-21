@@ -66,21 +66,28 @@ command -v git >/dev/null 2>&1 || {
   sudo apt-get install -y git
 }
 
-WS="$HOME/ros2_ws_dev"
-SC="$WS/src/swarm_control_core"
+DEFAULT_WS="$HOME/ros2_ws_dev"
+DEFAULT_SC="$DEFAULT_WS/src/swarm_control_core"
 
-install -d "$WS/src"
-
-if [[ -d "$SC/.git" ]]; then
-  git -C "$SC" fetch origin --prune
-  git -C "$SC" switch main || git -C "$SC" checkout -b main origin/main
-  git -C "$SC" pull --ff-only origin main
-else
-  git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$SC"
+if [[ ! -x "$DEFAULT_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
+  install -d "$DEFAULT_WS/src"
+  if [[ ! -d "$DEFAULT_SC/.git" ]]; then
+    git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$DEFAULT_SC"
+  fi
 fi
 
-printf '[OK] Workspace root: %s\n' "$WS"
-printf '[OK] Package checkout: %s\n' "$SC"
+if [[ -x "$DEFAULT_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
+  eval "$("$DEFAULT_SC/scripts/swarm_core_checkout_workspace.sh" --mode default --emit-shell)"
+else
+  export WS="$DEFAULT_WS"
+  export SC="$DEFAULT_SC"
+  export SWARM_CORE_WORKSPACE_ROOT="$WS"
+  export WS_DEV="$WS"
+  export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
+  printf '[OK] Workspace root: %s\n' "$WS"
+  printf '[OK] Package checkout: %s\n' "$SC"
+fi
+unset DEFAULT_WS DEFAULT_SC
 ```
 
 Expected after the fresh-machine block:
@@ -90,15 +97,16 @@ Expected after the fresh-machine block:
 
 ### 1.2 Existing workspace: use the workspace you already have
 
-Run this only if you already have a ROS 2 workspace and you want to keep using
-it.
+Run this only if you already have a ROS 2 workspace and want to place
+`swarm_control_core` in that workspace instead of `~/ros2_ws_dev`.
 
-From any directory, first set `SWARM_CORE_WORKSPACE_ROOT` to the absolute path
-of the workspace you want to use, then run the block below.
+Before running the block below, change into that workspace's `src/` directory.
+This block checks that explicitly. If you are not in a `src/` directory, it
+prints a clear message and leaves your SSH session alone.
 
-This block refuses to guess from the current directory. If
-`SWARM_CORE_WORKSPACE_ROOT` is unset, or if the target workspace does not
-already contain `src/`, it stops and tells you what to fix.
+If you accidentally run Step 1.1 and then Step 1.2 anyway, this block will
+reuse the default `~/ros2_ws_dev` workspace from Step 1.1 unless you are
+already standing in another workspace's `src/` directory.
 
 ```bash
 command -v git >/dev/null 2>&1 || {
@@ -106,31 +114,43 @@ command -v git >/dev/null 2>&1 || {
   sudo apt-get install -y git
 }
 
-WS="${SWARM_CORE_WORKSPACE_ROOT:-}"
-if [[ -z "$WS" ]]; then
-  echo "[FAIL] Set SWARM_CORE_WORKSPACE_ROOT to your existing workspace root before running this block." >&2
-  echo "[FAIL] Example: export SWARM_CORE_WORKSPACE_ROOT=\"$HOME/my_ws\"" >&2
-  return 1 2>/dev/null || exit 1
-fi
-
-SC="$WS/src/swarm_control_core"
-
-if [[ ! -d "$WS/src" ]]; then
-  echo "[FAIL] Existing workspace root must already contain src/: $WS" >&2
-  echo "[FAIL] Run the fresh-machine block above if you want ~/ros2_ws_dev to be created automatically." >&2
-  return 1 2>/dev/null || exit 1
-fi
-
-if [[ -d "$SC/.git" ]]; then
-  git -C "$SC" fetch origin --prune
-  git -C "$SC" switch main || git -C "$SC" checkout -b main origin/main
-  git -C "$SC" pull --ff-only origin main
+if [[ "$(basename "$PWD")" == "src" ]]; then
+  CUSTOM_SC="$PWD/swarm_control_core"
+  if [[ ! -d "$CUSTOM_SC/.git" ]]; then
+    git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$CUSTOM_SC"
+  fi
+  if [[ -x "$CUSTOM_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
+    eval "$("$CUSTOM_SC/scripts/swarm_core_checkout_workspace.sh" --mode existing --emit-shell)"
+  else
+    export WS="$(dirname "$PWD")"
+    export SC="$CUSTOM_SC"
+    export SWARM_CORE_WORKSPACE_ROOT="$WS"
+    export WS_DEV="$WS"
+    export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
+    printf '[OK] Workspace root: %s\n' "$WS"
+    printf '[OK] Package checkout: %s\n' "$SC"
+  fi
+elif [[ -x "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_checkout_workspace.sh" ]]; then
+  echo "[INFO] Current directory is not a workspace src directory." >&2
+  echo "[INFO] Reusing the default workspace created by Step 1.1 at $HOME/ros2_ws_dev." >&2
+  eval "$("$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_checkout_workspace.sh" --mode existing --emit-shell)"
+elif [[ -d "$HOME/ros2_ws_dev/src/swarm_control_core/.git" ]]; then
+  echo "[INFO] Current directory is not a workspace src directory." >&2
+  echo "[INFO] Reusing the default workspace created by Step 1.1 at $HOME/ros2_ws_dev." >&2
+  export WS="$HOME/ros2_ws_dev"
+  export SC="$WS/src/swarm_control_core"
+  export SWARM_CORE_WORKSPACE_ROOT="$WS"
+  export WS_DEV="$WS"
+  export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
+  printf '[OK] Workspace root: %s\n' "$WS"
+  printf '[OK] Package checkout: %s\n' "$SC"
 else
-  git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$SC"
+  echo "[FAIL] Existing-workspace checkout must be run from a ROS 2 workspace src directory." >&2
+  echo "[FAIL] Change into your workspace src directory first, for example:" >&2
+  echo "       cd /path/to/your_ws/src" >&2
+  echo "[FAIL] Or run Step 1.1 to create ~/ros2_ws_dev automatically." >&2
 fi
-
-printf '[OK] Workspace root: %s\n' "$WS"
-printf '[OK] Package checkout: %s\n' "$SC"
+unset CUSTOM_SC
 ```
 
 Expected after the existing-workspace block:
