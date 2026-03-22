@@ -47,6 +47,18 @@ def _parse_positive_int(raw_value: str, default: int) -> int:
     return int(default)
 
 
+def _parse_float(raw_value: str, default: float, minimum: float | None = None, maximum: float | None = None) -> float:
+    try:
+        value = float(str(raw_value).strip())
+    except Exception:
+        value = float(default)
+    if minimum is not None:
+        value = max(float(minimum), value)
+    if maximum is not None:
+        value = min(float(maximum), value)
+    return float(value)
+
+
 def _parse_bool(raw_value: str, default: bool) -> bool:
     s = str(raw_value or "").strip().lower()
     if s in ("1", "true", "yes", "on"):
@@ -257,6 +269,60 @@ def _make_nodes(context, *args, **kwargs):
     )
     camera_fourcc = _sanitize_camera_fourcc(camera_source, camera_fourcc)
 
+    camera_jpeg_quality_raw = (
+        (LaunchConfiguration("camera_jpeg_quality").perform(context) or "").strip()
+        or str(os.environ.get("SWARM_CORE_CAMERA_JPEG_QUALITY", "")).strip()
+    )
+    camera_jpeg_quality = max(30, min(95, _parse_positive_int(camera_jpeg_quality_raw, default=70)))
+    camera_adaptive_jpeg_raw = (
+        (LaunchConfiguration("camera_adaptive_jpeg").perform(context) or "").strip()
+        or str(os.environ.get("SWARM_CORE_CAMERA_ADAPTIVE_JPEG", "")).strip()
+    )
+    camera_adaptive_jpeg = _parse_bool(camera_adaptive_jpeg_raw, default=True)
+    camera_adaptive_jpeg_min_quality_raw = (
+        (LaunchConfiguration("camera_adaptive_jpeg_min_quality").perform(context) or "").strip()
+        or str(os.environ.get("SWARM_CORE_CAMERA_ADAPTIVE_JPEG_MIN_QUALITY", "")).strip()
+    )
+    camera_adaptive_jpeg_min_quality = max(
+        30,
+        min(camera_jpeg_quality, _parse_positive_int(camera_adaptive_jpeg_min_quality_raw, default=45)),
+    )
+    camera_adaptive_jpeg_step_raw = (
+        (LaunchConfiguration("camera_adaptive_jpeg_step").perform(context) or "").strip()
+        or str(os.environ.get("SWARM_CORE_CAMERA_ADAPTIVE_JPEG_STEP", "")).strip()
+    )
+    camera_adaptive_jpeg_step = max(1, min(20, _parse_positive_int(camera_adaptive_jpeg_step_raw, default=5)))
+    camera_adaptive_jpeg_overload_ratio_raw = (
+        (LaunchConfiguration("camera_adaptive_jpeg_overload_ratio").perform(context) or "").strip()
+        or str(os.environ.get("SWARM_CORE_CAMERA_ADAPTIVE_JPEG_OVERLOAD_RATIO", "")).strip()
+    )
+    camera_adaptive_jpeg_overload_ratio = _parse_float(
+        camera_adaptive_jpeg_overload_ratio_raw,
+        default=0.85,
+        minimum=0.25,
+        maximum=2.0,
+    )
+    camera_adaptive_jpeg_encode_ratio_raw = (
+        (LaunchConfiguration("camera_adaptive_jpeg_encode_ratio").perform(context) or "").strip()
+        or str(os.environ.get("SWARM_CORE_CAMERA_ADAPTIVE_JPEG_ENCODE_RATIO", "")).strip()
+    )
+    camera_adaptive_jpeg_encode_ratio = _parse_float(
+        camera_adaptive_jpeg_encode_ratio_raw,
+        default=0.55,
+        minimum=0.10,
+        maximum=2.0,
+    )
+    camera_adaptive_jpeg_recover_after_s_raw = (
+        (LaunchConfiguration("camera_adaptive_jpeg_recover_after_s").perform(context) or "").strip()
+        or str(os.environ.get("SWARM_CORE_CAMERA_ADAPTIVE_JPEG_RECOVER_AFTER_S", "")).strip()
+    )
+    camera_adaptive_jpeg_recover_after_s = _parse_float(
+        camera_adaptive_jpeg_recover_after_s_raw,
+        default=6.0,
+        minimum=0.5,
+        maximum=60.0,
+    )
+
     drive_type = LaunchConfiguration("drive_type").perform(context)
     hardware = LaunchConfiguration("hardware").perform(context)
     profiles_path = (LaunchConfiguration("profiles_path").perform(context) or "").strip()
@@ -398,6 +464,10 @@ def _make_nodes(context, *args, **kwargs):
             f"[CAM] {video_device} {camera_width}x{camera_height} "
             f"{camera_fps}fps {camera_fourcc} v4l2={camera_force_v4l2}"
         )
+        _wrap_and_append_log(
+            f"[CAM] jpeg_quality={camera_jpeg_quality} adaptive_jpeg={camera_adaptive_jpeg} "
+            f"adaptive_floor={camera_adaptive_jpeg_min_quality}"
+        )
         _try_node(
             package="swarm_control_core",
             executable="swarm_camera_node_core",
@@ -413,6 +483,13 @@ def _make_nodes(context, *args, **kwargs):
                 {"height": camera_height},
                 {"fourcc": camera_fourcc},
                 {"force_v4l2": camera_force_v4l2},
+                {"jpeg_quality": camera_jpeg_quality},
+                {"adaptive_jpeg": camera_adaptive_jpeg},
+                {"adaptive_jpeg_min_quality": camera_adaptive_jpeg_min_quality},
+                {"adaptive_jpeg_step": camera_adaptive_jpeg_step},
+                {"adaptive_jpeg_overload_ratio": camera_adaptive_jpeg_overload_ratio},
+                {"adaptive_jpeg_encode_ratio": camera_adaptive_jpeg_encode_ratio},
+                {"adaptive_jpeg_recover_after_s": camera_adaptive_jpeg_recover_after_s},
             ],
         )
 
@@ -492,6 +569,41 @@ def generate_launch_description():
             DeclareLaunchArgument("camera_width", default_value=""),
             DeclareLaunchArgument("camera_height", default_value=""),
             DeclareLaunchArgument("camera_fourcc", default_value=""),
+            DeclareLaunchArgument(
+                "camera_jpeg_quality",
+                default_value="",
+                description="JPEG quality for compressed camera stream (30-95). Empty uses default/env.",
+            ),
+            DeclareLaunchArgument(
+                "camera_adaptive_jpeg",
+                default_value="",
+                description="When true, compressed video quality sheds load per robot under stress.",
+            ),
+            DeclareLaunchArgument(
+                "camera_adaptive_jpeg_min_quality",
+                default_value="",
+                description="Lower floor for adaptive compressed-video quality.",
+            ),
+            DeclareLaunchArgument(
+                "camera_adaptive_jpeg_step",
+                default_value="",
+                description="Step size for adaptive compressed-video quality adjustments.",
+            ),
+            DeclareLaunchArgument(
+                "camera_adaptive_jpeg_overload_ratio",
+                default_value="",
+                description="Reduce JPEG quality when frame-cycle time exceeds this fraction of frame period.",
+            ),
+            DeclareLaunchArgument(
+                "camera_adaptive_jpeg_encode_ratio",
+                default_value="",
+                description="Reduce JPEG quality when encode time exceeds this fraction of frame period.",
+            ),
+            DeclareLaunchArgument(
+                "camera_adaptive_jpeg_recover_after_s",
+                default_value="",
+                description="How long the camera must stay healthy before adaptive JPEG quality recovers.",
+            ),
             DeclareLaunchArgument(
                 "camera_force_v4l2",
                 default_value="",

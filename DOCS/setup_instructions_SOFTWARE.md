@@ -365,6 +365,9 @@ What this command does:
 After Step 6 has been completed on every robot, run this in the
 control-machine terminal:
 
+Do not run this on the robot itself. This step is for the control machine to
+pull the robot entries back from the robots.
+
 ```bash
 cd "$WS"
 set +u
@@ -382,6 +385,9 @@ What this command does:
 - accepts one source per line in either of these forms:
   - `robot_user@robot_host.local`
   - `robot_name=robot_user@robot_host.local`
+- examples:
+  - `robot1@legion1.local`
+  - `my_robot=robot1@legion1.local`
 - SSHes into each robot
 - pulls that robot's active runtime `robot_instances.yaml`
 - selects the matching robot entry automatically in the common case
@@ -392,6 +398,9 @@ What this command does:
 
 Use the `robot_name=ssh_target` form if you intentionally set
 `SWARM_CORE_ROBOT_NAME` to something different from the robot's Linux username.
+
+Step 6 on each robot now prints the exact sync source strings that this step can
+accept.
 
 ## 7. Quick Verification Before the Live Session
 

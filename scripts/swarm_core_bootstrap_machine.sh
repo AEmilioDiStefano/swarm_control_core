@@ -40,12 +40,197 @@ fail() {
   exit 1
 }
 
+bootstrap_progress_enabled="0"
+bootstrap_progress_fd=""
+bootstrap_progress_lines="0"
+bootstrap_progress_cols="0"
+bootstrap_progress_total_weight="0"
+bootstrap_progress_completed_weight="0"
+bootstrap_progress_current_label="Preparing bootstrap"
+
+bootstrap_repeat_char() {
+  local char="$1"
+  local count="${2:-0}"
+  local out=""
+  if (( count <= 0 )); then
+    printf '%s' ""
+    return 0
+  fi
+  printf -v out '%*s' "$count" ''
+  printf '%s' "${out// /$char}"
+}
+
+bootstrap_truncate_for_progress() {
+  local text="$1"
+  local max_len="${2:-0}"
+  if (( max_len <= 0 )); then
+    printf '%s' ""
+    return 0
+  fi
+  if (( ${#text} <= max_len )); then
+    printf '%s' "$text"
+    return 0
+  fi
+  if (( max_len <= 3 )); then
+    printf '%.*s' "$max_len" "$text"
+    return 0
+  fi
+  printf '%s...' "${text:0:max_len-3}"
+}
+
+bootstrap_progress_printf() {
+  if [[ "$bootstrap_progress_fd" == "2" ]]; then
+    printf "$@" >&2
+  else
+    printf "$@" >&1
+  fi
+}
+
+bootstrap_progress_render() {
+  local total=0
+  local done=0
+  local percent=0
+  local bar_width=12
+  local filled=0
+  local complete=""
+  local remaining=""
+  local bar=""
+  local percent_text=""
+  local label_width=0
+  local label=""
+  local line=""
+
+  [[ "$bootstrap_progress_enabled" == "1" ]] || return 0
+
+  total=$((bootstrap_progress_total_weight))
+  done=$((bootstrap_progress_completed_weight))
+  if (( total > 0 )); then
+    percent=$(( done * 100 / total ))
+  fi
+  if (( percent > 100 )); then
+    percent=100
+  fi
+
+  if (( bootstrap_progress_cols >= 100 )); then
+    bar_width=40
+  elif (( bootstrap_progress_cols >= 80 )); then
+    bar_width=30
+  elif (( bootstrap_progress_cols >= 60 )); then
+    bar_width=20
+  fi
+
+  if (( total > 0 )); then
+    filled=$(( done * bar_width / total ))
+  fi
+  if (( filled > bar_width )); then
+    filled=$bar_width
+  fi
+
+  complete="$(bootstrap_repeat_char '#' "$filled")"
+  if (( done >= total )); then
+    remaining="$(bootstrap_repeat_char '#' "$((bar_width - filled))")"
+    bar="${complete}${remaining}"
+  else
+    remaining="$(bootstrap_repeat_char '.' "$((bar_width - filled - 1))")"
+    bar="${complete}>${remaining}"
+  fi
+
+  printf -v percent_text '%3d%%' "$percent"
+  label_width=$(( bootstrap_progress_cols - bar_width - ${#percent_text} - 6 ))
+  if (( label_width < 0 )); then
+    label_width=0
+  fi
+  label="$(bootstrap_truncate_for_progress "$bootstrap_progress_current_label" "$label_width")"
+  line="[${bar}] ${percent_text}"
+  if [[ -n "$label" ]]; then
+    line="${line} ${label}"
+  fi
+
+  bootstrap_progress_printf '\033[?25l'
+  bootstrap_progress_printf '\033[1;%dr' "$((bootstrap_progress_lines - 1))"
+  bootstrap_progress_printf '\0337'
+  bootstrap_progress_printf '\033[%d;1H' "$bootstrap_progress_lines"
+  bootstrap_progress_printf '\033[2K%s' "$line"
+  bootstrap_progress_printf '\0338'
+}
+
+bootstrap_progress_cleanup() {
+  [[ "$bootstrap_progress_enabled" == "1" ]] || return 0
+  bootstrap_progress_printf '\0337'
+  bootstrap_progress_printf '\033[%d;1H' "$bootstrap_progress_lines"
+  bootstrap_progress_printf '\033[2K'
+  bootstrap_progress_printf '\0338'
+  bootstrap_progress_printf '\033[r\033[?25h'
+  bootstrap_progress_enabled="0"
+}
+
+bootstrap_progress_init() {
+  local tty_size=""
+
+  if [[ -t 2 ]]; then
+    bootstrap_progress_fd="2"
+  elif [[ -t 1 ]]; then
+    bootstrap_progress_fd="1"
+  else
+    return 0
+  fi
+
+  if [[ "$bootstrap_progress_fd" == "2" ]]; then
+    tty_size="$(stty size <&2 2>/dev/null || true)"
+  else
+    tty_size="$(stty size <&1 2>/dev/null || true)"
+  fi
+  if [[ -z "$tty_size" ]]; then
+    bootstrap_progress_fd=""
+    return 0
+  fi
+
+  read -r bootstrap_progress_lines bootstrap_progress_cols <<<"$tty_size"
+  if (( bootstrap_progress_lines < 4 || bootstrap_progress_cols < 40 )); then
+    bootstrap_progress_fd=""
+    bootstrap_progress_lines="0"
+    bootstrap_progress_cols="0"
+    return 0
+  fi
+
+  bootstrap_progress_enabled="1"
+  bootstrap_progress_render
+}
+
+run_bootstrap_step() {
+  local weight="$1"
+  local label="$2"
+  shift 2
+  local step_status=0
+
+  bootstrap_progress_current_label="$label"
+  bootstrap_progress_render
+
+  if "$@"; then
+    step_status=0
+  else
+    step_status=$?
+  fi
+
+  if (( step_status == 0 )); then
+    bootstrap_progress_completed_weight=$(( bootstrap_progress_completed_weight + weight ))
+    bootstrap_progress_render
+  fi
+  return "$step_status"
+}
+
 current_step="initialization"
 
 on_error() {
   local exit_code=$?
+  bootstrap_progress_cleanup
   echo "[swarm_core_bootstrap_machine] ERROR: bootstrap failed during step: ${current_step}" >&2
   exit "$exit_code"
+}
+
+on_exit() {
+  bootstrap_progress_cleanup
+  rm -f "$dep_summary_file"
 }
 
 service_installed() {
@@ -149,7 +334,7 @@ service_status="not-requested"
 dep_summary_file="$(mktemp)"
 
 trap on_error ERR
-trap 'rm -f "$dep_summary_file"' EXIT
+trap on_exit EXIT
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -244,31 +429,47 @@ log "Workspace=${workspace}"
 log "Role=${machine_role}"
 log "Domain ID=${domain_id}"
 
+bootstrap_progress_total_weight=68
+if [[ "$machine_role" == "robot" && "$skip_gpio" != "1" ]]; then
+  bootstrap_progress_total_weight=$(( bootstrap_progress_total_weight + 7 ))
+fi
+if [[ "$skip_build" != "1" ]]; then
+  bootstrap_progress_total_weight=$(( bootstrap_progress_total_weight + 20 ))
+fi
+if [[ "$machine_role" == "robot" && "$install_service" == "1" ]]; then
+  bootstrap_progress_total_weight=$(( bootstrap_progress_total_weight + 5 ))
+fi
+bootstrap_progress_init
+
 current_step="dependency-check"
-"${target_pkg_dir}/scripts/swarm_core_check_install_dependencies.sh" \
+run_bootstrap_step 55 "Installing dependencies" \
+  "${target_pkg_dir}/scripts/swarm_core_check_install_dependencies.sh" \
   --machine-role "$machine_role" \
   --summary-file "$dep_summary_file"
 
 current_step="seed-runtime-config"
-"${target_pkg_dir}/scripts/swarm_core_seed_runtime_config.sh" \
+run_bootstrap_step 8 "Seeding runtime configuration" \
+  "${target_pkg_dir}/scripts/swarm_core_seed_runtime_config.sh" \
   --workspace "$workspace"
 
 if [[ "$machine_role" == "robot" && "$skip_gpio" != "1" ]]; then
   current_step="gpio-setup"
-  "${target_pkg_dir}/scripts/swarm_core_enable_gpio_access.sh" --user "${USER:-$(id -un)}"
+  run_bootstrap_step 7 "Configuring GPIO access" \
+    "${target_pkg_dir}/scripts/swarm_core_enable_gpio_access.sh" --user "${USER:-$(id -un)}"
   gpio_status="configured"
 fi
 
 if [[ "$skip_build" != "1" ]]; then
   current_step="build-swarm_control_core"
   log "Building package swarm_control_core"
-  (
-    cd "$workspace"
+  run_bootstrap_step 20 "Building swarm_control_core" bash -lc '
+    set -euo pipefail
+    cd "$1"
     set +u
     source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
     colcon build --packages-select swarm_control_core
     set -u || true
-  )
+  ' _ "$workspace"
   build_status="completed"
 fi
 
@@ -286,8 +487,12 @@ if [[ "$machine_role" == "robot" && "$install_service" == "1" ]]; then
   else
     service_status="installed"
   fi
-  "${install_cmd[@]}"
+  run_bootstrap_step 5 "Installing robot service" "${install_cmd[@]}"
 fi
+
+bootstrap_progress_current_label="Finalizing bootstrap summary"
+bootstrap_progress_completed_weight="$bootstrap_progress_total_weight"
+bootstrap_progress_render
 
 echo
 echo "BOOTSTRAP DEPENDENCY SUMMARY:"

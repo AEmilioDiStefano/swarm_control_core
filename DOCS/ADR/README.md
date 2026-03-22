@@ -15,6 +15,9 @@ Active ADRs:
 - [ADR-0003: Benign aioice STUN Retry Race Handling](./ADR-0003-aioice-race-handling.md)
 - [ADR-0004: Interest-Driven Video Scaling for Multi-Robot FPV](./ADR-0004-interest-driven-video-scaling.md)
 - [ADR-0005: Local/LAN Runtime Stabilization](./ADR-0005-runtime-stabilization.md)
+- [ADR-0008: Per-Robot Fault Isolation In Local FPV Sessions](./ADR-0008-per-robot-fault-isolation.md)
+- [ADR-0009: Transport Resource Isolation And Optional Discovery Modes](./ADR-0009-transport-resource-isolation-and-discovery-modes.md)
 
 Companion validation doc:
 - [LOW_LATENCY_VALIDATION.md](../LOW_LATENCY_VALIDATION.md)
+- [TRANSPORT_RESOURCE_ISOLATION_CHECKLIST.md](../TRANSPORT_RESOURCE_ISOLATION_CHECKLIST.md)

@@ -1,6 +1,9 @@
+from unittest.mock import patch
+
 from pathlib import Path
 
 from swarm_control_core.sync_robot_entries import (
+    _detect_likely_local_robot_source,
     _merge_imported_robot_entry,
     _parse_source_spec,
     _select_robot_entry_from_registry,
@@ -84,3 +87,41 @@ robots:
     runtime_text = runtime_profiles.read_text(encoding="utf-8")
     assert "robot_new:" in runtime_text
     assert "ssh_target: robot_new@robot-new.local" in runtime_text
+
+
+def test_detect_likely_local_robot_source_from_runtime_registry(tmp_path: Path) -> None:
+    workspace = tmp_path / "ws"
+    repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
+    runtime_profiles = tmp_path / "runtime" / "robot_instances.yaml"
+
+    _write(
+        repo_profiles,
+        """schema_version: "1.0"
+defaults:
+  control_type: diff_drive
+  control_interface: L298N_diff
+robots: {}
+""",
+    )
+    _write(
+        runtime_profiles,
+        """schema_version: "1.0"
+defaults:
+  control_type: diff_drive
+  control_interface: L298N_diff
+robots:
+  robot1:
+    ssh_target: robot1@legion1.local
+    control_type: diff_drive
+    control_interface: L298N_diff
+""",
+    )
+
+    with patch("swarm_control_core.sync_robot_entries.getpass.getuser", return_value="robot1"):
+        with patch("swarm_control_core.sync_robot_entries.socket.gethostname", return_value="legion1"):
+            detected = _detect_likely_local_robot_source(
+                repo_profiles_path=repo_profiles,
+                runtime_profiles_paths=[runtime_profiles],
+            )
+
+    assert detected == ("robot1", "robot1@legion1.local")

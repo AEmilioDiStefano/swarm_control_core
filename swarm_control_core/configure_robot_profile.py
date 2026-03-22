@@ -385,6 +385,13 @@ def _print_yaml_block(title: str, data: Dict[str, Any]) -> None:
     print(textwrap.indent(yaml.safe_dump(data, sort_keys=False).rstrip(), "  "))
 
 
+def _suggest_control_machine_sync_specs(robot_name: str, entry: Dict[str, Any]) -> List[str]:
+    ssh_target = str(entry.get("ssh_target", "")).strip()
+    if not ssh_target:
+        return []
+    return [ssh_target, f"{robot_name}={ssh_target}"]
+
+
 def _default_workspace_root(requested: str) -> Path:
     raw = str(requested or "").strip()
     if raw:
@@ -515,6 +522,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     _print_wrapped("  camera_profile_state: ", camera_state)
     _print_wrapped("  camera_profiles_path: ", camera_profiles_path)
     _print_yaml_block("[ROBOT PROFILE] camera profile:", {robot_name: camera_entry})
+
+    sync_specs = _suggest_control_machine_sync_specs(robot_name, entry)
+    if sync_specs:
+        print("[ROBOT PROFILE] Control-machine sync source for this robot:")
+        print(f"  {sync_specs[0]}")
+        print("[ROBOT PROFILE] Explicit sync form if you want to force the robot name:")
+        print(f"  {sync_specs[1]}")
 
     print("[OK] This robot is ready for QUICKSTART.")
     return 0

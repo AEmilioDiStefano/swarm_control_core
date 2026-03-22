@@ -222,6 +222,8 @@ class MotorDriverNode(Node):
             f"ramp_ms={float(self.get_parameter('pwm_ramp_ms').value):.1f} "
             f"slew_pct_per_s={float(self.get_parameter('pwm_slew_pct_per_s').value):.1f} "
             f"deadband_pct={float(self.get_parameter('pwm_deadband_pct').value):.1f} "
+            f"left_speed_scale={float(self.get_parameter('left_speed_scale').value):.3f} "
+            f"right_speed_scale={float(self.get_parameter('right_speed_scale').value):.3f} "
             f"cmd_rate_hz={self.cmd_rate_hz:.1f} "
             f"strict_single_cmd_vel_publisher={self.strict_single_cmd_vel_publisher} "
             f"strict_cmd_vel_exempt_publishers={list(self.strict_cmd_vel_exempt_publishers)} "

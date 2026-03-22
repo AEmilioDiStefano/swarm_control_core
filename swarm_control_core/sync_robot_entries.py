@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
+import socket
 import subprocess
 import sys
 import textwrap
@@ -174,7 +176,11 @@ def _collect_sources(initial_specs: Sequence[str]) -> List[str]:
         )
 
     collected: List[str] = []
-    print("[SYNC] Enter one robot source per line.")
+    print("[SYNC] This command is intended to run on the control machine.")
+    print("[SYNC] Enter each robot's SSH target exactly as you would use it from the control machine.")
+    print("[SYNC] Examples:")
+    print("[SYNC]   robot1@legion1.local")
+    print("[SYNC]   my_robot=robot1@legion1.local")
     print("[SYNC] Format: ssh_target or robot_name=ssh_target")
     print("[SYNC] Press Enter on a blank line when finished.")
     while True:
@@ -307,6 +313,47 @@ def _print_sync_result(result: SyncResult, *, robot_name: str, prefix: str) -> N
         print(f"[SYNC] {prefix} entry already matched at {path}.")
 
 
+def _detect_likely_local_robot_source(
+    *,
+    repo_profiles_path: Path,
+    runtime_profiles_paths: Sequence[Path],
+) -> Optional[Tuple[str, str]]:
+    current_user = str(getpass.getuser() or "").strip()
+    current_host = str(socket.gethostname() or "").strip().split(".")[0]
+    if not current_user or not current_host:
+        return None
+
+    expected_targets = {
+        _normalize_ssh_target(f"{current_user}@{current_host}.local"),
+        _normalize_ssh_target(f"{current_user}@{current_host}"),
+    }
+
+    matches: Dict[str, str] = {}
+    seen_paths: List[Path] = []
+    for path in list(runtime_profiles_paths) + [repo_profiles_path]:
+        if path in seen_paths:
+            continue
+        seen_paths.append(path)
+        registry = _load_robot_registry(path)
+        robots = registry.get("robots", {}) or {}
+        if not isinstance(robots, dict):
+            continue
+        for name, entry in robots.items():
+            if not isinstance(entry, dict):
+                continue
+            robot_name = str(name).strip()
+            ssh_target = str(entry.get("ssh_target", "")).strip()
+            normalized_target = _normalize_ssh_target(ssh_target)
+            if normalized_target in expected_targets or robot_name in {current_user, current_host}:
+                matches[robot_name] = ssh_target or f"{current_user}@{current_host}.local"
+
+    if len(matches) != 1:
+        return None
+
+    robot_name, ssh_target = next(iter(matches.items()))
+    return robot_name, ssh_target
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Pull robot instance entries from robots and merge them into the control machine.",
@@ -337,6 +384,27 @@ def main(argv: Optional[List[str]] = None) -> int:
     ]
     if not runtime_profiles_paths:
         runtime_profiles_paths = [_config_dir() / "robot_instances.yaml"]
+
+    if not args.source:
+        local_robot_hint = _detect_likely_local_robot_source(
+            repo_profiles_path=repo_profiles_path,
+            runtime_profiles_paths=runtime_profiles_paths,
+        )
+        if local_robot_hint is not None:
+            local_robot_name, local_ssh_target = local_robot_hint
+            print(
+                f"[ERROR] This machine appears to be robot '{local_robot_name}' "
+                f"with ssh_target '{local_ssh_target}'.",
+                file=sys.stderr,
+            )
+            print(
+                "[ERROR] sync_robot_entries_core is meant to run on the control machine, not on the robot itself.",
+                file=sys.stderr,
+            )
+            print("[ERROR] On the control machine, run the same command and then enter one of these:", file=sys.stderr)
+            print(f"[ERROR]   {local_ssh_target}", file=sys.stderr)
+            print(f"[ERROR]   {local_robot_name}={local_ssh_target}", file=sys.stderr)
+            return 2
 
     try:
         source_specs = _collect_sources(args.source)

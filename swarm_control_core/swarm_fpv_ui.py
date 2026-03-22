@@ -402,6 +402,7 @@ class RosFleetHub(Node):
         self._hb_last_seen_s: Dict[str, float] = {}
         self._robot_meta: Dict[str, Dict[str, str]] = {}
         self._topic_seen_s: Dict[str, float] = {}
+        self._robot_last_visible_s: Dict[str, float] = {}
 
         self._cmd_pubs: Dict[str, Any] = {}
         self._mode_pubs: Dict[str, Any] = {}
@@ -417,6 +418,7 @@ class RosFleetHub(Node):
         self._discovery_scan_error_streak: int = 0
         self._robot_presence_timeout_s: float = 5.0
         self._robot_presence_bootstrap_grace_s: float = 3.0
+        self._robot_live_state: Dict[str, bool] = {}
         self.create_timer(1.0, self._refresh_discovery)
         # Fast interest-sync keeps active robot switching snappy and allows
         # short-lived thumbnail subscriptions without waiting a full discovery tick.
@@ -479,6 +481,7 @@ class RosFleetHub(Node):
         t_now = now_s()
         for robot in robots:
             self._topic_seen_s[robot] = t_now
+            self._robot_last_visible_s[robot] = t_now
         if robots:
             self._known_robots.update(robots)
             self._discovery_last_nonempty_s = t_now
@@ -495,11 +498,16 @@ class RosFleetHub(Node):
         known_live = {robot for robot in set(self._known_robots) if self._robot_recently_alive(robot, t_now)}
         if known_live:
             robots.update(known_live)
-            self._known_robots = set(known_live)
+            for robot in known_live:
+                self._robot_last_visible_s[robot] = t_now
 
-        for robot in sorted(robots):
+        visible = self.visible_robots(t_now)
+        self._known_robots = set(visible)
+
+        for robot in sorted(visible):
             self.ensure_heartbeat_subscription(robot)
             self.ensure_camera_diag_subscription(robot)
+        self._log_robot_liveness_transitions(t_now)
         self._sync_image_subscriptions()
 
     def list_robots(self) -> Set[str]:
@@ -508,6 +516,28 @@ class RosFleetHub(Node):
             robot for robot in set(self._known_robots)
             if self._robot_recently_alive(robot, t_now)
         }
+
+    def visible_robots(self, t_now: Optional[float] = None) -> Set[str]:
+        t_now = now_s() if t_now is None else float(t_now)
+        candidates: Set[str] = set(self._known_robots)
+        candidates.update(self._robot_last_visible_s.keys())
+        candidates.update(self._hb_last_seen_s.keys())
+        candidates.update(self._img_last_frame_s.keys())
+        candidates.update(self._topic_seen_s.keys())
+
+        visible: Set[str] = set()
+        for robot in candidates:
+            last_visible = max(
+                float(self._robot_last_visible_s.get(robot, 0.0)),
+                float(self._hb_last_seen_s.get(robot, 0.0)),
+                float(self._img_last_frame_s.get(robot, 0.0)),
+                float(self._topic_seen_s.get(robot, 0.0)),
+            )
+            if last_visible > 0.0 and (t_now - last_visible) <= self._discovery_stale_hold_s:
+                visible.add(robot)
+            elif robot in self._robot_last_visible_s:
+                self._robot_last_visible_s.pop(robot, None)
+        return visible
 
     def _robot_recently_alive(self, robot: str, t_now: Optional[float] = None) -> bool:
         t_now = now_s() if t_now is None else float(t_now)
@@ -521,6 +551,106 @@ class RosFleetHub(Node):
         if topic_last > 0.0 and (t_now - topic_last) <= self._robot_presence_bootstrap_grace_s:
             return True
         return False
+
+    def _robot_liveness_snapshot(self, robot: str, t_now: float) -> Dict[str, Any]:
+        hb_last = float(self._hb_last_seen_s.get(robot, 0.0))
+        frame_last = float(self._img_last_frame_s.get(robot, 0.0))
+        topic_last = float(self._topic_seen_s.get(robot, 0.0))
+        hb_age = (t_now - hb_last) if hb_last > 0.0 else None
+        frame_age = (t_now - frame_last) if frame_last > 0.0 else None
+        topic_age = (t_now - topic_last) if topic_last > 0.0 else None
+        hb_live = bool(hb_age is not None and hb_age <= self._robot_presence_timeout_s)
+        frame_live = bool(frame_age is not None and frame_age <= max(2.0, self._robot_presence_timeout_s))
+        topic_live = bool(topic_age is not None and topic_age <= self._robot_presence_bootstrap_grace_s)
+        return {
+            "alive": bool(hb_live or frame_live or topic_live),
+            "hb_age": hb_age,
+            "frame_age": frame_age,
+            "topic_age": topic_age,
+            "hb_live": hb_live,
+            "frame_live": frame_live,
+            "topic_live": topic_live,
+        }
+
+    def _robot_presence_public(self, robot: str, t_now: Optional[float] = None) -> Dict[str, Any]:
+        t_now = now_s() if t_now is None else float(t_now)
+        snap = self._robot_liveness_snapshot(robot, t_now)
+        if snap["hb_live"] or snap["frame_live"]:
+            status = "live"
+            reason = "Robot is publishing recent heartbeat or frames."
+        elif snap["topic_live"]:
+            status = "bootstrap"
+            reason = "Robot topic graph is present, but heartbeat/frame freshness is still settling."
+        else:
+            missing = []
+            if not snap["hb_live"]:
+                missing.append("heartbeat")
+            if not snap["frame_live"]:
+                missing.append("camera")
+            if not snap["topic_live"]:
+                missing.append("topic_graph")
+            missing_txt = ",".join(missing) or "unknown"
+            status = "stale"
+            reason = f"Recent robot liveness evidence is missing: {missing_txt}."
+        return {
+            "robot_alive": bool(snap["alive"]),
+            "presence_status": status,
+            "presence_reason": reason,
+            "heartbeat_age_s": snap["hb_age"],
+            "topic_age_s": snap["topic_age"],
+        }
+
+    @staticmethod
+    def _fmt_age(value: Optional[float]) -> str:
+        if value is None:
+            return "none"
+        return f"{float(value):.2f}s"
+
+    def _log_robot_liveness_transitions(self, t_now: float) -> None:
+        candidates: Set[str] = set(self._known_robots)
+        candidates.update(self._hb_subs.keys())
+        candidates.update(self._img_subs.keys())
+        candidates.update(self._topic_seen_s.keys())
+        candidates.update(self._hb_last_seen_s.keys())
+        candidates.update(self._img_last_frame_s.keys())
+        for robot in sorted(candidates):
+            snap = self._robot_liveness_snapshot(robot, t_now)
+            alive = bool(snap["alive"])
+            prev = self._robot_live_state.get(robot)
+            if prev is None:
+                self._robot_live_state[robot] = alive
+                continue
+            if prev == alive:
+                continue
+            self._robot_live_state[robot] = alive
+            if alive:
+                self.get_logger().info(
+                    "[swarm_fpv_ui] robot '%s' live again: heartbeat_age=%s frame_age=%s topic_age=%s"
+                    % (
+                        robot,
+                        self._fmt_age(snap["hb_age"]),
+                        self._fmt_age(snap["frame_age"]),
+                        self._fmt_age(snap["topic_age"]),
+                    )
+                )
+                continue
+            reasons = []
+            if not snap["hb_live"]:
+                reasons.append("heartbeat")
+            if not snap["frame_live"]:
+                reasons.append("camera")
+            if not snap["topic_live"]:
+                reasons.append("topic_graph")
+            self.get_logger().warn(
+                "[swarm_fpv_ui] robot '%s' went stale: missing=%s heartbeat_age=%s frame_age=%s topic_age=%s"
+                % (
+                    robot,
+                    ",".join(reasons) or "unknown",
+                    self._fmt_age(snap["hb_age"]),
+                    self._fmt_age(snap["frame_age"]),
+                    self._fmt_age(snap["topic_age"]),
+                )
+            )
 
     def mark_image_interest(self, robot: str, ttl_s: Optional[float] = None) -> None:
         robot = str(robot or "").strip()
@@ -669,7 +799,7 @@ class RosFleetHub(Node):
         }
 
     def drive_telemetry_snapshot(self) -> Dict[str, Dict[str, Any]]:
-        robots = set(self.list_robots())
+        robots = set(self.visible_robots())
         robots.update(self._drive_targets.keys())
         robots.update(self._drive_rx_hz_ema.keys())
         robots.update(self._drive_pub_hz_ema.keys())
@@ -1035,8 +1165,11 @@ class RosFleetHub(Node):
             if (t_now - float(cached_ts)) <= 0.35:
                 return dict(cached_payload)
 
+        presence = self._robot_presence_public(robot, t_now)
+
         def _ret(payload: Dict[str, Any]) -> Dict[str, Any]:
             snap = dict(payload)
+            snap.update(presence)
             self._camera_health_cache[robot] = (now_s(), snap)
             return snap
 
@@ -1565,7 +1698,7 @@ class BrowserServer:
         }
 
     def _public_active_robot(self, robots: Optional[List[str]] = None) -> Optional[str]:
-        live = set(robots if robots is not None else sorted(self.hub.list_robots()))
+        live = set(robots if robots is not None else sorted(self.hub.visible_robots()))
         active = str(self.hub.active_robot or "").strip()
         if active and active in live:
             return active
@@ -2075,7 +2208,8 @@ class BrowserServer:
             return denied
         assert principal is not None
 
-        robots = sorted(self.hub.list_robots())
+        robots = sorted(self.hub.visible_robots())
+        live_robots = sorted(self.hub.list_robots())
         active_robot = self._public_active_robot(robots)
         contract = fleet_contract_manifest()
         return web.json_response(
@@ -2090,6 +2224,7 @@ class BrowserServer:
                 },
                 "principal": self._principal_public(principal),
                 "robots": robots,
+                "live_robots": live_robots,
                 "active_robot": active_robot,
                 "locks": self._locks_public(),
                 "lock_meta": self._locks_meta_public(),
@@ -2120,7 +2255,8 @@ class BrowserServer:
         assert principal is not None
 
         source = "swarm_control_core.fpv_ui"
-        robots = sorted(self.hub.list_robots())
+        robots = sorted(self.hub.visible_robots())
+        live_robots = sorted(self.hub.list_robots())
         active_robot = self._public_active_robot(robots)
 
         robot_registry = []
@@ -2340,7 +2476,8 @@ class BrowserServer:
         self.ws_clients[client_id] = ws
         self.ws_principals[client_id] = principal
 
-        robots = sorted(self.hub.list_robots())
+        robots = sorted(self.hub.visible_robots())
+        live_robots = sorted(self.hub.list_robots())
         active_robot = self._public_active_robot(robots)
         await ws.send_str(
             json.dumps(
@@ -2351,6 +2488,7 @@ class BrowserServer:
                     "api": api_schema_info(),
                     "site_id": self.site_id,
                     "robots": robots,
+                    "live_robots": live_robots,
                     "active_robot": active_robot,
                     "locks": self._locks_public(),
                     "lock_meta": self._locks_meta_public(),
@@ -2759,6 +2897,7 @@ _APP_JS = r"""
 let ws = null;
 let clientId = "c_" + Math.floor(Math.random() * 1e9);
 let robots = [];
+let liveRobots = [];
 let robotCaps = {};
 let robotHealth = {};
 let driveTelemetry = {};
@@ -2772,6 +2911,8 @@ let webrtcTelemetry = {};
 let streamConfig = { mode: "webrtc_only", fps: 15 };
 let localActiveRobotPinned = false;
 const thumbRequestInFlight = new Map();
+const thumbFailureStreak = new Map();
+const thumbBackoffUntilMs = new Map();
 let thumbRoundRobinCursor = 0;
 let thumbRobotsPerTick = 0;
 let thumbDriveSuppressedUntilMs = 0;
@@ -3520,6 +3661,60 @@ function applyThumbPolicy(payload){
   thumbRobotsPerTick = Math.max(0, n);
 }
 
+function isRobotLive(robot){
+  const name = String(robot || "").trim();
+  return Boolean(name && Array.isArray(liveRobots) && liveRobots.includes(name));
+}
+
+function robotPresenceStatus(robot){
+  const h = (robotHealth && robotHealth[robot]) ? robotHealth[robot] : {};
+  const raw = String(h.presence_status || "").trim().toLowerCase();
+  if (raw) return raw;
+  return isRobotLive(robot) ? "live" : "stale";
+}
+
+function robotThumbPriority(robot){
+  const h = (robotHealth && robotHealth[robot]) ? robotHealth[robot] : {};
+  const cam = String(h.status || "no_frame").trim().toLowerCase();
+  const presence = robotPresenceStatus(robot);
+  if (presence === "live" && cam === "live") return 0;
+  if (presence === "live" && cam === "degraded") return 1;
+  if (presence === "bootstrap") return 2;
+  if (presence === "live") return 3;
+  return 4;
+}
+
+function noteThumbFailure(robot){
+  const name = String(robot || "").trim();
+  if (!name) return;
+  const streak = 1 + Number(thumbFailureStreak.get(name) || 0);
+  thumbFailureStreak.set(name, streak);
+  const capped = Math.min(5, streak);
+  let backoffMs = 500 * (2 ** (capped - 1));
+  const priority = robotThumbPriority(name);
+  if (priority >= 4){
+    backoffMs = Math.max(backoffMs, 6000);
+  } else if (priority >= 3){
+    backoffMs = Math.max(backoffMs, 2500);
+  }
+  thumbBackoffUntilMs.set(name, Date.now() + backoffMs);
+}
+
+function noteThumbSuccess(robot){
+  const name = String(robot || "").trim();
+  if (!name) return;
+  thumbFailureStreak.delete(name);
+  thumbBackoffUntilMs.delete(name);
+}
+
+function canAttemptThumb(robot, force=false){
+  const name = String(robot || "").trim();
+  if (!name) return false;
+  if (force) return true;
+  const untilMs = Number(thumbBackoffUntilMs.get(name) || 0);
+  return Date.now() >= untilMs;
+}
+
 function normalizeRobotChoice(robot, available){
   const name = String(robot || "").trim();
   if (!name) return null;
@@ -3543,7 +3738,10 @@ function reconcileActiveRobotChoice(preferredRobot, available, currentRobot=null
   if (current) return current;
   const pinned = String(currentRobot || "").trim();
   if (pinned) return pinned;
-  return pickActiveRobot(null, available, true);
+  const liveSorted = Array.isArray(liveRobots)
+    ? [...liveRobots].filter((robot) => Array.isArray(available) && available.includes(robot)).sort((a, b) => a.localeCompare(b))
+    : [];
+  return pickActiveRobot(null, liveSorted.length ? liveSorted : available, true);
 }
 
 function _toBool(v){
@@ -3690,6 +3888,7 @@ function renderThumbRail(){
   const rail = $("thumbRail");
   rail.innerHTML = "";
   const sorted = [...robots].sort((a,b) => a.localeCompare(b));
+  let primedThumbs = 0;
   for (const robot of sorted){
     const div = document.createElement("div");
     div.className = "thumb" + (robot === activeRobot ? " sel" : "");
@@ -3701,8 +3900,9 @@ function renderThumbRail(){
     img.dataset.lastFrameMs = "0";
     // Prime only a small subset to avoid startup request bursts on large fleets.
     const primeBudget = Math.max(0, Math.floor(Number(thumbRobotsPerTick) || 0));
-    if (primeBudget > 0 && robot !== activeRobot && rail.childElementCount < primeBudget){
+    if (primeBudget > 0 && robot !== activeRobot && primedThumbs < primeBudget && robotThumbPriority(robot) <= 1){
       refreshThumbImage(img, robot);
+      primedThumbs += 1;
     }
 
     const lockBadge = document.createElement("div");
@@ -3741,6 +3941,7 @@ function refreshThumbImage(imgEl, robot){
   // - old frame stays visible while loading next frame
   // - if fetch fails, old frame remains instead of flashing to black
   if (!imgEl || !robot) return;
+  if (!canAttemptThumb(robot)) return;
   if (thumbRequestInFlight.get(robot)) return;
   thumbRequestInFlight.set(robot, true);
   const next = new Image();
@@ -3748,9 +3949,11 @@ function refreshThumbImage(imgEl, robot){
     imgEl.src = next.src;
     imgEl.dataset.lastFrameMs = String(Date.now());
     thumbRequestInFlight.delete(robot);
+    noteThumbSuccess(robot);
   };
   next.onerror = () => {
     thumbRequestInFlight.delete(robot);
+    noteThumbFailure(robot);
     if (!imgEl.src) imgEl.src = NO_SIGNAL_IMG;
   };
   next.src = withAuthPath(`/api/jpeg?robot=${encodeURIComponent(robot)}&t=${Date.now()}`);
@@ -3963,6 +4166,10 @@ function renderHealthPanel(){
     };
     const h = robotHealth[robot] || {
       status: "no_frame",
+      presence_status: "stale",
+      presence_reason: "No robot presence diagnostics available yet.",
+      heartbeat_age_s: null,
+      topic_age_s: null,
       topic: `/${robot}/image_raw`,
       frame_age_s: null,
       fps: 0.0,
@@ -3989,6 +4196,9 @@ function renderHealthPanel(){
       <div class="health-row"><b>Encoding:</b> ${h.encoding || "unknown"}</div>
       <div class="health-row"><b>Strategy:</b> ${h.camera_strategy || "--"}</div>
       <div class="health-row"><b>Cam error:</b> ${h.camera_last_error || "--"}</div>
+      <div class="health-row"><b>Presence:</b> ${h.presence_status || "--"}</div>
+      <div class="health-row"><b>Heartbeat age:</b> ${fmtHealthAge(h.heartbeat_age_s)}</div>
+      <div class="health-row"><b>Topic age:</b> ${fmtHealthAge(h.topic_age_s)}</div>
       <div class="health-row"><b>Publishers:</b> ${Number(h.publisher_count || 0)}</div>
       <div class="health-row"><b>Frame age:</b> ${fmtHealthAge(h.frame_age_s)}</div>
       <div class="health-row"><b>FPS (EMA):</b> ${fmtHealthFps(h.fps)}</div>
@@ -4451,7 +4661,16 @@ function refreshThumbs(){
     thumbRoundRobinCursor = 0;
     return;
   }
-  const pool = tiles;
+  const healthy = [];
+  const unhealthy = [];
+  for (const row of tiles){
+    if (robotThumbPriority(row.robot) <= 1){
+      healthy.push(row);
+    } else {
+      unhealthy.push(row);
+    }
+  }
+  const pool = healthy.concat(unhealthy);
   const limit = configuredLimit;
   const total = pool.length;
   const start = ((thumbRoundRobinCursor % total) + total) % total;
@@ -4495,6 +4714,7 @@ async function main(){
     return;
   }
   robots = s.robots || [];
+  liveRobots = s.live_robots || liveRobots;
   robotsSig = [...robots].sort().join("|");
   locks = s.locks || {};
   locksSig = lockSignature(locks);
@@ -4531,6 +4751,7 @@ async function main(){
     try { d = JSON.parse(evt.data); } catch(_e){ return; }
     if (d.type === "hello"){
       const newRobots = d.robots || robots;
+      liveRobots = d.live_robots || liveRobots;
       const newSig = [...newRobots].sort().join("|");
       robots = newRobots;
       locks = d.locks || locks;
@@ -4597,6 +4818,7 @@ async function main(){
     try{
       const st = await fetchState();
       const newRobots = st.robots || robots;
+      liveRobots = st.live_robots || liveRobots;
       const newSig = [...newRobots].sort().join("|");
       robots = newRobots;
       robotCaps = st.robot_caps || robotCaps;

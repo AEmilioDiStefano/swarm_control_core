@@ -41,6 +41,7 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
 from .path_defaults import default_robot_name
 from .runtime_env import ensure_ros_domain_id
+from .camera_runtime_defaults import choose_adaptive_jpeg_quality
 
 
 DeviceType = Union[int, str]
@@ -235,6 +236,12 @@ class CameraAdapterNode(Node):
         self.declare_parameter("force_v4l2", True)
         self.declare_parameter("publish_compressed", True)
         self.declare_parameter("jpeg_quality", 70)
+        self.declare_parameter("adaptive_jpeg", True)
+        self.declare_parameter("adaptive_jpeg_min_quality", 45)
+        self.declare_parameter("adaptive_jpeg_step", 5)
+        self.declare_parameter("adaptive_jpeg_overload_ratio", 0.85)
+        self.declare_parameter("adaptive_jpeg_encode_ratio", 0.55)
+        self.declare_parameter("adaptive_jpeg_recover_after_s", 6.0)
         # Number of extra non-decoding grabs before retrieve to shed stale
         # backend-buffered frames when drivers ignore CAP_PROP_BUFFERSIZE.
         self.declare_parameter("capture_grab_drain", 2)
@@ -257,6 +264,24 @@ class CameraAdapterNode(Node):
         self.force_v4l2 = bool(self.get_parameter("force_v4l2").value)
         self.publish_compressed = bool(self.get_parameter("publish_compressed").value)
         self.jpeg_quality = max(30, min(95, int(self.get_parameter("jpeg_quality").value)))
+        self.adaptive_jpeg = bool(self.get_parameter("adaptive_jpeg").value)
+        self.adaptive_jpeg_min_quality = max(
+            30,
+            min(self.jpeg_quality, int(self.get_parameter("adaptive_jpeg_min_quality").value)),
+        )
+        self.adaptive_jpeg_step = max(1, min(20, int(self.get_parameter("adaptive_jpeg_step").value)))
+        self.adaptive_jpeg_overload_ratio = max(
+            0.25,
+            min(2.0, float(self.get_parameter("adaptive_jpeg_overload_ratio").value)),
+        )
+        self.adaptive_jpeg_encode_ratio = max(
+            0.10,
+            min(2.0, float(self.get_parameter("adaptive_jpeg_encode_ratio").value)),
+        )
+        self.adaptive_jpeg_recover_after_s = max(
+            0.5,
+            float(self.get_parameter("adaptive_jpeg_recover_after_s").value),
+        )
         self.capture_grab_drain = max(0, int(self.get_parameter("capture_grab_drain").value))
         self.reopen_stale_after_s = max(0.2, float(self.get_parameter("reopen_stale_after_s").value))
         self.reopen_no_frame_after_s = max(0.5, float(self.get_parameter("reopen_no_frame_after_s").value))
@@ -375,6 +400,12 @@ class CameraAdapterNode(Node):
         self.last_gray_std = 0.0
         self.last_open_s: Optional[float] = None
         self.frames_since_open = 0
+        self.current_jpeg_quality = int(self.jpeg_quality)
+        self._jpeg_last_pressure_s = 0.0
+        self._jpeg_last_adjust_s = 0.0
+        self._jpeg_quality_adjustments = 0
+        self.last_cycle_elapsed_ms = 0.0
+        self.last_encode_elapsed_ms = 0.0
 
         self._open_next_strategy(initial=True)
         self.capture_timer = self.create_timer(1.0 / self.frame_rate, self._capture_once)
@@ -388,7 +419,8 @@ class CameraAdapterNode(Node):
         if self.publish_compressed:
             self.get_logger().info(
                 f"[{self.robot_name}.camera] compressed stream on {self.compressed_topic} "
-                f"(jpeg_quality={self.jpeg_quality})"
+                f"(jpeg_quality={self.jpeg_quality}, adaptive_jpeg={self.adaptive_jpeg}, "
+                f"adaptive_floor={self.adaptive_jpeg_min_quality})"
             )
 
     def _read_latest_frame(self) -> Tuple[bool, Any]:
@@ -704,6 +736,9 @@ class CameraAdapterNode(Node):
         self.bad_color_streak = 0
         self.last_bgr_mean = (0.0, 0.0, 0.0)
         self.last_gray_std = 0.0
+        self.current_jpeg_quality = int(self.jpeg_quality)
+        self._jpeg_last_pressure_s = 0.0
+        self._jpeg_last_adjust_s = 0.0
         self.get_logger().info(f"[{self.robot_name}.camera] opened strategy {strategy.name}")
         return True
 
@@ -730,6 +765,7 @@ class CameraAdapterNode(Node):
             self.get_logger().warn(msg)
 
     def _capture_once(self):
+        cycle_started_s = _now_s()
         if self.cap is None:
             self._open_next_strategy(initial=False)
             return
@@ -780,13 +816,16 @@ class CameraAdapterNode(Node):
                     return
 
         compressed_ok = False
+        encode_elapsed_s = 0.0
         if self.publish_compressed:
             try:
+                encode_started_s = _now_s()
                 ok_jpg, jpg_buf = cv2.imencode(
                     ".jpg",
                     frame_bgr,
-                    [int(cv2.IMWRITE_JPEG_QUALITY), int(self.jpeg_quality)],
+                    [int(cv2.IMWRITE_JPEG_QUALITY), int(self.current_jpeg_quality)],
                 )
+                encode_elapsed_s = max(0.0, _now_s() - encode_started_s)
                 if ok_jpg:
                     cmsg = CompressedImage()
                     cmsg.format = "jpeg"
@@ -815,6 +854,43 @@ class CameraAdapterNode(Node):
                     self._open_next_strategy(initial=False)
                 return
             self.last_error = f"raw publish degraded ({exc})"
+
+        cycle_elapsed_s = max(0.0, _now_s() - cycle_started_s)
+        self.last_cycle_elapsed_ms = cycle_elapsed_s * 1000.0
+        self.last_encode_elapsed_ms = encode_elapsed_s * 1000.0
+        if self.publish_compressed:
+            next_quality, next_pressure_s, next_adjust_s, action = choose_adaptive_jpeg_quality(
+                enabled=self.adaptive_jpeg,
+                current_quality=self.current_jpeg_quality,
+                target_quality=self.jpeg_quality,
+                min_quality=self.adaptive_jpeg_min_quality,
+                step=self.adaptive_jpeg_step,
+                frame_period_s=(1.0 / max(1.0, self.frame_rate)),
+                cycle_elapsed_s=cycle_elapsed_s,
+                encode_elapsed_s=encode_elapsed_s,
+                now_s=_now_s(),
+                last_pressure_s=self._jpeg_last_pressure_s,
+                last_adjust_s=self._jpeg_last_adjust_s,
+                overload_ratio=self.adaptive_jpeg_overload_ratio,
+                encode_ratio=self.adaptive_jpeg_encode_ratio,
+                recover_after_s=self.adaptive_jpeg_recover_after_s,
+            )
+            self._jpeg_last_pressure_s = next_pressure_s
+            self._jpeg_last_adjust_s = next_adjust_s
+            if next_quality != self.current_jpeg_quality:
+                prior_quality = self.current_jpeg_quality
+                self.current_jpeg_quality = next_quality
+                self._jpeg_quality_adjustments += 1
+                if action == "decrease":
+                    self.get_logger().warn(
+                        f"[{self.robot_name}.camera] adaptive jpeg quality {prior_quality}->{next_quality} "
+                        f"(cycle_ms={cycle_elapsed_s * 1000.0:.1f}, encode_ms={encode_elapsed_s * 1000.0:.1f})"
+                    )
+                else:
+                    self.get_logger().info(
+                        f"[{self.robot_name}.camera] adaptive jpeg quality {prior_quality}->{next_quality} "
+                        "(recovered)"
+                    )
 
         if not (raw_ok or compressed_ok):
             self.fail_reads += 1
@@ -874,6 +950,13 @@ class CameraAdapterNode(Node):
             "bad_color_streak": int(self.bad_color_streak),
             "mean_bgr": [float(self.last_bgr_mean[0]), float(self.last_bgr_mean[1]), float(self.last_bgr_mean[2])],
             "gray_std": float(self.last_gray_std),
+            "jpeg_quality_target": int(self.jpeg_quality),
+            "jpeg_quality_current": int(self.current_jpeg_quality),
+            "adaptive_jpeg": bool(self.adaptive_jpeg),
+            "adaptive_jpeg_min_quality": int(self.adaptive_jpeg_min_quality),
+            "adaptive_jpeg_adjustments": int(self._jpeg_quality_adjustments),
+            "cycle_elapsed_ms": float(self.last_cycle_elapsed_ms),
+            "encode_elapsed_ms": float(self.last_encode_elapsed_ms),
             "frame_count": int(self.frame_count),
             "frames_since_open": int(self.frames_since_open),
             "open_age_s": open_age,

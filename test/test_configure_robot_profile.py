@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from swarm_control_core.configure_robot_profile import (
+    _suggest_control_machine_sync_specs,
     _compatible_control_interfaces,
     ensure_camera_profile,
     ensure_robot_entry,
@@ -200,4 +201,14 @@ def test_compatible_control_interfaces_prefers_matching_drive_family() -> None:
     ]
     assert _compatible_control_interfaces("mecanum_drive", interfaces) == [
         "dual_tb6612_mecanum",
+    ]
+
+
+def test_suggest_control_machine_sync_specs_uses_robot_ssh_target() -> None:
+    assert _suggest_control_machine_sync_specs(
+        "my_robot",
+        {"ssh_target": "robot1@legion1.local"},
+    ) == [
+        "robot1@legion1.local",
+        "my_robot=robot1@legion1.local",
     ]

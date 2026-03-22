@@ -49,6 +49,8 @@ robots:
         teleop_angular_rps: 0.70
         teleop_diff_arc_inner_ratio: 0.75
         teleop_smoothing_alpha: 0.25
+        left_speed_scale: 1.04
+        right_speed_scale: 1.00
         stall_timeout_s: 0
         stall_duty_pct: 0
       control_interface:
