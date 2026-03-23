@@ -263,14 +263,17 @@ def test_generate_launch_description_idempotent():
     """Verify calling generate_launch_description() multiple times returns independent objects."""
     ld1 = generate_launch_description()
     ld2 = generate_launch_description()
-    
+
     # Should be different LaunchDescription objects (not cached/reused)
     assert ld1 is not ld2
     assert isinstance(ld1, LaunchDescription)
     assert isinstance(ld2, LaunchDescription)
-    
-    # Both should have same structure (5 elements)
+
+    # Both should have same structure and expected entity count (6 entities: 3 args, 1 env, 2 nodes)
+    assert len(ld1.entities) == 6
+    assert len(ld2.entities) == 6
     assert len(ld1.entities) == len(ld2.entities)
+
 
 
 def test_parameters_are_launchconfig_substitutions_and_env_configurable(monkeypatch):
