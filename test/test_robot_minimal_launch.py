@@ -129,45 +129,53 @@ def test_launch_contains_motor_and_heartbeat_nodes():
 def test_node_names():
     """
     Verify node names for ROS topic namespacing using private attribute access.
-    
+
     ⚠️  PRIVATE ATTRIBUTE USAGE - RISK DOCUMENTED:
     This test accesses _Node__node_name, a name-mangled private attribute.
     This is justified because:
-    
+
     1. Node names are CRITICAL for ROS topic namespacing 
        (e.g., /<robot_name>/cmd_vel depends on correct node name config).
     2. No public ROS 2 launch API exposes node names after Node creation.
     3. If ROS 2 changes the private attribute, test WILL fail visibly (not silently).
     4. The failure will immediately signal that launch config needs verification.
-    
+
     Expected node names (from source):
     - "motor_driver_node" (subscribes to cmd_vel, publishes motor diagnostics)
     - "heartbeat_node" (broadcasts robot capabilities and health)
-    
+
     If these change, all robot discovery and topic routing breaks (safety-critical).
-    
+
     FUTURE MITIGATION:
     Replace this with an integration test that:
     - Launches the nodes
     - Runs 'ros2 node list' to verify node names
     - Runs 'ros2 topic list' to verify topic subscriptions
-    
+
     See design notes in module docstring.
     """
     ld = generate_launch_description()
     nodes = _find_action(ld.entities, Node)
-    
-    # Collect node names from private _Node__node_name attribute
-    node_names = [getattr(node, '_Node__node_name') for node in nodes]
-    
-    # Verify expected node names are present
-    assert "motor_driver_node" in node_names, \
-        f"motor_driver_node not found in {node_names}"
-    assert "heartbeat_node" in node_names, \
-        f"heartbeat_node not found in {node_names}"
-    
-    # Verify exactly 2 nodes with these names
-    assert len(node_names) == 2
+
+    normalized_node_names = set()
+    for node in nodes:
+        raw_name = getattr(node, '_Node__node_name', None)
+        assert raw_name is not None, f"Node {node} missing _Node__node_name"
+
+        if isinstance(raw_name, list):
+            assert len(raw_name) > 0, f"Node {node} has empty node name substitution list"
+            name_sub = raw_name[0]
+            node_name = getattr(name_sub, 'text', None) or str(name_sub)
+        else:
+            node_name = raw_name
+
+        normalized_node_names.add(node_name)
+
+    assert normalized_node_names == {"motor_driver_node", "heartbeat_node"}, \
+        f"Expected node names motor_driver_node and heartbeat_node, got {normalized_node_names}"
+
+    # Ensure exactly 2 nodes were declared
+    assert len(nodes) == 2
 
 
 def test_launch_node_parameters_are_linked_to_launch_config():
