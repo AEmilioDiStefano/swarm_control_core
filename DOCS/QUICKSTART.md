@@ -103,6 +103,7 @@ Proceed to Step 1.
 Expected:
 - package builds successfully
 - no missing `swarm_control_core` package errors
+- if GitHub/DNS is unavailable, Step 1 may print a warning and continue from the local checkout instead of aborting
 - compatibility script check prints matches for:
   `--machine-role`, `--compat-mode`, `compat-stop-ufw`,
   `ROS_AUTOMATIC_DISCOVERY_RANGE`, and `SWARM_CORE_PROCESS_RESET_DONE`

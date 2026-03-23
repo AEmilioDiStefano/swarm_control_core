@@ -12,6 +12,10 @@ swarm_core_qs_fail() {
   exit 1
 }
 
+swarm_core_qs_warn() {
+  echo "[swarm_core_quickstart] WARN: $*" >&2
+}
+
 swarm_core_qs_detect_workspace() {
   local requested="${1:-}"
   local ws=""
@@ -68,10 +72,36 @@ swarm_core_qs_source_ros_overlay() {
 
 swarm_core_qs_git_sync() {
   local sc="${1:-}"
+  local current_branch=""
+  local current_commit=""
+  local fetch_ok="1"
   cd "$sc"
-  git fetch origin --prune
-  git switch main || git checkout -b main origin/main
-  git pull --ff-only origin main
+  if ! git fetch origin --prune; then
+    fetch_ok="0"
+    swarm_core_qs_warn "GitHub fetch failed; continuing with the local checkout. Check DNS/network if you expected an online sync."
+  fi
+
+  if git show-ref --verify --quiet refs/heads/main; then
+    if ! git switch main; then
+      swarm_core_qs_warn "Could not switch to local branch 'main'; continuing with the current checkout."
+    fi
+  elif git show-ref --verify --quiet refs/remotes/origin/main; then
+    if ! git checkout -b main origin/main; then
+      swarm_core_qs_warn "Could not create local branch 'main' from origin/main; continuing with the current checkout."
+    fi
+  else
+    swarm_core_qs_warn "No local 'main' branch reference is available; continuing with the current checkout."
+  fi
+
+  current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  if [[ "$fetch_ok" == "1" && "$current_branch" == "main" ]]; then
+    if ! git pull --ff-only origin main; then
+      swarm_core_qs_warn "git pull --ff-only origin main failed; continuing with the current local checkout."
+    fi
+  fi
+
+  current_commit="$(git rev-parse --short HEAD 2>/dev/null || true)"
+  echo "[swarm_core_quickstart] git checkout: branch=${current_branch:-unknown} commit=${current_commit:-unknown}"
 }
 
 swarm_core_qs_wireless_iface() {

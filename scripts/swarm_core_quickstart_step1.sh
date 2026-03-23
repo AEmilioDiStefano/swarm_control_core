@@ -15,7 +15,8 @@ Usage:
 Behavior:
   - Detects the workspace from the script path.
   - Clears stale overlay/discovery state inside the script environment.
-  - Syncs the local checkout to origin/main.
+  - Attempts to sync the local checkout to origin/main.
+  - Continues from the local checkout if GitHub is unreachable.
   - Builds swarm_control_core and verifies the current quickstart compatibility hooks.
 USAGE
 }
