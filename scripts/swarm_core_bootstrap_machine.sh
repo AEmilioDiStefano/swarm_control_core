@@ -467,9 +467,9 @@ if [[ "$skip_build" != "1" ]]; then
     cd "$1"
     set +u
     source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-    colcon build --packages-select swarm_control_core
+    colcon build --base-paths "$2" --packages-select swarm_control_core
     set -u || true
-  ' _ "$workspace"
+  ' _ "$workspace" "$target_pkg_dir"
   build_status="completed"
 fi
 
