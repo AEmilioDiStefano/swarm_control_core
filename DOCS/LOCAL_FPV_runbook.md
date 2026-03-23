@@ -5,13 +5,13 @@ This runbook is for local/LAN operation of `swarm_control_core`.
 Workspace bootstrap (run once per terminal before DRP steps):
 
 ```bash
-SWARM_CORE_BOOTSTRAP="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh" 2>/dev/null | sort | head -n1)"
-if [[ -z "${SWARM_CORE_BOOTSTRAP:-}" ]]; then
-  echo "[FAIL] Could not locate swarm_control_core workspace bootstrap script under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
+SWARM_CORE_BOOTSTRAP_ENV="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
+if [[ -z "${SWARM_CORE_BOOTSTRAP_ENV:-}" ]]; then
+  echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
   return 1 2>/dev/null || exit 1
 fi
-eval "$("$SWARM_CORE_BOOTSTRAP" --interactive --emit-shell)"
-unset SWARM_CORE_BOOTSTRAP
+source "$SWARM_CORE_BOOTSTRAP_ENV" --interactive
+unset SWARM_CORE_BOOTSTRAP_ENV
 ```
 
 This bootstrap exports `WS`, `WS_DEV`, and `SC` for the commands below.

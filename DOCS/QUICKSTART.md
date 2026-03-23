@@ -26,23 +26,9 @@ Suggested terminal layout on the control machine:
 - `R-<robot-b>`: `ssh <robot_user>@<robot_host>.local`
 - add one terminal per additional robot.
 
-Workspace selection below is handled by the bootstrap script.
-After that step, use `WS` for the workspace root and `SC` for
+Workspace selection below is handled by the Step 0 terminal-bootstrap helper.
+After that, use `WS` for the workspace root and `SC` for
 `"$WS/src/swarm_control_core"`.
-
-Workspace bootstrap (run once per fresh terminal before following this document):
-
-```bash
-SWARM_CORE_BOOTSTRAP="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh" 2>/dev/null | sort | head -n1)"
-if [[ -z "${SWARM_CORE_BOOTSTRAP:-}" ]]; then
-  echo "[FAIL] Could not locate swarm_control_core workspace bootstrap script under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-  return 1 2>/dev/null || exit 1
-fi
-eval "$("$SWARM_CORE_BOOTSTRAP" --interactive --emit-shell)"
-unset SWARM_CORE_BOOTSTRAP
-```
-
-This exports `WS`, `WS_DEV`, and `SC` for later commands in this document.
 
 ## Mode Handoff Checklist (core <-> pro)
 
@@ -73,12 +59,28 @@ sudo systemctl is-active swarm-robot.service || true
 ### Run on control machine:
 
 ```bash
+SWARM_CORE_BOOTSTRAP_ENV="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
+if [[ -z "${SWARM_CORE_BOOTSTRAP_ENV:-}" ]]; then
+  echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
+  return 1 2>/dev/null || exit 1
+fi
+source "$SWARM_CORE_BOOTSTRAP_ENV" --interactive
+unset SWARM_CORE_BOOTSTRAP_ENV
+
 "$SC/scripts/swarm_core_quickstart_step0.sh" --machine-role control
 ```
 
 ### Run in each dedicated robot SSH terminal (one per robot):
 
 ```bash
+SWARM_CORE_BOOTSTRAP_ENV="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
+if [[ -z "${SWARM_CORE_BOOTSTRAP_ENV:-}" ]]; then
+  echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
+  return 1 2>/dev/null || exit 1
+fi
+source "$SWARM_CORE_BOOTSTRAP_ENV" --interactive
+unset SWARM_CORE_BOOTSTRAP_ENV
+
 "$SC/scripts/swarm_core_quickstart_step0.sh" --machine-role robot
 ```
 
