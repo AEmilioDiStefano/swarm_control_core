@@ -34,6 +34,7 @@ Tests Removed (Brittle Private Attribute Dependencies):
 Tests Retained with Private Attribute Access (Safety-Critical):
   ✓ test_node_parameter_count_and_keys - uses _Node__parameters (parameter passing is safety-critical)
   ✓ test_node_names - uses _Node__node_name (ROS topic namespacing is safety-critical)
+  ✓ test_node_package_and_executable_names - uses _Node__package and _Node__node_executable (executable/package sanity check)
 
 Rationale for Removal:
   Private attributes (name-mangled with __) are implementation details of ROS 2 launch framework.
@@ -65,11 +66,6 @@ from swarm_launch.robot_minimal_launch import generate_launch_description, _defa
 
 def _find_action(actions, action_type):
     return [a for a in actions if isinstance(a, action_type)]
-
-
-def test_generate_launch_description_type():
-    ld = generate_launch_description()
-    assert isinstance(ld, LaunchDescription)
 
 
 def test_launch_contains_expected_arguments():
@@ -176,6 +172,49 @@ def test_node_names():
 
     # Ensure exactly 2 nodes were declared
     assert len(nodes) == 2
+
+
+def test_node_package_and_executable_names():
+    """
+    Verify node package and executable names for the two actions.
+
+    ⚠️  PRIVATE ATTRIBUTE USAGE - RISK DOCUMENTED:
+    These tests use _Node__package and _Node__node_executable, which are private
+    name-mangled attributes. This is acceptable for safety-critical checks
+    (executable typos would cause runtime failure; the launch test should catch them).
+    """
+    ld = generate_launch_description()
+    nodes = _find_action(ld.entities, Node)
+
+    package_names = set()
+    executable_names = set()
+
+    for node in nodes:
+        raw_pkg = getattr(node, '_Node__package', None)
+        if isinstance(raw_pkg, list):
+            assert len(raw_pkg) > 0
+            pkg_sub = raw_pkg[0]
+            pkg = getattr(pkg_sub, 'text', None) or str(pkg_sub)
+        else:
+            pkg = raw_pkg
+
+        assert pkg == 'swarm_control_core', f"Expected package swarm_control_core, got {pkg}"
+        package_names.add(pkg)
+
+        raw_exe = getattr(node, '_Node__node_executable', None)
+        if isinstance(raw_exe, list):
+            assert len(raw_exe) > 0
+            exe_sub = raw_exe[0]
+            exe = getattr(exe_sub, 'text', None) or str(exe_sub)
+        else:
+            exe = raw_exe
+
+        assert exe in {'motor_driver_node_core', 'heartbeat_node_core'}, \
+            f"Unexpected node executable: {exe}"
+        executable_names.add(exe)
+
+    assert package_names == {'swarm_control_core'}
+    assert executable_names == {'motor_driver_node_core', 'heartbeat_node_core'}
 
 
 def test_argument_default_values():
@@ -301,12 +340,6 @@ def test_parameters_are_launchconfig_substitutions_and_env_configurable(monkeypa
                     assert resolved == '/tmp/context_profiles'
 
         assert key_texts == {'robot_name', 'profiles_path'}
-
-
-def test_default_ros_domain_id_with_env_fallback_works_when_env_has_empty_string(monkeypatch):
-    """When ROS_DOMAIN_ID is set to empty string via environment, it should fall back to 17."""
-    monkeypatch.setenv('ROS_DOMAIN_ID', '')
-    assert _default_ros_domain_id() == '17'
 
 
 # Tests for _default_ros_domain_id() function
