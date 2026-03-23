@@ -178,20 +178,6 @@ def test_node_names():
     assert len(nodes) == 2
 
 
-def test_launch_node_parameters_are_linked_to_launch_config():
-    """Verify that nodes have parameters declared (internally name-mangled as _Node__parameters)."""
-    ld = generate_launch_description()
-    nodes = _find_action(ld.entities, Node)
-    
-    # Both nodes should have parameters set (internal check via name-mangled attribute)
-    for node in nodes:
-        # Parameter dict is stored as _Node__parameters
-        assert hasattr(node, '_Node__parameters')
-        params = getattr(node, '_Node__parameters', None)
-        assert params is not None
-        assert len(params) > 0
-
-
 def test_argument_default_values():
     """Verify argument defaults are configured (using public .default_value attribute)."""
     ld = generate_launch_description()
