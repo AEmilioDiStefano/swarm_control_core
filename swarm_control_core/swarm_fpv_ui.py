@@ -2295,7 +2295,9 @@ class BrowserServer:
             async def _on_state():
                 state = str(getattr(pc, "connectionState", "") or "")
                 self._update_pc_session(pc, connection_state=state)
-                if state in ("failed", "closed", "disconnected"):
+                # "disconnected" is often transient on local Wi-Fi. Closing the
+                # peer immediately causes unnecessary renegotiation churn.
+                if state in ("failed", "closed"):
                     await self._close_pc(pc)
 
             @pc.on("iceconnectionstatechange")
@@ -2779,8 +2781,10 @@ let authConfig = { mode: "off", allow_anonymous_readonly: true, dev_login_enable
 let pc = null;
 let webrtcAttemptInFlight = false;
 let webrtcRetryAtMs = 0;
+let webrtcRetryStreak = 0;
 let webrtcSwitchNonce = 0;
 let webrtcOfferAbortController = null;
+let webrtcAttemptStartedAtMs = 0;
 let mainVideoLastFrameAtMs = 0;
 let mainVideoFrameWatchStarted = false;
 let activeRobotSwitchAtMs = 0;
@@ -2794,6 +2798,10 @@ const ROBOT_SWITCH_DEBOUNCE_MS = 140;
 const ROBOT_SWITCH_GRACE_MS = 1400;
 const WEBRTC_RETRY_INTERVAL_MS = 1600;
 const WEBRTC_STALE_FRAME_MS = 3200;
+const WEBRTC_CONNECTING_GRACE_MS = 5000;
+const WEBRTC_DISCONNECTED_GRACE_MS = 9000;
+const WEBRTC_SOURCE_STALE_RETRY_MS = 12000;
+const WEBRTC_RETRY_BACKOFF_MAX_MS = 12000;
 const THUMB_DRIVE_SUPPRESS_MS = 2000;
 const driveHoldTimers = new Map();
 const driveHoldCommands = new Map();
@@ -2978,17 +2986,28 @@ function clearDriveButtonActiveStates(){
   activeDriveButtonTokens.clear();
 }
 
+function markMainVideoFrame(){
+  mainVideoLastFrameAtMs = Date.now();
+}
+
 function startMainVideoFrameWatch(){
   if (mainVideoFrameWatchStarted) return;
   const video = $("mainVideo");
-  if (!video || typeof video.requestVideoFrameCallback !== "function"){
+  if (!video){
     return;
   }
   mainVideoFrameWatchStarted = true;
+  const touch = () => { markMainVideoFrame(); };
+  for (const evt of ["loadedmetadata", "loadeddata", "canplay", "playing", "timeupdate"]){
+    try { video.addEventListener(evt, touch); } catch(_e){}
+  }
+  if (typeof video.requestVideoFrameCallback !== "function"){
+    return;
+  }
   const pump = () => {
     try{
       video.requestVideoFrameCallback(() => {
-        mainVideoLastFrameAtMs = Date.now();
+        markMainVideoFrame();
         pump();
       });
     }catch(_e){}
@@ -4115,29 +4134,120 @@ function hasWebRtcFrameNow(){
   );
 }
 
+function robotHealthRow(robot){
+  const name = String(robot || "").trim();
+  if (!name || !robotHealth || typeof robotHealth !== "object"){
+    return {};
+  }
+  const row = robotHealth[name];
+  return (row && typeof row === "object") ? row : {};
+}
+
+function robotCameraLooksLive(robot){
+  const row = robotHealthRow(robot);
+  const status = String(row.status || "").toLowerCase().trim();
+  if (status === "live"){
+    return true;
+  }
+  const age = Number(row.frame_age_s);
+  return Number.isFinite(age) && age >= 0.0 && age <= 1.25;
+}
+
+function robotCameraLooksStale(robot){
+  const row = robotHealthRow(robot);
+  const status = String(row.status || "").toLowerCase().trim();
+  return status === "stale" || status === "no_frame";
+}
+
+function resetWebrtcRetryState(){
+  webrtcRetryStreak = 0;
+  webrtcRetryAtMs = 0;
+}
+
+function scheduleWebrtcRetry(reason, minDelayMs=WEBRTC_RETRY_INTERVAL_MS){
+  const why = String(reason || "").toLowerCase().trim();
+  let baseDelayMs = WEBRTC_RETRY_INTERVAL_MS;
+  if (why === "connecting" || why === "no_frame"){
+    baseDelayMs = WEBRTC_STALE_FRAME_MS;
+  } else if (why === "disconnected"){
+    baseDelayMs = WEBRTC_DISCONNECTED_GRACE_MS;
+  } else if (why === "source_stale"){
+    baseDelayMs = WEBRTC_SOURCE_STALE_RETRY_MS;
+  }
+  const stepMs = Math.min(5, Math.max(0, webrtcRetryStreak)) * 700;
+  const delayMs = Math.max(
+    Math.max(0, minDelayMs),
+    Math.min(WEBRTC_RETRY_BACKOFF_MAX_MS, baseDelayMs + stepMs),
+  );
+  webrtcRetryStreak += 1;
+  webrtcRetryAtMs = Date.now() + delayMs;
+}
+
+function shouldHonorServerActiveRobot(nextRobot){
+  const candidate = normalizeRobotChoice(nextRobot, robots);
+  if (!candidate){
+    return false;
+  }
+  const current = normalizeRobotChoice(activeRobot, robots);
+  const pendingLocal = normalizeRobotChoice(pendingLocalRobotSelection, robots);
+  if (pendingLocal && candidate !== pendingLocal){
+    return false;
+  }
+  if (!current || candidate === current){
+    return true;
+  }
+  if (localActiveRobotPinned){
+    return false;
+  }
+  if (hasWebRtcFrameNow()){
+    return false;
+  }
+  if (robotCameraLooksLive(current) && !robotCameraLooksLive(candidate)){
+    return false;
+  }
+  return true;
+}
+
 function shouldRetryWebRTC(){
   if (!activeRobot) return false;
   if (!features.webrtc) return false;
   if (webrtcAttemptInFlight) return false;
   if (Date.now() < webrtcRetryAtMs) return false;
   if (!pc) return true;
+  const nowMs = Date.now();
   const conn = String(pc.connectionState || "").toLowerCase();
   const ice = String(pc.iceConnectionState || "").toLowerCase();
-  if (conn === "failed" || conn === "disconnected" || conn === "closed"){
+  if (conn === "failed" || conn === "closed"){
     return true;
   }
-  if (ice === "failed" || ice === "disconnected" || ice === "closed"){
+  if (ice === "failed" || ice === "closed"){
     return true;
   }
   if (hasWebRtcFrameNow()){
+    resetWebrtcRetryState();
     return false;
   }
-  const sinceSwitchMs = Date.now() - Number(activeRobotSwitchAtMs || 0);
+  const sinceSwitchMs = nowMs - Number(activeRobotSwitchAtMs || 0);
   if (sinceSwitchMs < WEBRTC_STALE_FRAME_MS){
     return false;
   }
-  const sinceFrameMs = Date.now() - Number(mainVideoLastFrameAtMs || 0);
-  return sinceFrameMs >= WEBRTC_STALE_FRAME_MS;
+  const sinceAttemptMs = nowMs - Number(webrtcAttemptStartedAtMs || 0);
+  const sinceFrameMs = mainVideoLastFrameAtMs > 0
+    ? (nowMs - Number(mainVideoLastFrameAtMs || 0))
+    : Number.POSITIVE_INFINITY;
+  const sourceLooksStale = robotCameraLooksStale(activeRobot);
+  if (conn === "new" || conn === "connecting" || ice === "new" || ice === "checking"){
+    return sinceAttemptMs >= WEBRTC_CONNECTING_GRACE_MS;
+  }
+  if (conn === "disconnected" || ice === "disconnected"){
+    const graceMs = sourceLooksStale ? WEBRTC_SOURCE_STALE_RETRY_MS : WEBRTC_DISCONNECTED_GRACE_MS;
+    return sinceAttemptMs >= graceMs && sinceFrameMs >= graceMs;
+  }
+  const staleThresholdMs = sourceLooksStale ? WEBRTC_SOURCE_STALE_RETRY_MS : WEBRTC_STALE_FRAME_MS;
+  if (sinceAttemptMs < WEBRTC_STALE_FRAME_MS){
+    return false;
+  }
+  return sinceFrameMs >= staleThresholdMs;
 }
 
 function updateTransportBadge(){
@@ -4212,6 +4322,7 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
     return;
   }
   webrtcAttemptInFlight = true;
+  webrtcAttemptStartedAtMs = Date.now();
   let attemptPc = null;
   try{
     if (Number(switchNonce) !== webrtcSwitchNonce || requestedRobot !== String(activeRobot || "")){
@@ -4246,6 +4357,11 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
 
     attemptPc.onconnectionstatechange = () => {
       if (attemptPc !== pc) return;
+      const state = String((attemptPc && attemptPc.connectionState) || "").toLowerCase();
+      if (state === "connected"){
+        resetWebrtcRetryState();
+        markMainVideoFrame();
+      }
       sendWebrtcTelemetry("connection_state");
       renderWebrtcDiagnostics();
       updateTransportBadge();
@@ -4272,10 +4388,12 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
         return;
       }
       if (evt.track.kind === "video"){
-        $("mainVideo").srcObject = evt.streams[0];
-        mainVideoLastFrameAtMs = Date.now();
+        const video = $("mainVideo");
+        video.srcObject = evt.streams[0];
+        try { video.play(); } catch(_e){}
+        markMainVideoFrame();
       }
-      webrtcRetryAtMs = 0;
+      resetWebrtcRetryState();
       sendWebrtcTelemetry("track");
       renderWebrtcDiagnostics();
       updateTransportBadge();
@@ -4311,14 +4429,14 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
     if (!resp.ok){
       setStatus("WebRTC unavailable");
       sendWebrtcTelemetry("offer_failed");
-      webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
+      scheduleWebrtcRetry(robotCameraLooksStale(requestedRobot) ? "source_stale" : "offer_failed");
       renderWebrtcDiagnostics();
       updateTransportBadge();
       return;
     }
     try{
       if (Number(switchNonce) !== webrtcSwitchNonce || !activeRobot || activeRobot !== requestedRobot){
-        webrtcRetryAtMs = 0;
+        resetWebrtcRetryState();
         closePeerConnection(attemptPc);
         return;
       }
@@ -4329,19 +4447,23 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       }
       await attemptPc.setRemoteDescription(ans);
       sendWebrtcTelemetry("remote_description_set");
-      webrtcRetryAtMs = 0;
+      if (robotCameraLooksStale(requestedRobot)){
+        scheduleWebrtcRetry("source_stale");
+      } else {
+        scheduleWebrtcRetry("connecting", WEBRTC_CONNECTING_GRACE_MS);
+      }
       renderWebrtcDiagnostics();
       updateTransportBadge();
     }catch(_e){
       setStatus("WebRTC handshake failed");
       sendWebrtcTelemetry("answer_failed");
-      webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
+      scheduleWebrtcRetry(robotCameraLooksStale(requestedRobot) ? "source_stale" : "answer_failed");
       renderWebrtcDiagnostics();
       updateTransportBadge();
     }
   }catch(_err){
     setStatus("WebRTC retrying");
-    webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
+    scheduleWebrtcRetry(robotCameraLooksStale(requestedRobot) ? "source_stale" : "offer_failed");
     updateTransportBadge();
   } finally {
     if (webrtcOfferAbortController && webrtcOfferAbortController.signal.aborted){
@@ -4387,6 +4509,8 @@ function setActiveRobot(robot, announce=true, source="local"){
     pressedDriveKeys.clear();
     webrtcSwitchNonce += 1;
     activeRobotSwitchAtMs = Date.now();
+    webrtcAttemptStartedAtMs = 0;
+    webrtcRetryStreak = 0;
     webrtcRetryAtMs = activeRobotSwitchAtMs + 100;
     if (webrtcOfferAbortController){
       try { webrtcOfferAbortController.abort(); } catch(_e){}
@@ -4544,7 +4668,7 @@ async function main(){
       applyStreamState(d);
       applyThumbPolicy(d);
       let nextActiveRobot = activeRobot;
-      if (d.active_robot && (!localActiveRobotPinned || !activeRobot)){
+      if (d.active_robot && shouldHonorServerActiveRobot(d.active_robot)){
         nextActiveRobot = d.active_robot;
       }
       nextActiveRobot = reconcileActiveRobotChoice(nextActiveRobot, robots, activeRobot);
@@ -4566,7 +4690,7 @@ async function main(){
       return;
     }
     if (d.type === "active_robot"){
-      if (d.robot && d.robot !== activeRobot){
+      if (d.robot && d.robot !== activeRobot && shouldHonorServerActiveRobot(d.robot)){
         setActiveRobot(d.robot, false, "server");
       }
       return;
@@ -4607,7 +4731,7 @@ async function main(){
       applyStreamState(st);
       applyThumbPolicy(st);
       let nextActiveRobot = activeRobot;
-      if (!localActiveRobotPinned && st.active_robot){
+      if (st.active_robot && shouldHonorServerActiveRobot(st.active_robot)){
         nextActiveRobot = st.active_robot;
       }
       nextActiveRobot = reconcileActiveRobotChoice(nextActiveRobot, robots, activeRobot);
