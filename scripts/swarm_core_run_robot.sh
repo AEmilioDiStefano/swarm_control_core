@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WS="${SWARM_CORE_WORKSPACE_ROOT:-$HOME/ros2_ws_dev}"
-ROBOT_NAME="${1:-${SWARM_CORE_ROBOT_NAME:-${USER}}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/swarm_core_workspace.sh
+source "${SCRIPT_DIR}/lib/swarm_core_workspace.sh"
+
+WS="$(swarm_core_detect_workspace_root "${SWARM_CORE_WORKSPACE_ROOT:-}" || true)"
+if [[ -z "$WS" || ! -d "$WS/src/swarm_control_core" ]]; then
+  echo "[swarm_core_run_robot] ERROR: Unable to detect workspace root. Set SWARM_CORE_WORKSPACE_ROOT or run from within a workspace containing src/swarm_control_core." >&2
+  exit 1
+fi
+
+ROBOT_NAME="${1:-${SWARM_CORE_ROBOT_NAME:-${USER}}}"
 USE_CAMERA_RAW="${SWARM_CORE_USE_CAMERA:-true}"
 CAMERA_PIPELINE="${SWARM_CORE_CAMERA_PIPELINE:-adapter}"
 

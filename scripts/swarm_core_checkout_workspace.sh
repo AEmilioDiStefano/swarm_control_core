@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/swarm_core_workspace.sh
+source "${SCRIPT_DIR}/lib/swarm_core_workspace.sh"
+
 log() {
   echo "[swarm_core_checkout_workspace] $*" >&2
 }
@@ -13,17 +17,18 @@ fail() {
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_core_checkout_workspace.sh --mode <default|existing> [--emit-shell] [--repo-url <url>]
+  swarm_core_checkout_workspace.sh --mode <default|existing> [--workspace <path>] [--emit-shell] [--repo-url <url>]
 
 Modes:
-  default   Create or refresh the default workspace at ~/ros2_ws_dev and ensure
-            swarm_control_core is checked out at ~/ros2_ws_dev/src/swarm_control_core.
+  default   Create or refresh the workspace you choose and ensure
+            swarm_control_core is checked out at <workspace>/src/swarm_control_core.
   existing  If the current directory is a workspace src/ directory, add or
-            refresh swarm_control_core there. If not, but the default workspace
-            from Step 1.1 already exists, reuse that workspace safely instead
-            of failing in a way that could interrupt the shell session.
+            refresh swarm_control_core there. If not, but --workspace (or
+            SWARM_CORE_WORKSPACE_ROOT) already points at a valid workspace,
+            reuse that workspace safely instead of guessing a workspace name.
 
 Options:
+  --workspace   Target workspace root.
   --emit-shell   Print export commands for eval usage.
   --repo-url     Git clone URL (default: official swarm_control_core repository).
   -h, --help     Show this help.
@@ -84,6 +89,7 @@ emit_workspace_exports() {
 mode=""
 emit_shell="0"
 repo_url="https://github.com/AEmilioDiStefano/swarm_control_core.git"
+workspace_override="${SWARM_CORE_WORKSPACE_ROOT:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -93,6 +99,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --emit-shell)
       emit_shell="1"
+      ;;
+    --workspace)
+      shift
+      workspace_override="${1:-}"
       ;;
     --repo-url)
       shift
@@ -111,8 +121,7 @@ done
 
 [[ -n "$mode" ]] || fail "--mode is required."
 
-default_ws="${HOME}/ros2_ws_dev"
-default_sc="${default_ws}/src/swarm_control_core"
+workspace_override="$(swarm_core__expand_path "${workspace_override%/}")"
 
 workspace_root=""
 package_dir=""
@@ -120,10 +129,20 @@ package_dir=""
 case "$mode" in
   default)
     ensure_git
-    clone_or_update_repo "$default_sc"
-    workspace_root="$default_ws"
-    package_dir="$default_sc"
-    log "Using default workspace at ${workspace_root}."
+    workspace_root="${workspace_override%/}"
+    if [[ -z "$workspace_root" ]]; then
+      if [[ -t 0 ]]; then
+        printf 'Enter workspace path to create or refresh (absolute path or ~/...): ' >&2
+        read -r workspace_root
+      fi
+    fi
+    [[ -n "${workspace_root// }" ]] || fail "--workspace is required for --mode default."
+    if [[ "$workspace_root" == "~/"* ]]; then
+      workspace_root="${HOME}/${workspace_root#~/}"
+    fi
+    package_dir="${workspace_root}/src/swarm_control_core"
+    clone_or_update_repo "$package_dir"
+    log "Using workspace at ${workspace_root}."
     ;;
   existing)
     ensure_git
@@ -133,18 +152,22 @@ case "$mode" in
       package_dir="${current_dir}/swarm_control_core"
       log "Current directory is a workspace src directory: ${current_dir}"
       clone_or_update_repo "$package_dir"
-    elif [[ -d "${default_sc}/.git" ]]; then
-      workspace_root="$default_ws"
-      package_dir="$default_sc"
+    elif [[ -n "$workspace_override" ]] && [[ -d "${workspace_override}/src" ]]; then
+      workspace_root="$workspace_override"
+      package_dir="${workspace_root}/src/swarm_control_core"
       log "Current directory is not a workspace src directory: ${current_dir}"
-      log "Step 1.1 appears to have already prepared the default workspace at ${default_ws}."
-      log "Keeping that workspace so setup can continue safely."
+      log "Reusing workspace specified by --workspace/SWARM_CORE_WORKSPACE_ROOT: ${workspace_root}"
+      clone_or_update_repo "$package_dir"
+    elif workspace_root="$(swarm_core__search_workspace_upward "$current_dir" || true)"; [[ -n "$workspace_root" && -d "${workspace_root}/src" ]]; then
+      package_dir="${workspace_root}/src/swarm_control_core"
+      log "Current directory is not a workspace src directory: ${current_dir}"
+      log "Detected workspace from current directory: ${workspace_root}"
       clone_or_update_repo "$package_dir"
     else
       log "Current directory is not a workspace src directory: ${current_dir}"
       log "The package can only be added to a ROS 2 workspace src directory."
       log "Example: cd /path/to/your_ws/src"
-      log "Then rerun Step 1.2, or run Step 1.1 to create ~/ros2_ws_dev automatically."
+      log "Then rerun with --workspace /path/to/your_ws if you want to reuse a known workspace."
       exit 2
     fi
     ;;

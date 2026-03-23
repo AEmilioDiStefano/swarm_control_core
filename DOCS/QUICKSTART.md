@@ -26,34 +26,20 @@ Suggested terminal layout on the control machine:
 - `R-<robot-b>`: `ssh <robot_user>@<robot_host>.local`
 - add one terminal per additional robot.
 
-Default script paths below assume the package lives in `~/ros2_ws_dev`.
-If your workspace root has a different name/path, replace the `~/ros2_ws_dev`
-prefix in the script path with your actual workspace root.
+Workspace selection below is handled by the bootstrap script.
+After that step, use `WS` for the workspace root and `SC` for
+`"$WS/src/swarm_control_core"`.
 
 Workspace bootstrap (run once per fresh terminal before following this document):
 
 ```bash
-# Works from any directory:
-# - auto-detects the workspace that contains swarm_control_core
-# - set SWARM_CORE_WORKSPACE_ROOT=/path/to/workspace to force selection
-if [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]] && [[ -f "${SWARM_CORE_WORKSPACE_ROOT}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" ]]; then
-  source "${SWARM_CORE_WORKSPACE_ROOT}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh"
-else
-  _swarm_search_root="${SWARM_SEARCH_ROOT:-$HOME}"
-  mapfile -t _sc_core_env_candidates < <(find "$_swarm_search_root" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" 2>/dev/null | sort)
-  if (( ${#_sc_core_env_candidates[@]} == 0 )); then
-    echo "[FAIL] Could not locate swarm_control_core workspace under $_swarm_search_root." >&2
-    return 1 2>/dev/null || exit 1
-  fi
-  if (( ${#_sc_core_env_candidates[@]} > 1 )); then
-    echo "[WARN] Multiple swarm_control_core workspaces found; using: ${_sc_core_env_candidates[0]}" >&2
-    echo "       Set SWARM_CORE_WORKSPACE_ROOT=/path/to/workspace to force selection." >&2
-  fi
-  source "${_sc_core_env_candidates[0]}"
-  unset _sc_core_env_candidates _swarm_search_root
+SWARM_CORE_BOOTSTRAP="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh" 2>/dev/null | sort | head -n1)"
+if [[ -z "${SWARM_CORE_BOOTSTRAP:-}" ]]; then
+  echo "[FAIL] Could not locate swarm_control_core workspace bootstrap script under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
+  return 1 2>/dev/null || exit 1
 fi
-
-: "${WS:?Workspace bootstrap must define WS}"
+eval "$("$SWARM_CORE_BOOTSTRAP" --interactive --emit-shell)"
+unset SWARM_CORE_BOOTSTRAP
 ```
 
 This exports `WS`, `WS_DEV`, and `SC` for later commands in this document.
@@ -87,13 +73,13 @@ sudo systemctl is-active swarm-robot.service || true
 ### Run on control machine:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step0.sh" --machine-role control
+"$SC/scripts/swarm_core_quickstart_step0.sh" --machine-role control
 ```
 
 ### Run in each dedicated robot SSH terminal (one per robot):
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step0.sh" --machine-role robot
+"$SC/scripts/swarm_core_quickstart_step0.sh" --machine-role robot
 ```
 
 ### Verify success
@@ -117,13 +103,13 @@ Proceed to Step 1.
 ### Run on control machine, then run the same sync/build block in each dedicated robot SSH terminal:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step1.sh" --machine-role control
+"$SC/scripts/swarm_core_quickstart_step1.sh" --machine-role control
 ```
 
 ### Run in each dedicated robot SSH terminal:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step1.sh" --machine-role robot
+"$SC/scripts/swarm_core_quickstart_step1.sh" --machine-role robot
 ```
 
 ### Verify success
@@ -148,7 +134,7 @@ Proceed to Step 2.
 ### Run in each dedicated robot SSH terminal:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step2.sh"
+"$SC/scripts/swarm_core_quickstart_step2.sh"
 ```
 
 Behavior of the step-2 wrapper:
@@ -160,7 +146,7 @@ Behavior of the step-2 wrapper:
 
 Optional:
 - if you already trust the saved camera profile and want to skip the interactive camera menu:
-  `"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step2.sh" --skip-camera-profile`
+  `"$SC/scripts/swarm_core_quickstart_step2.sh" --skip-camera-profile`
 
 Runtime config seeding behavior:
 - `swarm_core_run_robot.sh` seeds missing runtime config files from
@@ -220,7 +206,7 @@ Prerequisite (required):
 ### Run on control machine:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step3.sh"
+"$SC/scripts/swarm_core_quickstart_step3.sh"
 ```
 
 Terminal usage requirement:
@@ -243,13 +229,13 @@ Switch behavior (expected):
 Balanced fleet profile:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step3.sh" --balanced-fleet
+"$SC/scripts/swarm_core_quickstart_step3.sh" --balanced-fleet
 ```
 
 If rapid back-and-forth switching still feels sticky in `active_only` mode, use this switch-heavy profile:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step3.sh" --switch-heavy
+"$SC/scripts/swarm_core_quickstart_step3.sh" --switch-heavy
 ```
 
 Open in browser:
@@ -263,7 +249,7 @@ Video path:
 Optional private LAN bind:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step3.sh" --allow-lan-bind
+"$SC/scripts/swarm_core_quickstart_step3.sh" --allow-lan-bind
 ```
 
 ### IF UI does not load or bind
@@ -278,7 +264,7 @@ Proceed to Step 4.
 Run on control machine:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step4.sh"
+"$SC/scripts/swarm_core_quickstart_step4.sh"
 ```
 
 ### Verify success
@@ -299,7 +285,7 @@ Proceed to Step 5.
 Terminal teleop:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step5.sh" --tool teleop
+"$SC/scripts/swarm_core_quickstart_step5.sh" --tool teleop
 ```
 
 ### IF terminal control cannot discover robots

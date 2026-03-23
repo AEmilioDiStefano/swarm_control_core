@@ -19,10 +19,10 @@ Non-regression requirement:
 
 Files:
 
-- [ADR-0008-per-robot-fault-isolation.md](/home/aemilio/ros2_ws_dev/src/swarm_control_core/DOCS/ADR/ADR-0008-per-robot-fault-isolation.md)
-- [ADR-0009-transport-resource-isolation-and-discovery-modes.md](/home/aemilio/ros2_ws_dev/src/swarm_control_core/DOCS/ADR/ADR-0009-transport-resource-isolation-and-discovery-modes.md)
-- [ADR README](/home/aemilio/ros2_ws_dev/src/swarm_control_core/DOCS/ADR/README.md)
-- [LOW_LATENCY_VALIDATION.md](/home/aemilio/ros2_ws_dev/src/swarm_control_core/DOCS/LOW_LATENCY_VALIDATION.md)
+- [ADR-0008-per-robot-fault-isolation.md](./ADR/ADR-0008-per-robot-fault-isolation.md)
+- [ADR-0009-transport-resource-isolation-and-discovery-modes.md](./ADR/ADR-0009-transport-resource-isolation-and-discovery-modes.md)
+- [ADR README](./ADR/README.md)
+- [LOW_LATENCY_VALIDATION.md](./LOW_LATENCY_VALIDATION.md)
 
 Env vars:
 
@@ -46,10 +46,10 @@ Acceptance tests:
 
 Files:
 
-- [camera_runtime_defaults.py](/home/aemilio/ros2_ws_dev/src/swarm_control_core/swarm_control_core/camera_runtime_defaults.py)
-- [camera_adapter.py](/home/aemilio/ros2_ws_dev/src/swarm_control_core/swarm_control_core/camera_adapter.py)
-- [swarm_bringup.launch.py](/home/aemilio/ros2_ws_dev/src/swarm_control_core/swarm_launch/swarm_bringup.launch.py)
-- [test_camera_runtime_defaults.py](/home/aemilio/ros2_ws_dev/src/swarm_control_core/test/test_camera_runtime_defaults.py)
+- [camera_runtime_defaults.py](../swarm_control_core/camera_runtime_defaults.py)
+- [camera_adapter.py](../swarm_control_core/camera_adapter.py)
+- [swarm_bringup.launch.py](../swarm_launch/swarm_bringup.launch.py)
+- [test_camera_runtime_defaults.py](../test/test_camera_runtime_defaults.py)
 
 Env vars:
 
@@ -84,9 +84,9 @@ Acceptance tests:
 
 Files:
 
-- [swarm_fpv_ui.py](/home/aemilio/ros2_ws_dev/src/swarm_control_core/swarm_control_core/swarm_fpv_ui.py)
-- [LOW_LATENCY_VALIDATION.md](/home/aemilio/ros2_ws_dev/src/swarm_control_core/DOCS/LOW_LATENCY_VALIDATION.md)
-- [ADR-0008-per-robot-fault-isolation.md](/home/aemilio/ros2_ws_dev/src/swarm_control_core/DOCS/ADR/ADR-0008-per-robot-fault-isolation.md)
+- [swarm_fpv_ui.py](../swarm_control_core/swarm_fpv_ui.py)
+- [LOW_LATENCY_VALIDATION.md](./LOW_LATENCY_VALIDATION.md)
+- [ADR-0008-per-robot-fault-isolation.md](./ADR/ADR-0008-per-robot-fault-isolation.md)
 
 Env vars:
 
@@ -121,9 +121,9 @@ Acceptance tests:
 
 Planned files:
 
-- [swarm_core_run_robot.sh](/home/aemilio/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_run_robot.sh)
-- [swarm_core_run_local_ui.sh](/home/aemilio/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_run_local_ui.sh)
-- [swarm_core_reset_env.sh](/home/aemilio/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_reset_env.sh)
+- [swarm_core_run_robot.sh](../scripts/swarm_core_run_robot.sh)
+- [swarm_core_run_local_ui.sh](../scripts/swarm_core_run_local_ui.sh)
+- [swarm_core_reset_env.sh](../scripts/swarm_core_reset_env.sh)
 - new helper to generate static peer config from known robot/control identities
 
 Planned env vars:
@@ -153,9 +153,9 @@ Acceptance tests:
 
 Planned files:
 
-- [swarm_core_run_robot.sh](/home/aemilio/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_run_robot.sh)
-- [swarm_core_bootstrap_machine.sh](/home/aemilio/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_bootstrap_machine.sh)
-- new optional shaping helper under [scripts](/home/aemilio/ros2_ws_dev/src/swarm_control_core/scripts)
+- [swarm_core_run_robot.sh](../scripts/swarm_core_run_robot.sh)
+- [swarm_core_bootstrap_machine.sh](../scripts/swarm_core_bootstrap_machine.sh)
+- new optional shaping helper under [scripts](../scripts)
 
 Planned env vars:
 

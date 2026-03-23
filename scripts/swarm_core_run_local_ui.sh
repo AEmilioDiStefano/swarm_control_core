@@ -18,7 +18,15 @@ run_root() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WS="${SWARM_CORE_WORKSPACE_ROOT:-$HOME/ros2_ws_dev}"
+# shellcheck source=./lib/swarm_core_workspace.sh
+source "${SCRIPT_DIR}/lib/swarm_core_workspace.sh"
+
+WS="$(swarm_core_detect_workspace_root "${SWARM_CORE_WORKSPACE_ROOT:-}" || true)"
+if [[ -z "$WS" || ! -d "$WS/src/swarm_control_core" ]]; then
+  log "ERROR: Unable to detect workspace root. Set SWARM_CORE_WORKSPACE_ROOT or run from within a workspace containing src/swarm_control_core."
+  exit 1
+fi
+
 BIND_HOST="${SWARM_CORE_BIND_HOST:-127.0.0.1}"
 BIND_PORT="${SWARM_CORE_BIND_PORT:-8080}"
 RECLAIM_BIND_PORT="${SWARM_CORE_RECLAIM_BIND_PORT:-1}"

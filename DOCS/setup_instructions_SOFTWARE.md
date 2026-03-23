@@ -48,27 +48,13 @@ Suggested labels:
 Run this once in every fresh shell before following the remaining steps in this guide:
 
 ```bash
-# Works from any directory:
-# - auto-detects the workspace that contains swarm_control_core
-# - set SWARM_CORE_WORKSPACE_ROOT=/path/to/workspace to force selection
-if [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]] && [[ -f "${SWARM_CORE_WORKSPACE_ROOT}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" ]]; then
-  source "${SWARM_CORE_WORKSPACE_ROOT}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh"
-else
-  _swarm_search_root="${SWARM_SEARCH_ROOT:-$HOME}"
-  mapfile -t _sc_core_env_candidates < <(find "$_swarm_search_root" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" 2>/dev/null | sort)
-  if (( ${#_sc_core_env_candidates[@]} == 0 )); then
-    echo "[FAIL] Could not locate swarm_control_core workspace under $_swarm_search_root." >&2
-    return 1 2>/dev/null || exit 1
-  fi
-  if (( ${#_sc_core_env_candidates[@]} > 1 )); then
-    echo "[WARN] Multiple swarm_control_core workspaces found; using: ${_sc_core_env_candidates[0]}" >&2
-    echo "       Set SWARM_CORE_WORKSPACE_ROOT=/path/to/workspace to force selection." >&2
-  fi
-  source "${_sc_core_env_candidates[0]}"
-  unset _sc_core_env_candidates _swarm_search_root
+SWARM_CORE_BOOTSTRAP="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh" 2>/dev/null | sort | head -n1)"
+if [[ -z "${SWARM_CORE_BOOTSTRAP:-}" ]]; then
+  echo "[FAIL] Could not locate swarm_control_core workspace bootstrap script under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
+  return 1 2>/dev/null || exit 1
 fi
-
-: "${WS:?Workspace bootstrap must define WS}"
+eval "$("$SWARM_CORE_BOOTSTRAP" --interactive --emit-shell)"
+unset SWARM_CORE_BOOTSTRAP
 ```
 
 This exports `WS`, `WS_DEV`, `SC`, and `SWARM_CORE_WORKSPACE_ROOT`.
@@ -85,7 +71,7 @@ Important:
 - from Step 2 onward, the guide uses `WS` and `SC`, so the remaining steps work
   regardless of the workspace directory name
 
-### 1.1 Fresh machine: create the default `~/ros2_ws_dev` workspace
+### 1.1 Fresh machine: choose a workspace and clone `swarm_control_core`
 
 Run this in the control-machine terminal and in each robot SSH terminal if that
 machine does not already have a ROS 2 workspace you want to keep using:
@@ -96,47 +82,58 @@ command -v git >/dev/null 2>&1 || {
   sudo apt-get install -y git
 }
 
-DEFAULT_WS="$HOME/ros2_ws_dev"
-DEFAULT_SC="$DEFAULT_WS/src/swarm_control_core"
+if [[ -z "${WORKSPACE_ROOT:-}" ]]; then
+  printf 'Enter workspace path to create (absolute path or ~/...): '
+  read -r WORKSPACE_ROOT
+fi
+[[ -n "${WORKSPACE_ROOT// }" ]] || {
+  echo "[FAIL] WORKSPACE_ROOT is required." >&2
+  return 1 2>/dev/null || exit 1
+}
 
-if [[ ! -x "$DEFAULT_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
-  install -d "$DEFAULT_WS/src"
-  if [[ ! -d "$DEFAULT_SC/.git" ]]; then
-    git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$DEFAULT_SC"
-  fi
+if [[ "$WORKSPACE_ROOT" == "~/"* ]]; then
+  WORKSPACE_ROOT="${HOME}/${WORKSPACE_ROOT#~/}"
+fi
+WORKSPACE_ROOT="${WORKSPACE_ROOT%/}"
+WORKSPACE_SRC="${WORKSPACE_ROOT}/src"
+WORKSPACE_SC="${WORKSPACE_SRC}/swarm_control_core"
+
+install -d "$WORKSPACE_SRC"
+if [[ ! -d "$WORKSPACE_SC/.git" ]]; then
+  git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$WORKSPACE_SC"
 fi
 
-if [[ -x "$DEFAULT_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
-  eval "$("$DEFAULT_SC/scripts/swarm_core_checkout_workspace.sh" --mode default --emit-shell)"
+if [[ -x "$WORKSPACE_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
+  eval "$("$WORKSPACE_SC/scripts/swarm_core_checkout_workspace.sh" --mode default --workspace "$WORKSPACE_ROOT" --emit-shell)"
 else
-  export WS="$DEFAULT_WS"
-  export SC="$DEFAULT_SC"
+  export WS="$WORKSPACE_ROOT"
+  export SC="$WORKSPACE_SC"
   export SWARM_CORE_WORKSPACE_ROOT="$WS"
   export WS_DEV="$WS"
   export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
   printf '[OK] Workspace root: %s\n' "$WS"
   printf '[OK] Package checkout: %s\n' "$SC"
 fi
-unset DEFAULT_WS DEFAULT_SC
+unset WORKSPACE_ROOT WORKSPACE_SRC WORKSPACE_SC
 ```
 
 Expected after the fresh-machine block:
 
-- `~/ros2_ws_dev` exists
-- `~/ros2_ws_dev/src/swarm_control_core` exists
+- `"$WS"` exists
+- `"$SC"` exists
 
 ### 1.2 Existing workspace: use the workspace you already have
 
 Run this only if you already have a ROS 2 workspace and want to place
-`swarm_control_core` in that workspace instead of `~/ros2_ws_dev`.
+`swarm_control_core` in that workspace.
 
 Before running the block below, change into that workspace's `src/` directory.
 This block checks that explicitly. If you are not in a `src/` directory, it
 prints a clear message and leaves your SSH session alone.
 
 If you accidentally run Step 1.1 and then Step 1.2 anyway, this block will
-reuse the default `~/ros2_ws_dev` workspace from Step 1.1 unless you are
-already standing in another workspace's `src/` directory.
+reuse the workspace already exported in `SWARM_CORE_WORKSPACE_ROOT` when
+available unless you are already standing in another workspace's `src/` directory.
 
 ```bash
 command -v git >/dev/null 2>&1 || {
@@ -160,27 +157,35 @@ if [[ "$(basename "$PWD")" == "src" ]]; then
     printf '[OK] Workspace root: %s\n' "$WS"
     printf '[OK] Package checkout: %s\n' "$SC"
   fi
-elif [[ -x "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_checkout_workspace.sh" ]]; then
+elif [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]] && [[ -d "${SWARM_CORE_WORKSPACE_ROOT}/src" ]]; then
+  KNOWN_WS="${SWARM_CORE_WORKSPACE_ROOT%/}"
+  KNOWN_SC="$KNOWN_WS/src/swarm_control_core"
   echo "[INFO] Current directory is not a workspace src directory." >&2
-  echo "[INFO] Reusing the default workspace created by Step 1.1 at $HOME/ros2_ws_dev." >&2
-  eval "$("$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_checkout_workspace.sh" --mode existing --emit-shell)"
-elif [[ -d "$HOME/ros2_ws_dev/src/swarm_control_core/.git" ]]; then
+  echo "[INFO] Reusing workspace from SWARM_CORE_WORKSPACE_ROOT at $KNOWN_WS." >&2
+  if [[ -x "$KNOWN_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
+    eval "$("$KNOWN_SC/scripts/swarm_core_checkout_workspace.sh" --mode existing --workspace "$KNOWN_WS" --emit-shell)"
+  else
+    export WS="$KNOWN_WS"
+    export SC="$KNOWN_SC"
+    export SWARM_CORE_WORKSPACE_ROOT="$WS"
+    export WS_DEV="$WS"
+    export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
+    printf '[OK] Workspace root: %s\n' "$WS"
+    printf '[OK] Package checkout: %s\n' "$SC"
+  fi
+elif [[ -n "${WS:-}" ]] && [[ -d "${WS}/src" ]]; then
   echo "[INFO] Current directory is not a workspace src directory." >&2
-  echo "[INFO] Reusing the default workspace created by Step 1.1 at $HOME/ros2_ws_dev." >&2
-  export WS="$HOME/ros2_ws_dev"
+  echo "[INFO] Reusing workspace already exported in WS at $WS." >&2
   export SC="$WS/src/swarm_control_core"
-  export SWARM_CORE_WORKSPACE_ROOT="$WS"
-  export WS_DEV="$WS"
-  export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
   printf '[OK] Workspace root: %s\n' "$WS"
   printf '[OK] Package checkout: %s\n' "$SC"
 else
   echo "[FAIL] Existing-workspace checkout must be run from a ROS 2 workspace src directory." >&2
   echo "[FAIL] Change into your workspace src directory first, for example:" >&2
   echo "       cd /path/to/your_ws/src" >&2
-  echo "[FAIL] Or run Step 1.1 to create ~/ros2_ws_dev automatically." >&2
+  echo "[FAIL] Or rerun Step 1.1 and provide the workspace path you want to create." >&2
 fi
-unset CUSTOM_SC
+unset CUSTOM_SC KNOWN_WS KNOWN_SC
 ```
 
 Expected after the existing-workspace block:
@@ -220,8 +225,7 @@ Expected result:
 
 - `WS` points at the workspace that contains `src/swarm_control_core`
 - `SC` points at `"$WS/src/swarm_control_core"`
-- the rest of this guide will now work even if your workspace is not named
-  `ros2_ws_dev`
+- the rest of this guide will now work regardless of the workspace directory name
 
 ## 3. Prepare the Control Machine From a Fresh Install
 
