@@ -562,7 +562,7 @@ def generate_launch_description():
                 default_value="true",
                 description=(
                     "When true, USB camera profile values are clamped to low-latency defaults "
-                    "(640x480@15 MJPG) unless explicitly overridden by camera_* launch/env values."
+                    "(640x480@15 MJPG) unless explicitly overridden by camera_* swarm_launch/env values."
                 ),
             ),
             DeclareLaunchArgument("camera_fps", default_value=""),

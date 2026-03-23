@@ -82,7 +82,7 @@ If you are building and preparing the reference robot from scratch, start with:
 ## Repository Layout
 
 - `swarm_control_core/`: ROS 2 Python package and UI server
-- `launch/`: robot and UI launch files
+- `swarm_launch/`: robot and UI launch files
 - `scripts/`: bootstrap, reset, runtime, and release-gate tooling
 - `config/`: baseline robot, control, interface, and camera profile templates
 - `DOCS/`: runbooks, architecture notes, and ADRs

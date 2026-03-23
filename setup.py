@@ -15,10 +15,10 @@ setup(
             "config/control_interfaces.yaml",
             "config/camera_profiles.yaml",
         ]),
-        ("share/" + package_name + "/launch", [
-            "launch/swarm_bringup.launch.py",
-            "launch/robot_minimal.launch.py",
-            "launch/swarm_fpv_ui.launch.py",
+        ("share/" + package_name + "/swarm_launch", [
+            "swarm_launch/swarm_bringup.launch.py",
+            "swarm_launch/robot_minimal_launch.py",
+            "swarm_launch/swarm_fpv_ui.launch.py",
         ]),
     ],
     install_requires=[

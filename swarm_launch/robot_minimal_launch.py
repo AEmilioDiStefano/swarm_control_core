@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LicenseRef-Vitruvian-Community-1.0
 """
-robot_minimal.launch.py
+robot_minimal_launch.py
 
 Minimal “make it drivable” launch:
   - motor_driver_node
