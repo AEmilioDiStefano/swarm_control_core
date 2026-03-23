@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-import os
+import pytest
+
+pytest.importorskip("launch")
+pytest.importorskip("launch_ros")
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch_ros.actions import Node
