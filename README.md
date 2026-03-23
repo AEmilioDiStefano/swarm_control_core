@@ -73,6 +73,7 @@ If you are building and preparing the reference robot from scratch, start with:
 - Quickstart: [DOCS/QUICKSTART.md](./DOCS/QUICKSTART.md)
 - Assembly setup: [DOCS/setup_instructions_ASSEMBLY.md](./DOCS/setup_instructions_ASSEMBLY.md)
 - Software setup: [DOCS/setup_instructions_SOFTWARE.md](./DOCS/setup_instructions_SOFTWARE.md)
+- GPIO wiring guides: [DOCS/GPIO/README.md](./DOCS/GPIO/README.md)
 - Architecture: [DOCS/ARCHITECTURE.md](./DOCS/ARCHITECTURE.md)
 - ADR index: [DOCS/ADR/README.md](./DOCS/ADR/README.md)
 - Low-latency validation: [DOCS/LOW_LATENCY_VALIDATION.md](./DOCS/LOW_LATENCY_VALIDATION.md)
@@ -85,7 +86,7 @@ If you are building and preparing the reference robot from scratch, start with:
 - `swarm_launch/`: robot and UI launch files
 - `scripts/`: bootstrap, reset, runtime, and release-gate tooling
 - `config/`: baseline robot, control, interface, and camera profile templates
-- `DOCS/`: runbooks, architecture notes, and ADRs
+- `DOCS/`: runbooks, GPIO wiring guides, architecture notes, and ADRs
 
 ## Contact
 

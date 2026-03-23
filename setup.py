@@ -45,7 +45,7 @@ setup(
             "camera_autonomy_node_core = swarm_control_core.camera_autonomy_node:main",
             "heartbeat_node_core = swarm_control_core.heartbeat_node:main",
             "swarm_teleop_core = swarm_control_core.swarm_teleop:main",
-            "terminal_orchestrator_core = swarm_control_core.terminal_orchestrator:main",
+            "terminal_playbook_runner_core = swarm_control_core.terminal_playbook_runner:main",
         ],
     },
 )

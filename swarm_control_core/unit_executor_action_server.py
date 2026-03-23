@@ -7,16 +7,16 @@ unit_executor_action_server.py
 ROLE
 ----
 Robot-side ActionServer:
-  /<robot_name>/execute_playbook   fleet_orchestrator_interfaces/action/ExecutePlaybook
+  /<robot_name>/execute_playbook   ExecutePlaybook action interface
 
 It executes playbook primitives by publishing Twist to:
   /<robot_name>/cmd_vel
 
 WHY THIS IS THE MOST IMPORTANT "FLEET" NODE
 -------------------------------------------
-This is the robot-side boundary for your entire DIU-style demo pipeline:
+This is the robot-side boundary for the higher-level command pipeline:
 
-Voice -> STT -> LLM -> ordered playbooks -> fleet_orchestrator -> Action goals -> robots
+Intent/UI -> ordered playbooks -> action/topic dispatch -> robots
 
 Teleop is "manual mode".
 This executor is "orchestrated mode".
@@ -43,19 +43,13 @@ from geometry_msgs.msg import Twist
 from std_msgs.msg import String
 import threading
 
-try:
-    from fleet_orchestrator_interfaces.action import ExecutePlaybook
-    HAS_FLEET_ACTION = True
-except Exception:
-    ExecutePlaybook = None  # type: ignore[assignment]
-    HAS_FLEET_ACTION = False
-
 from .drive_profiles import load_profile_registry, resolve_robot_profile
 from .playbook_helpers import TimedTwistPlan, run_timed_twist
 from .playbook_contract import validate_and_normalize
 from .playbook_strategies import compile_transit_xy_plans
 from .audit_logger import AuditLogger
 from .path_defaults import default_robot_name
+from .playbook_action_compat import ExecutePlaybook, HAS_PLAYBOOK_ACTION
 from .runtime_env import ensure_ros_domain_id
 
 
@@ -67,7 +61,7 @@ class UnitExecutor(Node):
         self.declare_parameter("robot_name", "")
         self.declare_parameter("profiles_path", "")
 
-        # Default speeds (baseline). Orchestrator can scale using speed= in JSON.
+        # Default speeds (baseline). Playbook callers can scale using speed= in JSON.
         self.declare_parameter("default_transit_speed_mps", 0.40)
         self.declare_parameter("default_strafe_speed_mps", 0.35)
         self.declare_parameter("default_rotate_speed_rps", 2.00)
@@ -117,7 +111,7 @@ class UnitExecutor(Node):
         # FUTURE: live heading ingestion from IMU/magnetometer topic
         # -----------------------------------------------------------------
         # Keep this disabled until a heading publisher exists on the robot.
-        # This lets fleet_orchestrator keep a stable north/east contract while
+        # This lets higher-level command layers keep a stable north/east contract while
         # sensor-equipped robots upgrade to true cardinal behavior robot-side.
         #
         # Example expected topic:
@@ -170,7 +164,7 @@ class UnitExecutor(Node):
         )
 
         self.server = None
-        if HAS_FLEET_ACTION:
+        if HAS_PLAYBOOK_ACTION:
             self.server = ActionServer(
                 self,
                 ExecutePlaybook,
@@ -193,7 +187,7 @@ class UnitExecutor(Node):
         self.audit = AuditLogger(self, "unit_executor", audit_log_path)
 
         self.get_logger().info(f"[{self.robot}] UnitExecutor ready")
-        if HAS_FLEET_ACTION:
+        if HAS_PLAYBOOK_ACTION:
             self.get_logger().info(f"[{self.robot}] action={self.action_name}")
         self.get_logger().info(f"[{self.robot}] cmd_iface={self.command_topic}")
         self.get_logger().info(
@@ -284,7 +278,7 @@ class UnitExecutor(Node):
     # ---------------- action callbacks ----------------
     def goal_cb(self, goal_request):
         """
-        Validate early (fast reject) so orchestrator gets immediate feedback.
+        Validate early (fast reject) so the caller gets immediate feedback.
         """
         ok, err, _parsed = validate_and_normalize(goal_request.command_id, goal_request.parameters_json)
         intent_id = goal_request.intent_id if hasattr(goal_request, "intent_id") else "unknown"
@@ -293,7 +287,7 @@ class UnitExecutor(Node):
             self.get_logger().warn(f"[{self.robot}] reject goal: {err}")
             self.audit.log_command(
                 robot=self.robot,
-                source="orchestrator",
+                source="playbook",
                 command_id=goal_request.command_id,
                 parameters=json.loads(goal_request.parameters_json or "{}"),
                 status="rejected",
@@ -439,7 +433,7 @@ class UnitExecutor(Node):
                 raw_params = {}
             self.audit.log_command(
                 robot=self.robot,
-                source="orchestrator",
+                source="playbook",
                 command_id=command_id,
                 parameters=raw_params,
                 status="failed",
@@ -459,7 +453,7 @@ class UnitExecutor(Node):
         # Log goal execution start
         self.audit.log_command(
             robot=self.robot,
-            source="orchestrator",
+            source="playbook",
             command_id=command_id,
             parameters=parsed.raw_params,
             status="started",
@@ -563,7 +557,7 @@ class UnitExecutor(Node):
 
             elif cid == "transit_two_leg":
                 # Explicit two-leg execution primitive.
-                # Parameters expected from orchestrator:
+                # Parameters expected from the control-side playbook planner:
                 # - theta1_deg, theta2_deg: absolute leg headings in robot frame
                 # - length1_m, length2_m: signed leg lengths (forward/backward)
                 # - speed: standard speed scale already applied above
@@ -615,7 +609,7 @@ class UnitExecutor(Node):
         goal_duration_s = time.time() - goal_start_time
         self.audit.log_command(
             robot=self.robot,
-            source="orchestrator",
+            source="playbook",
             command_id=command_id,
             parameters=parsed.raw_params,
             status="succeeded",
@@ -626,7 +620,7 @@ class UnitExecutor(Node):
 
     def _command_topic_cb(self, msg: String) -> None:
         """
-        Standalone command interface (no fleet_orchestrator_interfaces required).
+        Standalone command interface (no optional action package required).
         """
         try:
             payload = json.loads(msg.data or "{}")

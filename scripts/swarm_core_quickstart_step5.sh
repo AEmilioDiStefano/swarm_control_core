@@ -10,11 +10,11 @@ source "${SCRIPT_DIR}/lib/swarm_core_quickstart_common.sh"
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_core_quickstart_step5.sh --tool <teleop|orchestrator> [--domain-id <id>]
+  swarm_core_quickstart_step5.sh --tool <teleop|playbook> [--domain-id <id>]
 
 Behavior:
   - Sources the current ROS/workspace overlay.
-  - Starts either terminal teleop or terminal orchestrator.
+  - Starts either terminal teleop or the terminal playbook runner.
 USAGE
 }
 
@@ -42,9 +42,9 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-[[ "$tool" == "teleop" || "$tool" == "orchestrator" ]] || {
+[[ "$tool" == "teleop" || "$tool" == "playbook" ]] || {
   usage >&2
-  swarm_core_qs_fail "--tool must be teleop or orchestrator."
+  swarm_core_qs_fail "--tool must be teleop or playbook."
 }
 
 WS="$(swarm_core_qs_detect_workspace "${SWARM_CORE_WORKSPACE_ROOT:-}")"
@@ -57,4 +57,4 @@ if [[ "$tool" == "teleop" ]]; then
   exec ros2 run swarm_control_core swarm_teleop_core
 fi
 
-exec ros2 run swarm_control_core terminal_orchestrator_core
+exec ros2 run swarm_control_core terminal_playbook_runner_core

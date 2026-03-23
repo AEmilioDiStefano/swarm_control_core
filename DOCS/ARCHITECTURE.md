@@ -18,7 +18,7 @@
 - Browser FPV/control UI using strict WebRTC-only main-stream transport.
 - Fleet thumbnail rail uses bounded JPEG polling (separate from main-stream transport).
 - Terminal teleop for direct manual driving.
-- Terminal orchestrator for simple playbook execution.
+- Optional terminal playbook control.
 - No cloud control plane and no internet-ingress automation.
 
 ## Runtime Components
@@ -29,7 +29,6 @@
 - `swarm_camera_node_core`: camera publishing.
 - `swarm_fpv_ui_core`: browser UI server and fleet state bridge.
 - `swarm_teleop_core`: keyboard terminal teleop node.
-- `terminal_orchestrator_core`: menu-driven terminal playbook node.
 
 ## Data and Control Flow
 
@@ -73,7 +72,7 @@ Decode path:
   - `C`: WebRTC consumers
   - `W`: WebRTC send pacing
 
-### Orchestration/Control Plane (`terminal_orchestrator_core` / swarm_orchestrator workflow)
+### Command/Control Plane
 
 - Drive commands and mode updates remain per-robot constant-time operations (`O(1)` per event).
 - Control loops operate over active robot targets, not over full-fleet camera payloads.

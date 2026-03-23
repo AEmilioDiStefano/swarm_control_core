@@ -5,7 +5,7 @@
 Adapter boundary package.
 
 Adapters provide compatibility translation between external systems and
-runtime/orchestrator contract payloads.
+runtime/playbook contract payloads.
 """
 
 from .base import AdapterContract, AdapterError

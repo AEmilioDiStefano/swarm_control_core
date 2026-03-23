@@ -8,8 +8,8 @@ WHY THIS FILE EXISTS
 --------------------
 We want the robot runtime to be a stable "execution substrate" for:
   - keyboard teleop
-  - fleet_orchestrator (playbook sequencing)
-  - an LLM layer that maps voice/text intent -> ordered playbooks
+  - higher-level playbook sequencing/control layers
+  - an intent layer that maps voice/text commands -> ordered playbooks
 
 To make that scalable, we need ONE authoritative definition of:
   - which playbook command_ids exist
@@ -60,7 +60,8 @@ ALLOWED_COMMAND_IDS: Set[str] = {
     # - on mecanum: treat as rotate (keeps it safe + predictable)
     "turn",
 
-    # displacement primitive used by orchestrators for platform-agnostic goals.
+    # displacement primitive used by higher-level control layers for
+    # platform-agnostic goals.
     # execution strategy is selected robot-side from drive/hardware profile.
     "transit_xy",
 
@@ -75,7 +76,7 @@ ALLOWED_COMMAND_IDS: Set[str] = {
 # ---------------------------------------------------------------------
 # JSON keys we expect in ExecutePlaybook.parameters_json
 # ---------------------------------------------------------------------
-# Note: We keep this small. The orchestrator/LLM can enrich later.
+# Note: We keep this small. Upstream planners/translators can enrich later.
 #
 # duration_s: float seconds
 # speed: scalar multiplier (0..1.5)
@@ -124,7 +125,7 @@ def _extract_xy_meters(params: Dict[str, Any]) -> Tuple[float, float]:
       - the runtime therefore keeps cardinal terms in the API,
         but executor currently interprets them as body-relative fallback:
         north -> forward, east -> right
-      - this keeps fleet_orchestrator command schema stable across mixed fleets
+      - this keeps the control-side command schema stable across mixed fleets
         and allows true cardinal behavior to be enabled robot-side later.
 
     Accepted keys (meters):
@@ -245,7 +246,7 @@ def validate_and_normalize(command_id: str, parameters_json: Optional[str]) -> T
     direction = str(params.get("direction", default_dir)).strip().lower() or default_dir
 
     # Minimal sanity checks for direction values.
-    # We do NOT over-restrict: orchestrator/LLM is allowed to experiment.
+    # We do NOT over-restrict: upstream planners/translators can experiment.
     # But we keep obvious typos from becoming silent weirdness.
     if cid == "transit" and direction not in ("forward", "backward", "back", "-x", "+x"):
         return False, f"Invalid direction '{direction}' for command '{cid}'", None

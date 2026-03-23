@@ -110,13 +110,6 @@ export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-17}"
 ros2 run swarm_control_core swarm_teleop_core
 ```
 
-Terminal orchestrator (simple playbooks):
-
-```bash
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-17}"
-ros2 run swarm_control_core terminal_orchestrator_core
-```
-
 ### IF terminal nodes fail to discover robots
 Go to [5.5](#55-terminal-nodes-cannot-discover-robots).
 

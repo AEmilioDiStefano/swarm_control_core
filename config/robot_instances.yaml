@@ -70,9 +70,9 @@ robots:
     control_interface: dual_tb6612_mecanum
     params:
       control_type:
-        orchestrator_linear_duration_scale: 1.55
-        orchestrator_angular_duration_scale: 1.65
-        orchestrator_max_detour_scale: 0.45
+        playbook_linear_duration_scale: 1.55
+        playbook_angular_duration_scale: 1.65
+        playbook_max_detour_scale: 0.45
         max_linear_mps: 0.40
         max_angular_rps: 1.8
         spin_speed_mult: 0.75
@@ -91,8 +91,8 @@ robots:
     control_interface: L298N_diff
     params:
       control_type:
-        orchestrator_linear_duration_scale: 0.97
-        orchestrator_angular_duration_scale: 1.32
+        playbook_linear_duration_scale: 0.97
+        playbook_angular_duration_scale: 1.32
         left_speed_scale: 1.04
         right_speed_scale: 1.00
 

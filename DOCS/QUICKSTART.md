@@ -273,12 +273,6 @@ Terminal teleop:
 "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step5.sh" --tool teleop
 ```
 
-Terminal orchestrator:
-
-```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step5.sh" --tool orchestrator
-```
-
 ### IF terminal control cannot discover robots
 
 Go to [Fix Step 5.1](#ref-5-1), then return to [Step 5](#step-5).

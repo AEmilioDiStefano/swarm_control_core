@@ -7,7 +7,7 @@ audit_logger.py
 Structured audit logging for command traceability and compliance.
 
 This module provides a centralized audit trail for:
-- Who issued a command (client_id, source: teleop/orchestrator/etc)
+- Who issued a command (client_id, source: teleop/playbook/ui/etc)
 - What command was issued (playbook command_id, parameters)
 - When it was issued (timestamp)
 - To which robot (robot_name)
@@ -52,7 +52,7 @@ class AuditEvent:
     """Structured audit event for serialization and traceability."""
     timestamp: float  # Unix timestamp
     robot: str  # Target robot name
-    source: str  # Command source (teleop, orchestrator, api, etc)
+    source: str  # Command source (teleop, playbook, api, etc)
     source_id: Optional[str]  # Client ID or user
     command_id: str  # Playbook command name
     parameters: Dict[str, Any]  # Command parameters as dict
@@ -131,7 +131,7 @@ class AuditLogger:
 
         Args:
             robot: Target robot name
-            source: Command source (teleop, orchestrator, api, etc)
+            source: Command source (teleop, playbook, api, etc)
             command_id: Playbook command (transit, rotate, etc)
             parameters: Command parameters dict
             status: Command state (issued, started, succeeded, failed, cancelled)

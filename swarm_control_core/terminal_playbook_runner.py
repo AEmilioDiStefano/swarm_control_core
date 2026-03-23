@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-terminal_orchestrator.py
+terminal_playbook_runner.py
 
-Terminal menu orchestrator for Swarm Control playbooks.
+Terminal playbook runner for Swarm Control.
 
 Goals:
 - Keep UI friendly for tall, narrow terminals.
@@ -30,23 +30,13 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from std_msgs.msg import String
 from geometry_msgs.msg import Twist
+from .playbook_action_compat import (
+    ExecutePlaybook,
+    HAS_PLAYBOOK_ACTION,
+    PLAYBOOK_ACTION_SEND_GOAL_TYPE,
+    PLAYBOOK_ACTION_TYPE,
+)
 from .runtime_env import ensure_ros_domain_id
-
-try:
-    from fleet_orchestrator_interfaces.action import ExecutePlaybook
-    HAS_FLEET_ACTION = True
-except Exception:
-    HAS_FLEET_ACTION = False
-
-    class ExecutePlaybook:  # type: ignore[override]
-        class Goal:
-            def __init__(self):
-                self.intent_id = ""
-                self.command_id = ""
-                self.vehicle_ids: List[str] = []
-                self.parameters_json = ""
-                self.north_m = 0.0
-                self.east_m = 0.0
 from .drive_profiles import load_profile_registry, resolve_robot_profile
 from .path_defaults import default_presets_dir
 from .playbook_strategies import compile_transit_xy_plans
@@ -55,8 +45,6 @@ from .playbook_strategies import compile_transit_xy_plans
 ACTION_RE = re.compile(r"^/([^/]+)/execute_playbook$")
 ACTION_SEND_GOAL_SVC_RE = re.compile(r"^/([^/]+)/execute_playbook/_action/send_goal$")
 CMD_TOPIC_RE = re.compile(r"^/([^/]+)/execute_playbook_cmd$")
-ACTION_TYPE = "fleet_orchestrator_interfaces/action/ExecutePlaybook"
-ACTION_SEND_GOAL_TYPE = "fleet_orchestrator_interfaces/action/ExecutePlaybook_SendGoal"
 CMD_TOPIC_TYPE = "std_msgs/msg/String"
 UI_WIDTH = 31  # Match teleop's narrow terminal style.
 
@@ -82,9 +70,9 @@ class TwoLegPlan:
     max_detour_m: float
 
 
-class TerminalOrchestrator(Node):
+class TerminalPlaybookRunner(Node):
     def __init__(self):
-        super().__init__("terminal_orchestrator")
+        super().__init__("terminal_playbook_runner")
 
         # Rough motion constants used for distance -> duration estimates.
         self.declare_parameter("base_linear_mps", 0.40)
@@ -140,7 +128,9 @@ class TerminalOrchestrator(Node):
         try:
             self._profile_registry = load_profile_registry(profiles_path)
         except FileNotFoundError as ex:
-            self.get_logger().error(f"[terminal_orchestrator] Required profile registry missing: {ex}")
+            self.get_logger().error(
+                f"[terminal_playbook_runner] Required profile registry missing: {ex}"
+            )
             raise
         except Exception:
             self._profile_registry = None
@@ -343,7 +333,7 @@ class TerminalOrchestrator(Node):
             return
         self._in_emergency_stop = True
         try:
-            # 1) Cancel active action goals initiated by this orchestrator.
+            # 1) Cancel active action goals initiated by this terminal runner.
             cancel_futures = []
             for handle in list(self._active_goal_handles.values()):
                 try:
@@ -433,7 +423,7 @@ class TerminalOrchestrator(Node):
         """
         Emit fleet-style JSON to terminal and optionally to /fo/task or /fo/audit.
         """
-        # Pretty JSON for copy/paste into future fleet_orchestrator integration work.
+        # Pretty JSON for copy/paste into future higher-level control integration work.
         raw = json.dumps(payload, indent=2, sort_keys=True)
         print(raw)
         sys.stdout.flush()
@@ -537,8 +527,8 @@ class TerminalOrchestrator(Node):
 
         Order of precedence:
         1) robot_instances.yaml + control_types.yaml per-robot drive params:
-           - orchestrator_linear_duration_scale
-           - orchestrator_angular_duration_scale
+           - playbook_linear_duration_scale
+           - playbook_angular_duration_scale
         2) node parameters:
            - linear_duration_scale
            - angular_duration_scale
@@ -553,8 +543,18 @@ class TerminalOrchestrator(Node):
         try:
             prof = resolve_robot_profile(self._profile_registry, robot)
             dp = prof.get("drive_params", {}) or {}
-            linear_scale = float(dp.get("orchestrator_linear_duration_scale", linear_scale))
-            angular_scale = float(dp.get("orchestrator_angular_duration_scale", angular_scale))
+            linear_scale = float(
+                dp.get(
+                    "playbook_linear_duration_scale",
+                    dp.get("orchestrator_linear_duration_scale", linear_scale),
+                )
+            )
+            angular_scale = float(
+                dp.get(
+                    "playbook_angular_duration_scale",
+                    dp.get("orchestrator_angular_duration_scale", angular_scale),
+                )
+            )
         except Exception:
             pass
         return (
@@ -572,7 +572,12 @@ class TerminalOrchestrator(Node):
             try:
                 prof = resolve_robot_profile(self._profile_registry, robot)
                 dp = prof.get("drive_params", {}) or {}
-                scale = float(dp.get("orchestrator_max_detour_scale", scale))
+                scale = float(
+                    dp.get(
+                        "playbook_max_detour_scale",
+                        dp.get("orchestrator_max_detour_scale", scale),
+                    )
+                )
             except Exception:
                 pass
         return max(0.1, min(1.0, scale))
@@ -857,7 +862,7 @@ class TerminalOrchestrator(Node):
         """
         found: Dict[str, str] = {}
 
-        if HAS_FLEET_ACTION:
+        if HAS_PLAYBOOK_ACTION:
             # Primary path: native action graph API.
             try:
                 action_names_and_types = self.get_action_names_and_types()
@@ -865,7 +870,7 @@ class TerminalOrchestrator(Node):
                 action_names_and_types = []
 
             for action_name, types in action_names_and_types:
-                if ACTION_TYPE not in types:
+                if PLAYBOOK_ACTION_TYPE not in types:
                     continue
                 m = ACTION_RE.match(action_name)
                 if not m:
@@ -879,7 +884,7 @@ class TerminalOrchestrator(Node):
                 except Exception:
                     services_and_types = []
                 for service_name, types in services_and_types:
-                    if ACTION_SEND_GOAL_TYPE not in types:
+                    if PLAYBOOK_ACTION_SEND_GOAL_TYPE not in types:
                         continue
                     m = ACTION_SEND_GOAL_SVC_RE.match(service_name)
                     if not m:
@@ -960,7 +965,7 @@ class TerminalOrchestrator(Node):
         return robots
 
     def _get_or_make_client(self, action_name: str) -> ActionClient:
-        if not HAS_FLEET_ACTION:
+        if not HAS_PLAYBOOK_ACTION:
             raise RuntimeError("Action interface not available in standalone mode")
         client = self._action_clients.get(action_name)
         if client is None:
@@ -1134,13 +1139,13 @@ class TerminalOrchestrator(Node):
                 "intent_id": str(goal.intent_id),
                 "command_id": str(goal.command_id),
                 "platform": {
-                    "adapter_type": "terminal_orchestrator",
+                    "adapter_type": "terminal_playbook_runner",
                     "platform_family": "swarm_control_core",
                 },
                 "parameters": json.loads(goal.parameters_json or "{}") if goal.parameters_json else {},
                 "targets": robot,
                 "trace": {
-                    "translator": "terminal_orchestrator",
+                    "translator": "terminal_playbook_runner",
                     "confidence": 1.0,
                     "explanation": "manual terminal playbook dispatch",
                 },
@@ -1802,7 +1807,7 @@ class TerminalOrchestrator(Node):
             },
             "sequence": sequence,
             "trace": {
-                "translator": "terminal_orchestrator",
+                "translator": "terminal_playbook_runner",
                 "confidence": 1.0,
                 "explanation": "saved from execute playbook sequence menu",
             },
@@ -1920,13 +1925,13 @@ class TerminalOrchestrator(Node):
                 "intent_id": str(goal.intent_id),
                 "command_id": str(goal.command_id),
                 "platform": {
-                    "adapter_type": "terminal_orchestrator",
+                    "adapter_type": "terminal_playbook_runner",
                     "platform_family": "swarm_control_core",
                 },
                 "parameters": json.loads(goal.parameters_json or "{}") if goal.parameters_json else {},
                 "targets": robot,
                 "trace": {
-                    "translator": "terminal_orchestrator",
+                    "translator": "terminal_playbook_runner",
                     "confidence": 1.0,
                     "explanation": "manual terminal playbook dispatch",
                 },
@@ -2884,7 +2889,7 @@ class TerminalOrchestrator(Node):
             return {"ok": False, "reason": "user cancelled", "reports": []}
 
         now = int(time.time())
-        # Emit a high-level planner event for future fleet_orchestrator integration.
+        # Emit a high-level planner event for future control-layer integration.
         self._emit_json_event(
             "task",
             {
@@ -2892,7 +2897,7 @@ class TerminalOrchestrator(Node):
                 "intent_id": f"term_xy_plan_{now}",
                 "command_id": "transit_two_leg_deterministic_formation",
                 "platform": {
-                    "adapter_type": "terminal_orchestrator",
+                    "adapter_type": "terminal_playbook_runner",
                     "platform_family": "swarm_control_core",
                 },
                 "targets": detected_robots,
@@ -2907,7 +2912,7 @@ class TerminalOrchestrator(Node):
                     "execution_mode": "independent",
                 },
                 "trace": {
-                    "translator": "terminal_orchestrator",
+                    "translator": "terminal_playbook_runner",
                     "confidence": 1.0,
                     "explanation": "deterministic two-leg planner with independent execution",
                 },
@@ -3088,13 +3093,13 @@ class TerminalOrchestrator(Node):
                 "intent_id": f"term_all_commands_plan_{now}",
                 "command_id": "playbook_command_sweep",
                 "platform": {
-                    "adapter_type": "terminal_orchestrator",
+                    "adapter_type": "terminal_playbook_runner",
                     "platform_family": "swarm_control_core",
                 },
                 "targets": target_text,
                 "parameters": {"speed": speed, "command_count": len(command_plan)},
                 "trace": {
-                    "translator": "terminal_orchestrator",
+                    "translator": "terminal_playbook_runner",
                     "confidence": 1.0,
                     "explanation": "manual all-commands validation sweep",
                 },
@@ -3339,7 +3344,7 @@ class TerminalOrchestrator(Node):
 def main(args=None):
     ensure_ros_domain_id()
     rclpy.init(args=args)
-    node = TerminalOrchestrator()
+    node = TerminalPlaybookRunner()
     try:
         node.run_ui()
     except KeyboardInterrupt:

@@ -244,13 +244,13 @@ kill_user_launches() {
     "ros2 swarm_launch .*swarm_control.*swarm_fpv_ui.launch.py"
     "ros2 run .*swarm_control_core.*swarm_fpv_ui"
     "ros2 run .*swarm_control_core.*swarm_teleop"
-    "ros2 run .*swarm_control_core.*terminal_orchestrator"
+    "ros2 run .*swarm_control_core.*terminal_playbook_runner"
     "swarm_control_core/.*/swarm_fpv_ui_core"
     "swarm_control_core/.*/swarm_teleop_core"
-    "swarm_control_core/.*/terminal_orchestrator_core"
+    "swarm_control_core/.*/terminal_playbook_runner_core"
     "ros2 run .*swarm_control.*swarm_fpv_ui"
     "ros2 run .*swarm_control.*swarm_teleop"
-    "ros2 run .*swarm_control.*terminal_orchestrator"
+    "ros2 run .*swarm_control.*terminal_playbook_runner"
     "fastdds discovery"
   )
 

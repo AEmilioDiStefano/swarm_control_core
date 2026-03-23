@@ -410,7 +410,7 @@ class MotorDriverNode(Node):
         Warn when multiple nodes publish to this robot's cmd_vel topic.
 
         Why this matters:
-        - Teleop, orchestrator, FPV UI, or autonomy can all publish Twist.
+        - Teleop, playbook execution, FPV UI, or autonomy can all publish Twist.
         - If more than one publishes concurrently, motion gets clobbered and can
           look extremely slow or inconsistent (many quick stop/move alternations).
         """
