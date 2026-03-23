@@ -214,11 +214,10 @@ progress_render() {
 
 progress_cleanup() {
   [[ "$progress_enabled" == "1" ]] || return 0
-  progress_printf '\0337'
   progress_printf '\033[%d;1H' "$progress_lines"
   progress_printf '\033[2K'
-  progress_printf '\0338'
-  progress_printf '\033[r\033[?25h'
+  progress_printf '\033[r\033[?25h\r\n'
+  trap - EXIT
   progress_enabled="0"
 }
 
@@ -244,7 +243,7 @@ progress_init() {
   fi
 
   read -r progress_lines progress_cols <<<"$tty_size"
-  if (( progress_lines < 4 || progress_cols < 40 )); then
+  if (( progress_lines < 8 || progress_cols < 72 )); then
     progress_fd=""
     progress_lines="0"
     progress_cols="0"

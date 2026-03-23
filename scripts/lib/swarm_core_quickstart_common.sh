@@ -66,12 +66,39 @@ swarm_core_qs_source_ros_overlay() {
   set -u || true
 }
 
+swarm_core_qs_target_branch() {
+  local sc="${1:-}"
+  local branch="${SWARM_CORE_GIT_BRANCH:-}"
+  if [[ -n "$branch" ]]; then
+    printf '%s' "$branch"
+    return 0
+  fi
+
+  if [[ -n "$sc" ]]; then
+    branch="$(git -C "$sc" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  fi
+
+  if [[ -n "$branch" ]]; then
+    printf '%s' "$branch"
+    return 0
+  fi
+
+  printf '%s' "main"
+}
+
 swarm_core_qs_git_sync() {
   local sc="${1:-}"
+  local branch=""
+  branch="$(swarm_core_qs_target_branch "$sc")"
   cd "$sc"
   git fetch origin --prune
-  git switch main || git checkout -b main origin/main
-  git pull --ff-only origin main
+  if git show-ref --verify --quiet "refs/remotes/origin/${branch}"; then
+    git switch "$branch" || git checkout -b "$branch" "origin/${branch}"
+    git pull --ff-only origin "$branch"
+    return 0
+  fi
+
+  swarm_core_qs_fail "Remote branch origin/${branch} was not found for ${sc}. Set SWARM_CORE_GIT_BRANCH to a valid branch and retry."
 }
 
 swarm_core_qs_wireless_iface() {

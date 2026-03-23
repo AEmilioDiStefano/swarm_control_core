@@ -61,6 +61,8 @@ Run this in the control-machine terminal and in each robot SSH terminal if that
 machine does not already have a ROS 2 workspace you want to keep using:
 
 ```bash
+export SWARM_CORE_GIT_BRANCH="${SWARM_CORE_GIT_BRANCH:-feature_branch}"
+
 command -v git >/dev/null 2>&1 || {
   sudo apt-get update
   sudo apt-get install -y git
@@ -72,7 +74,7 @@ DEFAULT_SC="$DEFAULT_WS/src/swarm_control_core"
 if [[ ! -x "$DEFAULT_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
   install -d "$DEFAULT_WS/src"
   if [[ ! -d "$DEFAULT_SC/.git" ]]; then
-    git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$DEFAULT_SC"
+    git clone --branch "$SWARM_CORE_GIT_BRANCH" --single-branch https://github.com/AEmilioDiStefano/swarm_control_core.git "$DEFAULT_SC"
   fi
 fi
 
@@ -100,35 +102,44 @@ Expected after the fresh-machine block:
 Run this only if you already have a ROS 2 workspace and want to place
 `swarm_control_core` in that workspace instead of `~/ros2_ws_dev`.
 
-Before running the block below, change into that workspace's `src/` directory.
-This block checks that explicitly. If you are not in a `src/` directory, it
-prints a clear message and leaves your SSH session alone.
+Set `CUSTOM_WS_SRC` to your existing workspace's `src/` directory. You do not
+need to `cd` there first. This block checks that explicitly. If `CUSTOM_WS_SRC`
+does not point to a real `src/` directory, it prints a clear message and leaves
+your SSH session alone.
 
 If you accidentally run Step 1.1 and then Step 1.2 anyway, this block will
-reuse the default `~/ros2_ws_dev` workspace from Step 1.1 unless you are
-already standing in another workspace's `src/` directory.
+still reuse the default `~/ros2_ws_dev` workspace from Step 1.1 when
+`CUSTOM_WS_SRC` is unset.
 
 ```bash
+export SWARM_CORE_GIT_BRANCH="${SWARM_CORE_GIT_BRANCH:-feature_branch}"
+export CUSTOM_WS_SRC="/path/to/your_ws/src"
+
 command -v git >/dev/null 2>&1 || {
   sudo apt-get update
   sudo apt-get install -y git
 }
 
-if [[ "$(basename "$PWD")" == "src" ]]; then
-  CUSTOM_SC="$PWD/swarm_control_core"
+if [[ -n "${CUSTOM_WS_SRC:-}" ]]; then
+  CUSTOM_WS_SRC="${CUSTOM_WS_SRC%/}"
+  CUSTOM_SC="$CUSTOM_WS_SRC/swarm_control_core"
   if [[ ! -d "$CUSTOM_SC/.git" ]]; then
-    git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$CUSTOM_SC"
+    git clone --branch "$SWARM_CORE_GIT_BRANCH" --single-branch https://github.com/AEmilioDiStefano/swarm_control_core.git "$CUSTOM_SC"
   fi
   if [[ -x "$CUSTOM_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
-    eval "$("$CUSTOM_SC/scripts/swarm_core_checkout_workspace.sh" --mode existing --emit-shell)"
+    eval "$("$CUSTOM_SC/scripts/swarm_core_checkout_workspace.sh" --mode existing --workspace-src "$CUSTOM_WS_SRC" --emit-shell)"
   else
-    export WS="$(dirname "$PWD")"
-    export SC="$CUSTOM_SC"
-    export SWARM_CORE_WORKSPACE_ROOT="$WS"
-    export WS_DEV="$WS"
-    export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
-    printf '[OK] Workspace root: %s\n' "$WS"
-    printf '[OK] Package checkout: %s\n' "$SC"
+    if [[ "$(basename "$CUSTOM_WS_SRC")" != "src" || ! -d "$CUSTOM_WS_SRC" ]]; then
+      echo "[FAIL] CUSTOM_WS_SRC must point to an existing ROS 2 workspace src directory." >&2
+    else
+      export WS="$(dirname "$CUSTOM_WS_SRC")"
+      export SC="$CUSTOM_SC"
+      export SWARM_CORE_WORKSPACE_ROOT="$WS"
+      export WS_DEV="$WS"
+      export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
+      printf '[OK] Workspace root: %s\n' "$WS"
+      printf '[OK] Package checkout: %s\n' "$SC"
+    fi
   fi
 elif [[ -x "$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_checkout_workspace.sh" ]]; then
   echo "[INFO] Current directory is not a workspace src directory." >&2
@@ -145,12 +156,12 @@ elif [[ -d "$HOME/ros2_ws_dev/src/swarm_control_core/.git" ]]; then
   printf '[OK] Workspace root: %s\n' "$WS"
   printf '[OK] Package checkout: %s\n' "$SC"
 else
-  echo "[FAIL] Existing-workspace checkout must be run from a ROS 2 workspace src directory." >&2
-  echo "[FAIL] Change into your workspace src directory first, for example:" >&2
-  echo "       cd /path/to/your_ws/src" >&2
+  echo "[FAIL] Set CUSTOM_WS_SRC to your ROS 2 workspace src directory." >&2
+  echo "[FAIL] Example:" >&2
+  echo "       export CUSTOM_WS_SRC=/path/to/your_ws/src" >&2
   echo "[FAIL] Or run Step 1.1 to create ~/ros2_ws_dev automatically." >&2
 fi
-unset CUSTOM_SC
+unset CUSTOM_SC CUSTOM_WS_SRC
 ```
 
 Expected after the existing-workspace block:

@@ -29,6 +29,13 @@ Suggested terminal layout on the control machine:
 Default script paths below assume the package lives in `~/ros2_ws_dev`.
 If your workspace root has a different name/path, replace the `~/ros2_ws_dev`
 prefix in the script path with your actual workspace root.
+All quickstart script commands below can be run from any current directory.
+
+Branch note for this runbook:
+- this copy of `QUICKSTART.md` lives on `feature_branch`
+- if you are setting up fresh machines for this branch, set
+  `SWARM_CORE_GIT_BRANCH=feature_branch` during checkout/setup so every machine
+  pulls the same branch before later quickstart steps
 
 ## Mode Handoff Checklist (core <-> pro)
 
@@ -59,14 +66,19 @@ sudo systemctl is-active swarm-robot.service || true
 ### Run on control machine:
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step0.sh" --machine-role control
+"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_check_install_dependencies.sh" --machine-role control
 ```
 
 ### Run in each dedicated robot SSH terminal (one per robot):
 
 ```bash
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_quickstart_step0.sh" --machine-role robot
+"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_check_install_dependencies.sh" --machine-role robot
 ```
+
+Why Step 0 uses this long-lived script directly:
+- it already exists in older checkouts, so fresh or slightly stale robot trees
+  can still complete dependency bootstrap before the newer quickstart wrapper
+  scripts are available locally
 
 ### Verify success
 
@@ -294,7 +306,7 @@ Run:
 
 ```bash
 sudo apt-get update
-"$WS/src/swarm_control_core/scripts/swarm_core_check_install_dependencies.sh" \
+"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_check_install_dependencies.sh" \
   --machine-role control
 ```
 
@@ -385,8 +397,9 @@ Run on each machine:
 ```bash
 cd "$WS/src/swarm_control_core"
 git fetch origin --prune
-git switch main || git checkout -b main origin/main
-git pull --ff-only origin main
+TARGET_BRANCH="${SWARM_CORE_GIT_BRANCH:-$(git symbolic-ref --quiet --short HEAD 2>/dev/null || echo main)}"
+git switch "$TARGET_BRANCH" || git checkout -b "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+git pull --ff-only origin "$TARGET_BRANCH"
 ```
 
 Then return to [Step 4](#step-4).

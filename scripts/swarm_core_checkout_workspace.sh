@@ -13,7 +13,7 @@ fail() {
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_core_checkout_workspace.sh --mode <default|existing> [--emit-shell] [--repo-url <url>]
+  swarm_core_checkout_workspace.sh --mode <default|existing> [--emit-shell] [--repo-url <url>] [--workspace-src <path>]
 
 Modes:
   default   Create or refresh the default workspace at ~/ros2_ws_dev and ensure
@@ -26,7 +26,15 @@ Modes:
 Options:
   --emit-shell   Print export commands for eval usage.
   --repo-url     Git clone URL (default: official swarm_control_core repository).
+  --workspace-src
+                 Existing workspace src/ directory to use when --mode existing.
+                 This allows the script to run from any current directory.
   -h, --help     Show this help.
+
+Environment:
+  SWARM_CORE_GIT_BRANCH
+      Branch to clone/update (default: current checkout branch when detectable,
+      otherwise main).
 USAGE
 }
 
@@ -45,14 +53,22 @@ ensure_git() {
 clone_or_update_repo() {
   local target_repo="$1"
   local target_src=""
+  local target_branch="${SWARM_CORE_GIT_BRANCH:-}"
   target_src="$(dirname "$target_repo")"
   mkdir -p "$target_src"
 
   if [[ -d "${target_repo}/.git" ]]; then
+    if [[ -z "$target_branch" ]]; then
+      target_branch="$(git -C "$target_repo" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+    fi
+    if [[ -z "$target_branch" ]]; then
+      target_branch="main"
+    fi
     log "Refreshing existing checkout at ${target_repo}."
     if ! git -C "$target_repo" fetch origin --prune \
-      || ! { git -C "$target_repo" switch main || git -C "$target_repo" checkout -b main origin/main; } \
-      || ! git -C "$target_repo" pull --ff-only origin main; then
+      || ! git -C "$target_repo" show-ref --verify --quiet "refs/remotes/origin/${target_branch}" \
+      || ! { git -C "$target_repo" switch "$target_branch" || git -C "$target_repo" checkout -b "$target_branch" "origin/${target_branch}"; } \
+      || ! git -C "$target_repo" pull --ff-only origin "$target_branch"; then
       log "WARN: Could not fully refresh ${target_repo}. Keeping the existing checkout so setup can continue."
     fi
     return 0
@@ -62,8 +78,11 @@ clone_or_update_repo() {
     fail "Path exists but is not a git checkout: ${target_repo}"
   fi
 
+  if [[ -z "$target_branch" ]]; then
+    target_branch="main"
+  fi
   log "Cloning swarm_control_core into ${target_repo}."
-  git clone "$repo_url" "$target_repo"
+  git clone --branch "$target_branch" --single-branch "$repo_url" "$target_repo"
 }
 
 emit_workspace_exports() {
@@ -84,6 +103,7 @@ emit_workspace_exports() {
 mode=""
 emit_shell="0"
 repo_url="https://github.com/AEmilioDiStefano/swarm_control_core.git"
+workspace_src=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -97,6 +117,10 @@ while [[ $# -gt 0 ]]; do
     --repo-url)
       shift
       repo_url="${1:-}"
+      ;;
+    --workspace-src)
+      shift
+      workspace_src="${1:-}"
       ;;
     -h|--help)
       usage
@@ -128,7 +152,18 @@ case "$mode" in
   existing)
     ensure_git
     current_dir="${PWD%/}"
-    if [[ "$(basename "$current_dir")" == "src" ]]; then
+    if [[ -n "$workspace_src" ]]; then
+      workspace_src="${workspace_src%/}"
+      if [[ "$(basename "$workspace_src")" != "src" || ! -d "$workspace_src" ]]; then
+        log "The package can only be added to a ROS 2 workspace src directory."
+        log "The --workspace-src value must point to an existing .../src directory."
+        exit 2
+      fi
+      workspace_root="$(dirname "$workspace_src")"
+      package_dir="${workspace_src}/swarm_control_core"
+      log "Using explicit workspace src directory: ${workspace_src}"
+      clone_or_update_repo "$package_dir"
+    elif [[ "$(basename "$current_dir")" == "src" ]]; then
       workspace_root="$(dirname "$current_dir")"
       package_dir="${current_dir}/swarm_control_core"
       log "Current directory is a workspace src directory: ${current_dir}"
@@ -143,8 +178,8 @@ case "$mode" in
     else
       log "Current directory is not a workspace src directory: ${current_dir}"
       log "The package can only be added to a ROS 2 workspace src directory."
-      log "Example: cd /path/to/your_ws/src"
-      log "Then rerun Step 1.2, or run Step 1.1 to create ~/ros2_ws_dev automatically."
+      log "Example: --workspace-src /path/to/your_ws/src"
+      log "Or run Step 1.1 to create ~/ros2_ws_dev automatically."
       exit 2
     fi
     ;;
