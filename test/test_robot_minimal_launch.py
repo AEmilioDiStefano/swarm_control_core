@@ -73,13 +73,18 @@ def test_generate_launch_description_type():
 
 
 def test_launch_contains_expected_arguments():
+    """Verify exactly 3 launch arguments are declared with expected names."""
     ld = generate_launch_description()
     args = _find_action(ld.entities, DeclareLaunchArgument)
     arg_names = {a.name for a in args}
 
+    # Verify all 3 expected arguments are present
     assert "ros_domain_id" in arg_names
     assert "robot_name" in arg_names
     assert "profiles_path" in arg_names
+    
+    # Verify no extra or duplicate arguments were added
+    assert len(args) == 3, f"Expected exactly 3 arguments, found {len(args)}: {arg_names}"
 
 
 def test_launch_sets_ros_domain_id_env():
