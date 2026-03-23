@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: LicenseRef-Vitruvian-Community-1.0
 #
 # PURPOSE
-# - Defines camera defaults and per-robot camera overrides used by launch/runtime.
+# - Defines camera defaults and per-robot camera overrides used by swarm_launch/runtime.
 #
 # HOW THIS RELATES TO THE SYSTEM
 # - Read by:
-#   - `launch/swarm_bringup.launch.py` via `camera_profiles_path`
+#   - `swarm_launch/swarm_bringup.launch.py` via `camera_profiles_path`
 #   - `swarm_control_core/save_camera_profile.py` for detect/select/persist flow
 # - Works together with control/instance profile files:
 #   - `robot_instances.yaml`, `control_types.yaml`, and `control_interfaces.yaml`
 #     handle motion/control-interface behavior.
 #   - `camera_profiles.yaml` is the camera source of truth.
 # - Runtime precedence is:
-#   launch args -> optional CAMERA_* env overrides (when enabled) ->
+#   swarm_launch args -> optional CAMERA_* env overrides (when enabled) ->
 #   this file -> hard safe defaults.
 #
 # MUTABILITY / OWNERSHIP
@@ -22,7 +22,7 @@
 #   `--camera-profiles-path` / `camera_profiles_path:=`.
 #
 # WHAT THIS OFFERS
-# - Consistent camera startup per robot without repeating CLI args each launch.
+# - Consistent camera startup per robot without repeating CLI args each swarm_launch.
 # - Controlled low-latency tuning and deterministic device selection.
 
 schema_version: "1.0"

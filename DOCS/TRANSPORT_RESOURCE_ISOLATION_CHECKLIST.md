@@ -48,7 +48,7 @@ Files:
 
 - [camera_runtime_defaults.py](/home/aemilio/ros2_ws_dev/src/swarm_control_core/swarm_control_core/camera_runtime_defaults.py)
 - [camera_adapter.py](/home/aemilio/ros2_ws_dev/src/swarm_control_core/swarm_control_core/camera_adapter.py)
-- [swarm_bringup.launch.py](/home/aemilio/ros2_ws_dev/src/swarm_control_core/launch/swarm_bringup.launch.py)
+- [swarm_bringup.launch.py](/home/aemilio/ros2_ws_dev/src/swarm_control_core/swarm_launch/swarm_bringup.launch.py)
 - [test_camera_runtime_defaults.py](/home/aemilio/ros2_ws_dev/src/swarm_control_core/test/test_camera_runtime_defaults.py)
 
 Env vars:
