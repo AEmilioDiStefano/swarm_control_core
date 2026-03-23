@@ -322,7 +322,7 @@ cd "$WS"
 rm -rf build/swarm_control_core install/swarm_control_core log/latest_build/swarm_control_core
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-colcon build --packages-select swarm_control_core --event-handlers console_direct+
+colcon build --base-paths "$WS/src/swarm_control_core" --packages-select swarm_control_core --event-handlers console_direct+
 source "$WS/install/setup.bash"
 set -u || true
 ```
