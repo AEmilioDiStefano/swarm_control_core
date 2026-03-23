@@ -69,5 +69,6 @@ rg -n -- '--machine-role|--compat-mode|compat-stop-ufw|ROS_AUTOMATIC_DISCOVERY_R
 cd "$WS"
 swarm_core_qs_source_ros_overlay "$WS"
 colcon build --base-paths "$SC" --packages-select swarm_control_core
+swarm_core_qs_verify_launch_share "$WS"
 
 echo "[quickstart step1] complete"

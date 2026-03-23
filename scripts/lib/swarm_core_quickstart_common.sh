@@ -107,9 +107,9 @@ swarm_core_qs_git_sync() {
 swarm_core_qs_prune_legacy_launch_share() {
   local ws="${1:-}"
   local source_legacy_dir="${ws}/src/swarm_control_core/launch"
-  local build_legacy_dir="${ws}/build/swarm_control_core/launch"
-  local legacy_dir="${ws}/install/swarm_control_core/share/swarm_control_core/launch"
-  local canonical_dir="${ws}/install/swarm_control_core/share/swarm_control_core/swarm_launch"
+  local build_legacy_dir="${ws}/build/swarm_control_core/swarm_launch"
+  local legacy_dir="${ws}/install/swarm_control_core/share/swarm_control_core/swarm_launch"
+  local canonical_dir="${ws}/install/swarm_control_core/share/swarm_control_core/launch"
 
   [[ -n "$ws" ]] || swarm_core_qs_fail "Workspace path is required."
 
@@ -131,6 +131,37 @@ swarm_core_qs_prune_legacy_launch_share() {
   if [[ -d "$canonical_dir" ]]; then
     echo "[swarm_core_quickstart] Canonical launch directory: ${canonical_dir}"
   fi
+}
+
+swarm_core_qs_verify_launch_share() {
+  local ws="${1:-}"
+  local launch_dir="${ws}/install/swarm_control_core/share/swarm_control_core/launch"
+  local -a required=(
+    "swarm_bringup.launch.py"
+    "swarm_fpv_ui.launch.py"
+    "robot_minimal_launch.py"
+  )
+  local missing=0
+  local name=""
+
+  [[ -n "$ws" ]] || swarm_core_qs_fail "Workspace path is required."
+
+  if [[ ! -d "$launch_dir" ]]; then
+    swarm_core_qs_fail "Missing installed launch directory after build: ${launch_dir}"
+  fi
+
+  for name in "${required[@]}"; do
+    if [[ ! -f "${launch_dir}/${name}" ]]; then
+      swarm_core_qs_warn "Missing installed launch file: ${launch_dir}/${name}"
+      missing=1
+    fi
+  done
+
+  if [[ "$missing" == "1" ]]; then
+    swarm_core_qs_fail "Launch-file install verification failed."
+  fi
+
+  echo "[swarm_core_quickstart] Verified launch files in: ${launch_dir}"
 }
 
 swarm_core_qs_wireless_iface() {

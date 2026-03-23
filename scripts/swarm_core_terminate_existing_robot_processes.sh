@@ -28,7 +28,7 @@ Options:
 
 Behavior:
   - Stops known robot services if present.
-  - Best-effort kills local user ROS swarm_launch/run processes for robot bringup/UI.
+  - Best-effort kills local user ROS launch/run processes for robot bringup/UI.
   - In --compat-mode on robots, runtime masks clear automatically on reboot.
   - In --compat-mode, ufw runtime stop (if enabled) is temporary and returns on reboot.
 USAGE
@@ -237,11 +237,11 @@ maybe_stop_ufw_runtime_for_compat() {
 
 kill_user_launches() {
   local -a patterns=(
-    "ros2 swarm_launch .*swarm_control_core.*swarm_bringup.launch.py"
-    "ros2 swarm_launch .*swarm_control_core.*robot_minimal_launch.py"
-    "ros2 swarm_launch .*swarm_control_core.*swarm_fpv_ui.launch.py"
-    "ros2 swarm_launch .*swarm_control.*swarm_bringup.launch.py"
-    "ros2 swarm_launch .*swarm_control.*swarm_fpv_ui.launch.py"
+    "ros2 launch .*swarm_control_core.*swarm_bringup.launch.py"
+    "ros2 launch .*swarm_control_core.*robot_minimal_launch.py"
+    "ros2 launch .*swarm_control_core.*swarm_fpv_ui.launch.py"
+    "ros2 launch .*swarm_control.*swarm_bringup.launch.py"
+    "ros2 launch .*swarm_control.*swarm_fpv_ui.launch.py"
     "ros2 run .*swarm_control_core.*swarm_fpv_ui"
     "ros2 run .*swarm_control_core.*swarm_teleop"
     "ros2 run .*swarm_control_core.*terminal_playbook_runner"

@@ -57,7 +57,7 @@ export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-17}"
 ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
 "$WS_DEV/src/swarm_control_core/scripts/swarm_core_terminate_existing_robot_processes.sh"
 
-ros2 launch swarm_control_core swarm_launch/swarm_bringup.launch.py \
+ros2 launch swarm_control_core swarm_bringup.launch.py \
   robot_name:="$ROBOT_NAME" \
   ros_domain_id:="$ROS_DOMAIN_ID" \
   use_camera:=true \
@@ -73,7 +73,7 @@ Run on the control machine:
 
 ```bash
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-17}"
-ros2 launch swarm_control_core swarm_launch/swarm_fpv_ui.launch.py ros_domain_id:="$ROS_DOMAIN_ID"
+ros2 launch swarm_control_core swarm_fpv_ui.launch.py ros_domain_id:="$ROS_DOMAIN_ID"
 ```
 
 Open:
@@ -85,7 +85,7 @@ Optional private LAN bind:
 ```bash
 export SWARM_CORE_ALLOW_LAN_BIND=1
 export SWARM_CORE_BIND_HOST=0.0.0.0
-ros2 launch swarm_control_core swarm_launch/swarm_fpv_ui.launch.py ros_domain_id:="$ROS_DOMAIN_ID"
+ros2 launch swarm_control_core swarm_fpv_ui.launch.py ros_domain_id:="$ROS_DOMAIN_ID"
 ```
 
 ### IF UI opens but robots are missing

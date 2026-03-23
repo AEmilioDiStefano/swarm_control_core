@@ -5,7 +5,7 @@
 #
 # HOW THIS RELATES TO THE SYSTEM
 # - Read by:
-#   - `swarm_launch/swarm_bringup.launch.py` via `camera_profiles_path`
+#   - `swarm_bringup.launch.py` via `camera_profiles_path`
 #   - `swarm_control_core/save_camera_profile.py` for detect/select/persist flow
 # - Works together with control/instance profile files:
 #   - `robot_instances.yaml`, `control_types.yaml`, and `control_interfaces.yaml`
