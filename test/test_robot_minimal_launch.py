@@ -206,35 +206,49 @@ def test_argument_default_values():
 
 def test_node_parameter_count_and_keys():
     """
-    Verify each node has parameters set (checks via private _Node__parameters attribute).
-    
+    Verify each node has exactly the expected two parameters with correct keys.
+
     ⚠️  PRIVATE ATTRIBUTE USAGE - RISK DOCUMENTED:
     This test accesses _Node__parameters, a name-mangled private attribute of the Node class.
     This is normally an anti-pattern, but is retained here ONLY because:
-    
+
     1. Parameter passing is SAFETY-CRITICAL - robots must receive correct configuration
     2. No public ROS 2 launch API exists to enumerate declared parameters
     3. If ROS 2 changes the private attribute structure, test WILL fail visibly (not silently)
-    4. The failure will immediately signal that the launch config needs verification
-    
+    4. The failure will immediately signal that launch config needs verification
+
     FUTURE MITIGATION:
     - Replace this with an integration test that actually launches the nodes
     - Integration test would verify nodes receive parameters at runtime (ground truth)
     - Private attribute test can then be safely removed
-    
+
     See design notes in module docstring.
     """
     ld = generate_launch_description()
     nodes = _find_action(ld.entities, Node)
-    
+
+    expected_keys = {"robot_name", "profiles_path"}
+
     for node in nodes:
-        # Parameters are stored in private _Node__parameters attribute
-        # Access must use getattr to avoid AttributeError at runtime
         params = getattr(node, '_Node__parameters', None)
-        
-        # Verify parameters exist and are non-empty
+
         assert params is not None, "Node missing parameters"
-        assert len(params) > 0, "Node parameters list is empty"
+        assert len(params) == 2, f"Node should have exactly 2 parameters, got {len(params)}"
+
+        actual_keys = set()
+        for param_map in params:
+            # Each param_map is a dict where key is tuple(TextSubstitution(...),)
+            assert isinstance(param_map, dict), f"Expected dict entries in parameters, got {type(param_map)}"
+            for key_tuple in param_map.keys():
+                assert isinstance(key_tuple, tuple) and len(key_tuple) == 1, \
+                    f"Unexpected parameter key tuple structure: {key_tuple}"
+                key_sub = key_tuple[0]
+                key_text = getattr(key_sub, 'text', None)
+                assert key_text is not None, f"Unable to read parameter key text from {key_sub}"
+                actual_keys.add(key_text)
+
+        assert actual_keys == expected_keys, \
+            f"Node parameters keys should be {expected_keys}, got {actual_keys}"
 
 
 def test_generate_launch_description_idempotent():
