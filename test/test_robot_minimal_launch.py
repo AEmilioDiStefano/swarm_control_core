@@ -265,6 +265,54 @@ def test_generate_launch_description_idempotent():
     assert len(ld1.entities) == len(ld2.entities)
 
 
+def test_parameters_are_launchconfig_substitutions_and_env_configurable():
+    """Verify robot_name/profiles_path parameters remain positional LaunchConfiguration substitutions and can be provided in context."""
+    import os
+    from launch import LaunchContext
+    from launch.substitutions import LaunchConfiguration
+
+    # Set environment variables the docstring references (these are NOT automatically used by this launch file)
+    os.environ["SWARM_CORE_ROBOT_NAME"] = "env_robot"  # should not affect default behavior
+    os.environ["PROFILES_PATH"] = "/tmp/env_profiles"
+
+    ld = generate_launch_description()
+    nodes = _find_action(ld.entities, Node)
+    assert len(nodes) == 2
+
+    for node in nodes:
+        params = getattr(node, '_Node__parameters', None)
+        assert params is not None and len(params) == 2
+
+        # build context with explicit values and verify substitution resolution
+        ctx = LaunchContext()
+        ctx.launch_configurations['robot_name'] = 'ctx_robot'
+        ctx.launch_configurations['profiles_path'] = '/tmp/context_profiles'
+
+        key_texts = set()
+        for param_map in params:
+            for key_tuple, value_tuple in param_map.items():
+                key_sub = key_tuple[0]
+                key_name = getattr(key_sub, 'text', None)
+                assert key_name in ('robot_name', 'profiles_path')
+                key_texts.add(key_name)
+
+                value_sub = value_tuple[0]
+                assert isinstance(value_sub, LaunchConfiguration)
+                resolved = value_sub.perform(ctx)
+                if key_name == 'robot_name':
+                    assert resolved == 'ctx_robot'
+                else:
+                    assert resolved == '/tmp/context_profiles'
+
+        assert key_texts == {'robot_name', 'profiles_path'}
+
+
+def test_default_ros_domain_id_with_env_fallback_works_when_env_has_empty_string(monkeypatch):
+    """When ROS_DOMAIN_ID is set to empty string via environment, it should fall back to 17."""
+    monkeypatch.setenv('ROS_DOMAIN_ID', '')
+    assert _default_ros_domain_id() == '17'
+
+
 # Tests for _default_ros_domain_id() function
 def test_default_ros_domain_id_explicit_value(monkeypatch):
     """When ROS_DOMAIN_ID env var is explicitly set, use that value."""
