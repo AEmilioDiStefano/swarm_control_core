@@ -265,15 +265,14 @@ def test_generate_launch_description_idempotent():
     assert len(ld1.entities) == len(ld2.entities)
 
 
-def test_parameters_are_launchconfig_substitutions_and_env_configurable():
+def test_parameters_are_launchconfig_substitutions_and_env_configurable(monkeypatch):
     """Verify robot_name/profiles_path parameters remain positional LaunchConfiguration substitutions and can be provided in context."""
-    import os
     from launch import LaunchContext
     from launch.substitutions import LaunchConfiguration
 
     # Set environment variables the docstring references (these are NOT automatically used by this launch file)
-    os.environ["SWARM_CORE_ROBOT_NAME"] = "env_robot"  # should not affect default behavior
-    os.environ["PROFILES_PATH"] = "/tmp/env_profiles"
+    monkeypatch.setenv("SWARM_CORE_ROBOT_NAME", "env_robot")
+    monkeypatch.setenv("PROFILES_PATH", "/tmp/env_profiles")
 
     ld = generate_launch_description()
     nodes = _find_action(ld.entities, Node)
