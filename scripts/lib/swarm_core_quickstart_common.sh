@@ -104,6 +104,35 @@ swarm_core_qs_git_sync() {
   echo "[swarm_core_quickstart] git checkout: branch=${current_branch:-unknown} commit=${current_commit:-unknown}"
 }
 
+swarm_core_qs_prune_legacy_launch_share() {
+  local ws="${1:-}"
+  local source_legacy_dir="${ws}/src/swarm_control_core/launch"
+  local build_legacy_dir="${ws}/build/swarm_control_core/launch"
+  local legacy_dir="${ws}/install/swarm_control_core/share/swarm_control_core/launch"
+  local canonical_dir="${ws}/install/swarm_control_core/share/swarm_control_core/swarm_launch"
+
+  [[ -n "$ws" ]] || swarm_core_qs_fail "Workspace path is required."
+
+  if [[ -d "$source_legacy_dir" ]]; then
+    rm -rf "$source_legacy_dir"
+    echo "[swarm_core_quickstart] Removed stale source launch directory: ${source_legacy_dir}"
+  fi
+
+  if [[ -d "$build_legacy_dir" ]]; then
+    rm -rf "$build_legacy_dir"
+    echo "[swarm_core_quickstart] Removed stale build launch directory: ${build_legacy_dir}"
+  fi
+
+  if [[ -d "$legacy_dir" ]]; then
+    rm -rf "$legacy_dir"
+    echo "[swarm_core_quickstart] Removed stale install launch directory: ${legacy_dir}"
+  fi
+
+  if [[ -d "$canonical_dir" ]]; then
+    echo "[swarm_core_quickstart] Canonical launch directory: ${canonical_dir}"
+  fi
+}
+
 swarm_core_qs_wireless_iface() {
   if ! command -v iw >/dev/null 2>&1; then
     return 1

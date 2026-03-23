@@ -181,7 +181,7 @@ Type=simple
 User=${service_user}
 WorkingDirectory=${workspace}
 EnvironmentFile=${env_file}
-ExecStart=/usr/bin/env bash -lc 'set -euo pipefail; source /opt/ros/\${ROS_DISTRO:-jazzy}/setup.bash; source "\${WORKSPACE}/install/setup.bash"; export ROS_DOMAIN_ID="\${ROS_DOMAIN_ID:-17}"; exec ros2 launch swarm_control_core swarm_bringup.launch.py robot_name:="\${SWARM_CORE_ROBOT_NAME}" ros_domain_id:="\${ROS_DOMAIN_ID}" use_camera:="\${SWARM_CORE_USE_CAMERA}" camera_pipeline:="\${SWARM_CORE_CAMERA_PIPELINE}" profiles_path:="\${SWARM_CORE_PROFILES_PATH}" camera_profiles_path:="\${SWARM_CORE_CAMERA_PROFILES_PATH}"'
+ExecStart=/usr/bin/env bash -lc 'set -euo pipefail; source /opt/ros/\${ROS_DISTRO:-jazzy}/setup.bash; source "\${WORKSPACE}/install/setup.bash"; export ROS_DOMAIN_ID="\${ROS_DOMAIN_ID:-17}"; exec ros2 launch swarm_control_core swarm_launch/swarm_bringup.launch.py robot_name:="\${SWARM_CORE_ROBOT_NAME}" ros_domain_id:="\${ROS_DOMAIN_ID}" use_camera:="\${SWARM_CORE_USE_CAMERA}" camera_pipeline:="\${SWARM_CORE_CAMERA_PIPELINE}" profiles_path:="\${SWARM_CORE_PROFILES_PATH}" camera_profiles_path:="\${SWARM_CORE_CAMERA_PROFILES_PATH}"'
 Restart=always
 RestartSec=2
 KillSignal=SIGINT

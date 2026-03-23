@@ -249,7 +249,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if command -v setsid >/dev/null 2>&1; then
-  setsid ros2 launch swarm_control_core swarm_fpv_ui.launch.py \
+  setsid ros2 launch swarm_control_core swarm_launch/swarm_fpv_ui.launch.py \
     ros_domain_id:="$ROS_DOMAIN_ID" \
     bind_host:="$SWARM_CORE_BIND_HOST" \
     bind_port:="$SWARM_CORE_BIND_PORT" \
@@ -261,7 +261,7 @@ if command -v setsid >/dev/null 2>&1; then
     drive_cmd_rate_hz:="$SWARM_CORE_DRIVE_CMD_RATE_HZ" \
     drive_hold_timeout_s:="$SWARM_CORE_DRIVE_HOLD_TIMEOUT_S" &
 else
-  ros2 launch swarm_control_core swarm_fpv_ui.launch.py \
+  ros2 launch swarm_control_core swarm_launch/swarm_fpv_ui.launch.py \
     ros_domain_id:="$ROS_DOMAIN_ID" \
     bind_host:="$SWARM_CORE_BIND_HOST" \
     bind_port:="$SWARM_CORE_BIND_PORT" \

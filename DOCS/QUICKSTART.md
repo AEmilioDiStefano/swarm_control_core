@@ -30,6 +30,34 @@ Default script paths below assume the package lives in `~/ros2_ws_dev`.
 If your workspace root has a different name/path, replace the `~/ros2_ws_dev`
 prefix in the script path with your actual workspace root.
 
+Workspace bootstrap (run once per fresh terminal before following this document):
+
+```bash
+# Works from any directory:
+# - auto-detects the workspace that contains swarm_control_core
+# - set SWARM_CORE_WORKSPACE_ROOT=/path/to/workspace to force selection
+if [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]] && [[ -f "${SWARM_CORE_WORKSPACE_ROOT}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" ]]; then
+  source "${SWARM_CORE_WORKSPACE_ROOT}/src/swarm_control_core/scripts/swarm_core_workspace_env.sh"
+else
+  _swarm_search_root="${SWARM_SEARCH_ROOT:-$HOME}"
+  mapfile -t _sc_core_env_candidates < <(find "$_swarm_search_root" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_env.sh" 2>/dev/null | sort)
+  if (( ${#_sc_core_env_candidates[@]} == 0 )); then
+    echo "[FAIL] Could not locate swarm_control_core workspace under $_swarm_search_root." >&2
+    return 1 2>/dev/null || exit 1
+  fi
+  if (( ${#_sc_core_env_candidates[@]} > 1 )); then
+    echo "[WARN] Multiple swarm_control_core workspaces found; using: ${_sc_core_env_candidates[0]}" >&2
+    echo "       Set SWARM_CORE_WORKSPACE_ROOT=/path/to/workspace to force selection." >&2
+  fi
+  source "${_sc_core_env_candidates[0]}"
+  unset _sc_core_env_candidates _swarm_search_root
+fi
+
+: "${WS:?Workspace bootstrap must define WS}"
+```
+
+This exports `WS`, `WS_DEV`, and `SC` for later commands in this document.
+
 ## Mode Handoff Checklist (core <-> pro)
 
 Use this when both `swarm_control_core` and `swarm_control_pro` exist on the same robots.

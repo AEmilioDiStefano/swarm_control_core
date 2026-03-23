@@ -77,7 +77,7 @@ if [[ -n "${CAMERA_PROFILES_PATH:-}" ]]; then
   echo "[swarm_core_run_robot] CAMERA_PROFILES_PATH=${CAMERA_PROFILES_PATH}"
 fi
 
-ros2 launch swarm_control_core swarm_bringup.launch.py \
+ros2 launch swarm_control_core swarm_launch/swarm_bringup.launch.py \
   robot_name:="$ROBOT_NAME" \
   ros_domain_id:="$ROS_DOMAIN_ID" \
   use_camera:="$USE_CAMERA" \
