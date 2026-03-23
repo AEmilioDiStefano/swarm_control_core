@@ -88,10 +88,33 @@ def test_launch_contains_expected_arguments():
 
 
 def test_launch_sets_ros_domain_id_env():
+    """Verify SetEnvironmentVariable action sets ROS_DOMAIN_ID to LaunchConfiguration."""
     ld = generate_launch_description()
     envs = _find_action(ld.entities, SetEnvironmentVariable)
-    # Verify at least one SetEnvironmentVariable action exists (the hardcoded ROS_DOMAIN_ID in source)
-    assert len(envs) >= 1
+    
+    # Verify at least one SetEnvironmentVariable action exists
+    assert len(envs) >= 1, "No SetEnvironmentVariable actions found"
+    
+    # Find the ROS_DOMAIN_ID environment variable
+    ros_domain_id_env = None
+    for env_action in envs:
+        # env_action.name is a list of Substitution objects; extract the first one's text
+        if env_action.name and len(env_action.name) > 0:
+            # The name is typically [TextSubstitution(text="ROS_DOMAIN_ID")]
+            name_sub = env_action.name[0]
+            # Check if this substitution has a .text attribute (TextSubstitution)
+            name_text = getattr(name_sub, 'text', None)
+            if name_text == "ROS_DOMAIN_ID":
+                ros_domain_id_env = env_action
+                break
+    
+    # Verify ROS_DOMAIN_ID environment variable was set
+    assert ros_domain_id_env is not None, \
+        "ROS_DOMAIN_ID environment variable not found in SetEnvironmentVariable actions"
+    
+    # Verify it's set to a LaunchConfiguration (not hardcoded)
+    assert ros_domain_id_env.value is not None
+    assert len(ros_domain_id_env.value) > 0
 
 
 def test_launch_contains_motor_and_heartbeat_nodes():
