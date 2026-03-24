@@ -130,6 +130,9 @@ describe_pid() {
 
 kill_known_ui_processes() {
   local -a patterns=(
+    "ros2 launch .*swarm_control_pro.*swarm_fpv_ui.launch.py"
+    "ros2 run .*swarm_control_pro.*swarm_fpv_ui"
+    "/swarm_control_pro/.*/swarm_fpv_ui"
     "ros2 launch .*swarm_control_core.*swarm_fpv_ui.launch.py"
     "ros2 run .*swarm_control_core.*swarm_fpv_ui"
     "/swarm_control_core/.*/swarm_fpv_ui_core"
