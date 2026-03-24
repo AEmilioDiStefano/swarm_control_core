@@ -88,6 +88,15 @@ resolve_env_script() {
   return 1
 }
 
+resolve_current_shell_env_script() {
+  local current_ws="${WS:-${SWARM_CORE_WORKSPACE_ROOT:-}}"
+  if [[ -n "$current_ws" ]]; then
+    resolve_env_script "$current_ws"
+    return 0
+  fi
+  return 1
+}
+
 resolve_from_pwd() {
   local cur="${PWD}"
   while [[ -n "$cur" && "$cur" != "/" ]]; do
@@ -105,6 +114,8 @@ script_workspace_root="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 if [[ -n "$workspace_override" ]]; then
   env_script="$(resolve_env_script "$workspace_override" || true)"
+elif env_from_current="$(resolve_current_shell_env_script || true)"; [[ -n "$env_from_current" ]]; then
+  env_script="$env_from_current"
 elif env_from_pwd="$(resolve_from_pwd || true)"; [[ -n "$env_from_pwd" ]]; then
   env_script="$env_from_pwd"
 elif [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]]; then
@@ -132,7 +143,17 @@ if [[ ! -d "${workspace_root}/src/swarm_control_core" ]]; then
   exit 1
 fi
 
-if [[ "$interactive_mode" == "yes" ]] || { [[ "$interactive_mode" == "auto" ]] && [[ -t 0 ]]; }; then
+current_shell_workspace=""
+if env_from_current="$(resolve_current_shell_env_script || true)"; [[ -n "$env_from_current" ]]; then
+  current_shell_workspace="$(cd "$(dirname "$env_from_current")/../../.." && pwd)"
+fi
+
+skip_interactive_confirm="0"
+if [[ -n "$current_shell_workspace" && "$current_shell_workspace" == "$workspace_root" && -z "$workspace_override" ]]; then
+  skip_interactive_confirm="1"
+fi
+
+if [[ "$skip_interactive_confirm" != "1" ]] && { [[ "$interactive_mode" == "yes" ]] || { [[ "$interactive_mode" == "auto" ]] && [[ -t 0 ]]; }; }; then
   detected_name="$(basename "$workspace_root")"
   while true; do
     printf '\nA workspace called [%s] has been detected as the parent workspace for the swarm_control_core package. Is this correct?\n' "$detected_name" >&2

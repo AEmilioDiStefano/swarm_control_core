@@ -70,21 +70,16 @@ fi
 if [[ "$interactive_mode" == "yes" ]] || { [[ "$interactive_mode" == "auto" ]] && [[ -t 0 ]] && [[ -z "$workspace_override" ]]; }; then
   _detected_ws_name="$(basename "$WS")"
   while true; do
-    printf 'A workspace called [%s] has been detected as the parent workspace for the swarm_control_core package. Is this correct?\n' "$_detected_ws_name"
-    printf '(Y/n): '
-    read -r _confirm
+    printf 'Detected swarm_control_core workspace: %s\n' "$WS"
+    read -r -p "Use this workspace [Y]: " _confirm
     case "${_confirm:-Y}" in
       y|Y)
         break
         ;;
       n|N)
         while true; do
-          printf 'Enter workspace directory name: '
-          read -r _ws_input
-          if [[ -z "${_ws_input// }" ]]; then
-            echo "[swarm_core_workspace_env] Workspace directory name cannot be empty." >&2
-            continue
-          fi
+          read -r -p "Workspace directory name or absolute path [${_detected_ws_name}]: " _ws_input
+          _ws_input="${_ws_input:-$_detected_ws_name}"
           if [[ "$_ws_input" == /* ]]; then
             _ws_candidate="$_ws_input"
           elif [[ "$_ws_input" == "~/"* ]]; then
