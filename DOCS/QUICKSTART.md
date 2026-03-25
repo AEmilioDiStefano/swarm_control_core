@@ -398,6 +398,17 @@ cd "$WS/src/swarm_control_core"
 git fetch origin --prune
 git switch main || git checkout -b main origin/main
 git pull --ff-only origin main
+
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+if [ -d "$WS/src/swarm_control_pro" ]; then
+  colcon build --base-paths src/swarm_control_core src/swarm_control_pro --packages-up-to swarm_control_pro
+else
+  colcon build --base-paths "$WS/src/swarm_control_core" --packages-select swarm_control_core --event-handlers console_direct+
+fi
+source "$WS/install/setup.bash"
+set -u || true
 ```
 
 Then return to [Step 4](#step-4).
