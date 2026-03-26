@@ -136,6 +136,24 @@ def _no_cache_headers() -> Dict[str, str]:
     }
 
 
+def _normalize_main_stream_mode(raw: Any) -> str:
+    value = str(raw or "").strip().lower()
+    if value in ("webrtc_only", "webrtc-only", "webrtc"):
+        return "webrtc_only"
+    if value in ("jpeg_poll", "jpeg-poll"):
+        return "jpeg_poll"
+    if value in ("jpeg_only", "jpeg-only", "jpeg"):
+        return "jpeg_only"
+    return ""
+
+
+def _request_host_without_port(req: web.Request) -> str:
+    host = str(req.headers.get("Host") or req.host or "").strip().lower()
+    if host.startswith("[") and "]" in host:
+        return host[1 : host.find("]")]
+    return re.sub(r":\d+$", "", host)
+
+
 def _detect_ipv4_addresses() -> List[str]:
     """
     Best-effort discovery of local IPv4 addresses for operator copy/paste.
@@ -2106,10 +2124,19 @@ class BrowserServer:
         except Exception:
             pass
 
-    async def handle_index(self, _req: web.Request):
+    async def handle_index(self, req: web.Request):
+        default_main_stream = ""
+        trycloudflare_main_stream = _normalize_main_stream_mode(
+            os.environ.get("SWARM_CORE_TRYCLOUDFLARE_MAIN_STREAM", "")
+        )
+        if trycloudflare_main_stream:
+            req_host = _request_host_without_port(req)
+            if req_host.endswith(".trycloudflare.com"):
+                default_main_stream = trycloudflare_main_stream
         html = _INDEX_HTML.format(
             style_href=f"/style.css?v={_STYLE_ASSET_VERSION}",
             app_href=f"/app.js?v={_APP_ASSET_VERSION}",
+            default_main_stream=default_main_stream,
         )
         return web.Response(text=html, content_type="text/html", headers=_no_cache_headers())
 
@@ -2870,6 +2897,7 @@ _INDEX_HTML = r"""
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="swarm-fpv-default-main-stream" content="{default_main_stream}"/>
   <title>Swarm FPV UI</title>
   <link rel="stylesheet" href="{style_href}"/>
 </head>
@@ -2994,9 +3022,14 @@ const NO_SIGNAL_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
 const $ = (id) => document.getElementById(id);
 const setStatus = (s) => { $("status").textContent = s; };
 const urlParams = new URLSearchParams(window.location.search);
+const defaultMainStreamMeta = document.querySelector('meta[name="swarm-fpv-default-main-stream"]');
+const defaultMainStream = String(
+  (defaultMainStreamMeta && defaultMainStreamMeta.getAttribute("content")) || ""
+).trim();
 const requestedMainStream = String(
   urlParams.get("main_stream")
   || urlParams.get("stream")
+  || defaultMainStream
   || ""
 ).trim();
 let accessToken = String(

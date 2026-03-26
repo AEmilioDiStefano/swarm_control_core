@@ -22,3 +22,13 @@ def test_core_ui_asset_version_constants_are_defined_after_asset_strings():
 
     assert text.index("_STYLE_CSS = r") < text.index("_STYLE_ASSET_VERSION = ")
     assert text.index("_APP_JS = r") < text.index("_APP_ASSET_VERSION = ")
+
+
+def test_core_ui_supports_server_injected_default_main_stream():
+    text = UI_PATH.read_text(encoding="utf-8")
+
+    assert '<meta name="swarm-fpv-default-main-stream" content="{default_main_stream}"/>' in text
+    assert "const defaultMainStreamMeta = document.querySelector('meta[name=\"swarm-fpv-default-main-stream\"]');" in text
+    assert '|| defaultMainStream' in text
+    assert 'SWARM_CORE_TRYCLOUDFLARE_MAIN_STREAM' in text
+    assert 'req_host.endswith(".trycloudflare.com")' in text
