@@ -154,6 +154,14 @@ def _request_host_without_port(req: web.Request) -> str:
     return re.sub(r":\d+$", "", host)
 
 
+def _bounded_int(raw: Any, fallback: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(str(raw).strip())
+    except Exception:
+        value = int(fallback)
+    return max(int(minimum), min(int(maximum), value))
+
+
 def _detect_ipv4_addresses() -> List[str]:
     """
     Best-effort discovery of local IPv4 addresses for operator copy/paste.
@@ -2126,6 +2134,10 @@ class BrowserServer:
 
     async def handle_index(self, req: web.Request):
         default_main_stream = ""
+        default_jpeg_poll_ms = ""
+        default_jpeg_max_w = ""
+        default_jpeg_max_h = ""
+        default_jpeg_quality = ""
         trycloudflare_main_stream = _normalize_main_stream_mode(
             os.environ.get("SWARM_CORE_TRYCLOUDFLARE_MAIN_STREAM", "")
         )
@@ -2133,10 +2145,46 @@ class BrowserServer:
             req_host = _request_host_without_port(req)
             if req_host.endswith(".trycloudflare.com"):
                 default_main_stream = trycloudflare_main_stream
+                default_jpeg_poll_ms = str(
+                    _bounded_int(
+                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_POLL_MS", "80"),
+                        fallback=80,
+                        minimum=40,
+                        maximum=500,
+                    )
+                )
+                default_jpeg_max_w = str(
+                    _bounded_int(
+                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_MAX_W", "512"),
+                        fallback=512,
+                        minimum=0,
+                        maximum=1920,
+                    )
+                )
+                default_jpeg_max_h = str(
+                    _bounded_int(
+                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_MAX_H", "384"),
+                        fallback=384,
+                        minimum=0,
+                        maximum=1080,
+                    )
+                )
+                default_jpeg_quality = str(
+                    _bounded_int(
+                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_QUALITY", "60"),
+                        fallback=60,
+                        minimum=30,
+                        maximum=95,
+                    )
+                )
         html = _INDEX_HTML.format(
             style_href=f"/style.css?v={_STYLE_ASSET_VERSION}",
             app_href=f"/app.js?v={_APP_ASSET_VERSION}",
             default_main_stream=default_main_stream,
+            default_jpeg_poll_ms=default_jpeg_poll_ms,
+            default_jpeg_max_w=default_jpeg_max_w,
+            default_jpeg_max_h=default_jpeg_max_h,
+            default_jpeg_quality=default_jpeg_quality,
         )
         return web.Response(text=html, content_type="text/html", headers=_no_cache_headers())
 
@@ -2425,14 +2473,45 @@ class BrowserServer:
             return web.Response(status=400, text="robot query param required")
         self.hub.mark_image_interest(robot)
         jpeg_blob = self.hub._latest_jpeg.get(robot)
-        if jpeg_blob:
+        max_w = _bounded_int(req.query.get("max_w"), fallback=0, minimum=0, maximum=1920)
+        max_h = _bounded_int(req.query.get("max_h"), fallback=0, minimum=0, maximum=1080)
+        requested_quality = req.query.get("quality")
+        quality = _bounded_int(
+            requested_quality if requested_quality not in (None, "") else int(self.hub.thumb_jpeg_quality),
+            fallback=int(self.hub.thumb_jpeg_quality),
+            minimum=30,
+            maximum=95,
+        )
+
+        if jpeg_blob and max_w <= 0 and max_h <= 0 and requested_quality in (None, ""):
             return web.Response(body=jpeg_blob, content_type="image/jpeg", headers=_no_cache_headers())
+
         frame = self.hub.latest_rgb(robot)
-        if frame is None:
+        img = None
+        if frame is not None:
+            img = PILImage.fromarray(frame, mode="RGB")
+        elif jpeg_blob:
+            try:
+                img = PILImage.open(io.BytesIO(jpeg_blob)).convert("RGB")
+            except Exception:
+                img = None
+        if img is None:
             return web.Response(status=404, text="no frame yet")
-        img = PILImage.fromarray(frame, mode="RGB")
+
+        if max_w > 0 or max_h > 0:
+            width, height = img.size
+            target_w = max_w if max_w > 0 else width
+            target_h = max_h if max_h > 0 else height
+            scale = min(float(target_w) / float(width), float(target_h) / float(height), 1.0)
+            if scale < 0.999:
+                resized = img.resize(
+                    (max(1, int(round(width * scale))), max(1, int(round(height * scale)))),
+                    PILImage.Resampling.BILINEAR if hasattr(PILImage, "Resampling") else PILImage.BILINEAR,
+                )
+                img = resized
+
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=max(30, min(95, int(self.hub.thumb_jpeg_quality))))
+        img.save(buf, format="JPEG", quality=quality)
         return web.Response(
             body=buf.getvalue(),
             content_type="image/jpeg",
@@ -2898,6 +2977,10 @@ _INDEX_HTML = r"""
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="swarm-fpv-default-main-stream" content="{default_main_stream}"/>
+  <meta name="swarm-fpv-jpeg-poll-ms" content="{default_jpeg_poll_ms}"/>
+  <meta name="swarm-fpv-jpeg-max-w" content="{default_jpeg_max_w}"/>
+  <meta name="swarm-fpv-jpeg-max-h" content="{default_jpeg_max_h}"/>
+  <meta name="swarm-fpv-jpeg-quality" content="{default_jpeg_quality}"/>
   <title>Swarm FPV UI</title>
   <link rel="stylesheet" href="{style_href}"/>
 </head>
@@ -3023,8 +3106,24 @@ const $ = (id) => document.getElementById(id);
 const setStatus = (s) => { $("status").textContent = s; };
 const urlParams = new URLSearchParams(window.location.search);
 const defaultMainStreamMeta = document.querySelector('meta[name="swarm-fpv-default-main-stream"]');
+const jpegPollMsMeta = document.querySelector('meta[name="swarm-fpv-jpeg-poll-ms"]');
+const jpegMaxWMeta = document.querySelector('meta[name="swarm-fpv-jpeg-max-w"]');
+const jpegMaxHMeta = document.querySelector('meta[name="swarm-fpv-jpeg-max-h"]');
+const jpegQualityMeta = document.querySelector('meta[name="swarm-fpv-jpeg-quality"]');
 const defaultMainStream = String(
   (defaultMainStreamMeta && defaultMainStreamMeta.getAttribute("content")) || ""
+).trim();
+const defaultJpegPollMs = String(
+  (jpegPollMsMeta && jpegPollMsMeta.getAttribute("content")) || ""
+).trim();
+const defaultJpegMaxW = String(
+  (jpegMaxWMeta && jpegMaxWMeta.getAttribute("content")) || ""
+).trim();
+const defaultJpegMaxH = String(
+  (jpegMaxHMeta && jpegMaxHMeta.getAttribute("content")) || ""
+).trim();
+const defaultJpegQuality = String(
+  (jpegQualityMeta && jpegQualityMeta.getAttribute("content")) || ""
 ).trim();
 const requestedMainStream = String(
   urlParams.get("main_stream")
@@ -3032,6 +3131,10 @@ const requestedMainStream = String(
   || defaultMainStream
   || ""
 ).trim();
+const jpegMainPollMs = Math.max(40, _toInt(defaultJpegPollMs, 120));
+const jpegMainMaxW = Math.max(0, _toInt(defaultJpegMaxW, 0));
+const jpegMainMaxH = Math.max(0, _toInt(defaultJpegMaxH, 0));
+const jpegMainQuality = Math.max(0, _toInt(defaultJpegQuality, 0));
 let accessToken = String(
   urlParams.get("access_token")
   || urlParams.get("token")
@@ -3056,6 +3159,22 @@ function withAuthPath(path){
   const p = String(path || "");
   if (!accessToken) return p;
   return p + (p.includes("?") ? "&" : "?") + "access_token=" + encodeURIComponent(accessToken);
+}
+
+function buildMainJpegUrl(robot){
+  const params = new URLSearchParams();
+  params.set("robot", String(robot || ""));
+  params.set("t", String(Date.now()));
+  if (jpegMainMaxW > 0){
+    params.set("max_w", String(jpegMainMaxW));
+  }
+  if (jpegMainMaxH > 0){
+    params.set("max_h", String(jpegMainMaxH));
+  }
+  if (jpegMainQuality > 0){
+    params.set("quality", String(jpegMainQuality));
+  }
+  return withAuthPath(`/api/jpeg?${params.toString()}`);
 }
 
 function authHeaders(extra={}){
@@ -4754,9 +4873,9 @@ function setupMainFallbackLoop(){
       if (!fb.src) fb.src = NO_SIGNAL_IMG;
       updateTransportBadge();
     };
-    next.src = withAuthPath(`/api/jpeg?robot=${encodeURIComponent(activeRobot)}&t=${Date.now()}`);
+    next.src = buildMainJpegUrl(activeRobot);
     updateTransportBadge();
-  }, 120);
+  }, jpegMainPollMs);
 }
 
 function setActiveRobot(robot, announce=true, source="local"){
