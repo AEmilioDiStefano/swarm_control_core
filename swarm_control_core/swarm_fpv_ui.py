@@ -15,6 +15,7 @@ Design goals:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import ipaddress
 import json
@@ -2106,13 +2107,17 @@ class BrowserServer:
             pass
 
     async def handle_index(self, _req: web.Request):
-        return web.Response(text=_INDEX_HTML, content_type="text/html")
+        html = _INDEX_HTML.format(
+            style_href=f"/style.css?v={_STYLE_ASSET_VERSION}",
+            app_href=f"/app.js?v={_APP_ASSET_VERSION}",
+        )
+        return web.Response(text=html, content_type="text/html", headers=_no_cache_headers())
 
     async def handle_style(self, _req: web.Request):
-        return web.Response(text=_STYLE_CSS, content_type="text/css")
+        return web.Response(text=_STYLE_CSS, content_type="text/css", headers=_no_cache_headers())
 
     async def handle_js(self, _req: web.Request):
-        return web.Response(text=_APP_JS, content_type="application/javascript")
+        return web.Response(text=_APP_JS, content_type="application/javascript", headers=_no_cache_headers())
 
     async def handle_auth_config(self, _req: web.Request):
         return web.json_response(
@@ -2866,7 +2871,7 @@ _INDEX_HTML = r"""
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Swarm FPV UI</title>
-  <link rel="stylesheet" href="/style.css"/>
+  <link rel="stylesheet" href="{style_href}"/>
 </head>
 <body>
 <header>
@@ -2905,10 +2910,13 @@ _INDEX_HTML = r"""
     </div>
   </section>
 </main>
-<script src="/app.js"></script>
+<script src="{app_href}"></script>
 </body>
 </html>
 """
+
+_STYLE_ASSET_VERSION = hashlib.sha1(_STYLE_CSS.encode("utf-8")).hexdigest()[:10]
+_APP_ASSET_VERSION = hashlib.sha1(_APP_JS.encode("utf-8")).hexdigest()[:10]
 
 _APP_JS = r"""
 let ws = null;
