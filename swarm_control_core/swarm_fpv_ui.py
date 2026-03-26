@@ -2915,9 +2915,6 @@ _INDEX_HTML = r"""
 </html>
 """
 
-_STYLE_ASSET_VERSION = hashlib.sha1(_STYLE_CSS.encode("utf-8")).hexdigest()[:10]
-_APP_ASSET_VERSION = hashlib.sha1(_APP_JS.encode("utf-8")).hexdigest()[:10]
-
 _APP_JS = r"""
 let ws = null;
 let clientId = "c_" + Math.floor(Math.random() * 1e9);
@@ -5049,6 +5046,9 @@ async function main(){
 
 main();
 """
+
+_STYLE_ASSET_VERSION = hashlib.sha1(_STYLE_CSS.encode("utf-8")).hexdigest()[:10]
+_APP_ASSET_VERSION = hashlib.sha1(_APP_JS.encode("utf-8")).hexdigest()[:10]
 
 
 def _spin_ros(node: Node):

@@ -15,3 +15,10 @@ def test_core_ui_index_uses_cache_busted_asset_urls_and_no_cache_headers():
     assert 'style_href=f"/style.css?v={_STYLE_ASSET_VERSION}"' in text
     assert 'app_href=f"/app.js?v={_APP_ASSET_VERSION}"' in text
     assert 'headers=_no_cache_headers()' in text
+
+
+def test_core_ui_asset_version_constants_are_defined_after_asset_strings():
+    text = UI_PATH.read_text(encoding="utf-8")
+
+    assert text.index("_STYLE_CSS = r") < text.index("_STYLE_ASSET_VERSION = ")
+    assert text.index("_APP_JS = r") < text.index("_APP_ASSET_VERSION = ")
