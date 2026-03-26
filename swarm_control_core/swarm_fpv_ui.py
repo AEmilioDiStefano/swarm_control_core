@@ -75,6 +75,7 @@ from .fleet_state import (
 )
 from .fpv_api_contracts import api_schema_info
 from .fpv_auth_models import (
+    AUTH_MODE_DEV,
     AUTH_MODE_OFF,
     AuthConfig,
     Principal,
@@ -337,6 +338,7 @@ class RosFleetHub(Node):
         # Match default low-latency camera clamp (15fps) to avoid redundant
         # frame work in multi-robot sessions.
         self.declare_parameter("webrtc_fps", 15.0)
+        self.declare_parameter("webrtc_main_only", True)
         self.declare_parameter("thumb_jpeg_quality", 70)
         self.declare_parameter("thumb_refresh_hz", 0.5)
         self.declare_parameter("drive_cmd_rate_hz", 20.0)
@@ -347,6 +349,12 @@ class RosFleetHub(Node):
         self.declare_parameter("thumb_robots_per_tick", 0)
 
         self.webrtc_fps = float(self.get_parameter("webrtc_fps").value)
+        self.webrtc_main_only = str(self.get_parameter("webrtc_main_only").value).strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
         self.thumb_jpeg_quality = int(self.get_parameter("thumb_jpeg_quality").value)
         self.thumb_refresh_hz = float(self.get_parameter("thumb_refresh_hz").value)
         self.drive_cmd_rate_hz = max(1.0, float(self.get_parameter("drive_cmd_rate_hz").value))
@@ -2237,7 +2245,7 @@ class BrowserServer:
                     "auth_mode": self.auth_config.mode,
                 },
                 "stream": {
-                    "mode": "webrtc_only",
+                    "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "jpeg_poll"),
                 },
                 "webrtc": self._webrtc_public(),
                 "thumb_hz": float(self.hub.thumb_refresh_hz),
@@ -2497,7 +2505,7 @@ class BrowserServer:
                     "drive_telemetry": self.hub.drive_telemetry_snapshot(),
                     "features": {"webrtc": bool(HAS_WEBRTC), "auth_mode": self.auth_config.mode},
                     "stream": {
-                        "mode": "webrtc_only",
+                        "mode": ("webrtc_only" if bool(self.hub.webrtc_main_only) else "jpeg_poll"),
                     },
                     "webrtc": self._webrtc_public(),
                     "thumb_hz": float(self.hub.thumb_refresh_hz),
@@ -2694,6 +2702,14 @@ video{
   position:absolute;
   inset:0;
 }
+.main-fallback{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  position:absolute;
+  inset:0;
+  background:#000;
+}
 .meta{
   display:grid;gap:6px;padding:8px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:12px
 }
@@ -2879,6 +2895,7 @@ _INDEX_HTML = r"""
     <div class="main-wrap">
       <div class="hero">
         <video id="mainVideo" autoplay playsinline muted></video>
+        <img id="mainJpeg" class="main-fallback" alt="FPV JPEG fallback" style="display:none"/>
       </div>
       <div class="controls" id="driveControls"></div>
       <div class="meta" id="capMeta"></div>
@@ -2918,6 +2935,8 @@ let thumbRobotsPerTick = 0;
 let thumbDriveSuppressedUntilMs = 0;
 let authConfig = { mode: "off", allow_anonymous_readonly: true, dev_login_enabled: false };
 let pc = null;
+let mainFallbackTimer = null;
+let mainFallbackInFlight = false;
 let webrtcAttemptInFlight = false;
 let webrtcRetryAtMs = 0;
 let webrtcSwitchNonce = 0;
@@ -3571,6 +3590,10 @@ function hookKeyboardDrive(){
     if (document.hidden){
       pressedDriveKeys.clear();
       stopAllDriveHolds(true);
+      if (isWebrtcMainOnly()){
+        const fb = $("mainJpeg");
+        if (fb) fb.style.display = "none";
+      }
     }
   });
 }
@@ -3641,6 +3664,7 @@ function applyWebrtcState(payload){
 function normalizeStreamMode(raw){
   const v = String(raw || "").trim().toLowerCase();
   if (v === "webrtc_only" || v === "webrtc-only" || v === "webrtc") return "webrtc_only";
+  if (v === "jpeg_poll" || v === "jpeg-poll") return "jpeg_poll";
   return "webrtc_only";
 }
 
@@ -3653,7 +3677,7 @@ function applyStreamState(payload){
 }
 
 function isWebrtcMainOnly(){
-  return true;
+  return streamConfig.mode === "webrtc_only";
 }
 
 function applyThumbPolicy(payload){
@@ -4358,6 +4382,8 @@ function updateTransportBadge(){
     features.webrtc &&
     (Date.now() - activeRobotSwitchAtMs) < ROBOT_SWITCH_GRACE_MS
   );
+  const fb = $("mainJpeg");
+  const jpegVisible = Boolean(fb && fb.style.display !== "none" && activeRobot);
 
   let klass = "offline";
   let text = "No stream";
@@ -4372,7 +4398,10 @@ function updateTransportBadge(){
     text = "WebRTC";
   } else if (!features.webrtc){
     klass = "fallback";
-    text = "WebRTC unavailable";
+    text = isWebrtcMainOnly() ? "WebRTC unavailable" : "JPEG fallback";
+  } else if (!isWebrtcMainOnly() && jpegVisible){
+    klass = "fallback";
+    text = "JPEG fallback";
   } else {
     const conn = pc ? String(pc.connectionState || "new") : "new";
     if (conn === "connecting" || conn === "new" || webrtcAttemptInFlight){
@@ -4410,7 +4439,11 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
   const requestedRobot = String(robot || "");
   if (!features.webrtc || !robot){
     if (robot && !features.webrtc){
-      setStatus("WebRTC unavailable");
+      setStatus(isWebrtcMainOnly() ? "WebRTC unavailable" : "WebRTC unavailable, using JPEG fallback");
+    }
+    if (isWebrtcMainOnly()){
+      const fb = $("mainJpeg");
+      if (fb) fb.style.display = "none";
     }
     updateTransportBadge();
     return;
@@ -4519,8 +4552,19 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       return;
     }
     if (!resp.ok){
-      setStatus("WebRTC unavailable");
+      if (isWebrtcMainOnly()){
+        setStatus("WebRTC unavailable (main stream is WebRTC-only)");
+      } else {
+        setStatus("WebRTC unavailable, using JPEG fallback");
+      }
       sendWebrtcTelemetry("offer_failed");
+      if (isWebrtcMainOnly()){
+        const fb = $("mainJpeg");
+        if (fb) fb.style.display = "none";
+      } else {
+        const fb = $("mainJpeg");
+        if (fb) fb.style.display = "block";
+      }
       webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
       renderWebrtcDiagnostics();
       updateTransportBadge();
@@ -4539,18 +4583,38 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       }
       await attemptPc.setRemoteDescription(ans);
       sendWebrtcTelemetry("remote_description_set");
+      const fb = $("mainJpeg");
+      if (fb) fb.style.display = "none";
       webrtcRetryAtMs = 0;
       renderWebrtcDiagnostics();
       updateTransportBadge();
     }catch(_e){
-      setStatus("WebRTC handshake failed");
+      if (isWebrtcMainOnly()){
+        setStatus("WebRTC handshake failed (main stream is WebRTC-only)");
+      } else {
+        setStatus("WebRTC handshake failed, using JPEG fallback");
+      }
       sendWebrtcTelemetry("answer_failed");
+      if (isWebrtcMainOnly()){
+        const fb = $("mainJpeg");
+        if (fb) fb.style.display = "none";
+      } else {
+        const fb = $("mainJpeg");
+        if (fb) fb.style.display = "block";
+      }
       webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
       renderWebrtcDiagnostics();
       updateTransportBadge();
     }
   }catch(_err){
-    setStatus("WebRTC retrying");
+    setStatus(isWebrtcMainOnly() ? "WebRTC retrying" : "WebRTC retrying, JPEG fallback active");
+    if (isWebrtcMainOnly()){
+      const fb = $("mainJpeg");
+      if (fb) fb.style.display = "none";
+    } else {
+      const fb = $("mainJpeg");
+      if (fb) fb.style.display = "block";
+    }
     webrtcRetryAtMs = Date.now() + WEBRTC_RETRY_INTERVAL_MS;
     updateTransportBadge();
   } finally {
@@ -4560,6 +4624,71 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
     webrtcAttemptInFlight = false;
     updateTransportBadge();
   }
+}
+
+function setupMainFallbackLoop(){
+  if (mainFallbackTimer){
+    clearInterval(mainFallbackTimer);
+    mainFallbackTimer = null;
+  }
+  mainFallbackInFlight = false;
+  mainFallbackTimer = setInterval(() => {
+    const fb = $("mainJpeg");
+    if (!fb) return;
+    if (!activeRobot){
+      fb.style.display = "none";
+      mainFallbackInFlight = false;
+      updateTransportBadge();
+      return;
+    }
+    const inSwitchGrace = Boolean(
+      features.webrtc &&
+      (Date.now() - activeRobotSwitchAtMs) < ROBOT_SWITCH_GRACE_MS
+    );
+    if (inSwitchGrace){
+      fb.style.display = "none";
+      mainFallbackInFlight = false;
+      if (!webrtcAttemptInFlight && Date.now() >= webrtcRetryAtMs){
+        setupWebRTC(activeRobot, webrtcSwitchNonce);
+      }
+      updateTransportBadge();
+      return;
+    }
+    if (hasWebRtcFrameNow()){
+      fb.style.display = "none";
+      mainFallbackInFlight = false;
+      updateTransportBadge();
+      return;
+    }
+    if (features.webrtc && !webrtcAttemptInFlight && Date.now() >= webrtcRetryAtMs){
+      setupWebRTC(activeRobot, webrtcSwitchNonce);
+    }
+    if (isWebrtcMainOnly()){
+      fb.style.display = "none";
+      mainFallbackInFlight = false;
+      updateTransportBadge();
+      return;
+    }
+    fb.style.display = "block";
+    if (mainFallbackInFlight){
+      updateTransportBadge();
+      return;
+    }
+    mainFallbackInFlight = true;
+    const next = new Image();
+    next.onload = () => {
+      fb.src = next.src;
+      mainFallbackInFlight = false;
+      updateTransportBadge();
+    };
+    next.onerror = () => {
+      mainFallbackInFlight = false;
+      if (!fb.src) fb.src = NO_SIGNAL_IMG;
+      updateTransportBadge();
+    };
+    next.src = withAuthPath(`/api/jpeg?robot=${encodeURIComponent(activeRobot)}&t=${Date.now()}`);
+    updateTransportBadge();
+  }, 120);
 }
 
 function setActiveRobot(robot, announce=true, source="local"){
@@ -4628,7 +4757,14 @@ function setActiveRobot(robot, announce=true, source="local"){
   renderWebrtcDiagnostics();
   updateTransportBadge();
   if (changed){
-    setupWebRTC(robot, webrtcSwitchNonce);
+    if (!robot){
+      const v = $("mainVideo");
+      if (v) v.srcObject = null;
+      const fb = $("mainJpeg");
+      if (fb) fb.style.display = "none";
+    } else {
+      setupWebRTC(robot, webrtcSwitchNonce);
+    }
   }
 }
 
@@ -4863,6 +4999,7 @@ async function main(){
   }, 1000);
   startHeartbeat();
   startWebrtcRetryLoop();
+  setupMainFallbackLoop();
   startMainVideoFrameWatch();
 }
 
@@ -5050,7 +5187,7 @@ async def _run_server():
 
     # Community edition hard guardrails:
     # - local/LAN operation only
-    # - no external auth providers
+    # - dev auth only (no external auth providers)
     # - no custom TURN/STUN relay configuration
     allow_lan_bind = _community_allow_lan_bind()
     if _is_loopback_host(bind_host):
@@ -5064,18 +5201,21 @@ async def _run_server():
         )
         bind_host = "127.0.0.1"
 
-    if auth_mode != AUTH_MODE_OFF:
+    if auth_mode not in (AUTH_MODE_OFF, AUTH_MODE_DEV):
         hub.get_logger().warn(
-            f"[community] auth_mode '{auth_mode}' is disabled in community edition. Forcing auth_mode=off."
+            f"[community] auth_mode '{auth_mode}' is not supported in community edition. "
+            "Forcing auth_mode=off."
         )
-    auth_mode = AUTH_MODE_OFF
+        auth_mode = AUTH_MODE_OFF
     auth_issuer = ""
     auth_audience = ""
     auth_jwks_url = ""
-    allow_anon = False
+    if auth_mode == AUTH_MODE_OFF:
+        allow_anon = False
     site_id = "community_local"
-    dev_login_enabled = False
-    dev_users_json = ""
+    if auth_mode != AUTH_MODE_DEV:
+        dev_login_enabled = False
+        dev_users_json = ""
     webrtc_ice_servers_json = "[]"
     webrtc_ice_transport_policy = "all"
 
@@ -5128,10 +5268,13 @@ async def _run_server():
     if auth_config.mode == AUTH_MODE_OFF and bind_host not in ("127.0.0.1", "localhost"):
         hub.get_logger().warn(
             "FPV UI is running with auth_mode=off on a non-loopback bind host. "
-            "Use auth_mode=dev or oidc before exposing this endpoint outside a trusted lab."
+            "Use auth_mode=dev before exposing this endpoint outside a trusted lab."
         )
     hub.get_logger().info(f"Swarm FPV UI dev_login_enabled={dev_login_enabled}")
-    hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_only_main")
+    if hub.webrtc_main_only:
+        hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_only_main")
+    else:
+        hub.get_logger().info("Swarm FPV UI stream_mode=webrtc_plus_jpeg_fallback")
     if site_id:
         hub.get_logger().info(f"Swarm FPV UI site_id={site_id}")
     urls = _detect_ipv4_addresses()

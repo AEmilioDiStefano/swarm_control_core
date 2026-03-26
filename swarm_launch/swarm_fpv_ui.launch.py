@@ -32,6 +32,11 @@ def _default_webrtc_fps() -> str:
         return "15.0"
 
 
+def _default_webrtc_main_only() -> str:
+    raw = str(os.environ.get("SWARM_CORE_WEBRTC_MAIN_ONLY", "1")).strip().lower()
+    return "true" if raw in ("1", "true", "yes", "on") else "false"
+
+
 def _default_thumb_refresh_hz() -> str:
     raw = str(os.environ.get("SWARM_CORE_THUMB_REFRESH_HZ", "0.5")).strip()
     if not raw:
@@ -99,6 +104,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("bind_host", default_value=_default_bind_host()),
         DeclareLaunchArgument("bind_port", default_value=_default_bind_port()),
         DeclareLaunchArgument("webrtc_fps", default_value=_default_webrtc_fps()),
+        DeclareLaunchArgument("webrtc_main_only", default_value=_default_webrtc_main_only()),
         DeclareLaunchArgument("thumb_refresh_hz", default_value=_default_thumb_refresh_hz()),
         DeclareLaunchArgument("image_subscription_mode", default_value=_default_image_subscription_mode()),
         DeclareLaunchArgument("image_thumb_interest_ttl_s", default_value=_default_image_thumb_interest_ttl_s()),
@@ -121,6 +127,7 @@ def generate_launch_description() -> LaunchDescription:
             {"bind_host": LaunchConfiguration("bind_host")},
             {"bind_port": LaunchConfiguration("bind_port")},
             {"webrtc_fps": ParameterValue(LaunchConfiguration("webrtc_fps"), value_type=float)},
+            {"webrtc_main_only": ParameterValue(LaunchConfiguration("webrtc_main_only"), value_type=bool)},
             {"thumb_refresh_hz": ParameterValue(LaunchConfiguration("thumb_refresh_hz"), value_type=float)},
             {"image_subscription_mode": LaunchConfiguration("image_subscription_mode")},
             {
