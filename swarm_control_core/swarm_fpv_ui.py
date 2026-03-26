@@ -2989,6 +2989,11 @@ const NO_SIGNAL_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
 const $ = (id) => document.getElementById(id);
 const setStatus = (s) => { $("status").textContent = s; };
 const urlParams = new URLSearchParams(window.location.search);
+const requestedMainStream = String(
+  urlParams.get("main_stream")
+  || urlParams.get("stream")
+  || ""
+).trim();
 let accessToken = String(
   urlParams.get("access_token")
   || urlParams.get("token")
@@ -3665,19 +3670,30 @@ function normalizeStreamMode(raw){
   const v = String(raw || "").trim().toLowerCase();
   if (v === "webrtc_only" || v === "webrtc-only" || v === "webrtc") return "webrtc_only";
   if (v === "jpeg_poll" || v === "jpeg-poll") return "jpeg_poll";
-  return "webrtc_only";
+  if (v === "jpeg_only" || v === "jpeg-only" || v === "jpeg") return "jpeg_only";
+  return "";
 }
 
 function applyStreamState(payload){
   const s = (payload && payload.stream && typeof payload.stream === "object") ? payload.stream : {};
+  const serverMode = normalizeStreamMode(s.mode) || "webrtc_only";
+  const overrideMode = normalizeStreamMode(requestedMainStream);
   streamConfig = {
-    mode: normalizeStreamMode(s.mode),
+    mode: overrideMode || serverMode,
     fps: Math.max(2, Math.min(60, _toNumber(s.fps, 15))),
   };
 }
 
 function isWebrtcMainOnly(){
   return streamConfig.mode === "webrtc_only";
+}
+
+function isJpegMainOnly(){
+  return streamConfig.mode === "jpeg_only";
+}
+
+function allowsWebrtcMain(){
+  return !isJpegMainOnly();
 }
 
 function applyThumbPolicy(payload){
@@ -4351,6 +4367,7 @@ function hasWebRtcFrameNow(){
 
 function shouldRetryWebRTC(){
   if (!activeRobot) return false;
+  if (!allowsWebrtcMain()) return false;
   if (!features.webrtc) return false;
   if (webrtcAttemptInFlight) return false;
   if (Date.now() < webrtcRetryAtMs) return false;
@@ -4390,6 +4407,9 @@ function updateTransportBadge(){
 
   if (!activeRobot){
     text = "No robot";
+  } else if (isJpegMainOnly()){
+    klass = "fallback";
+    text = jpegVisible ? "JPEG" : "JPEG loading";
   } else if (inSwitchGrace){
     klass = "fallback";
     text = "WebRTC switching";
@@ -4437,6 +4457,15 @@ function closePeerConnection(targetPc=null){
 
 async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
   const requestedRobot = String(robot || "");
+  if (!allowsWebrtcMain()){
+    if (robot){
+      setStatus("JPEG main stream active.");
+      const fb = $("mainJpeg");
+      if (fb) fb.style.display = "block";
+    }
+    updateTransportBadge();
+    return;
+  }
   if (!features.webrtc || !robot){
     if (robot && !features.webrtc){
       setStatus(isWebrtcMainOnly() ? "WebRTC unavailable" : "WebRTC unavailable, using JPEG fallback");
@@ -4642,6 +4671,7 @@ function setupMainFallbackLoop(){
       return;
     }
     const inSwitchGrace = Boolean(
+      allowsWebrtcMain() &&
       features.webrtc &&
       (Date.now() - activeRobotSwitchAtMs) < ROBOT_SWITCH_GRACE_MS
     );
@@ -4660,7 +4690,7 @@ function setupMainFallbackLoop(){
       updateTransportBadge();
       return;
     }
-    if (features.webrtc && !webrtcAttemptInFlight && Date.now() >= webrtcRetryAtMs){
+    if (allowsWebrtcMain() && features.webrtc && !webrtcAttemptInFlight && Date.now() >= webrtcRetryAtMs){
       setupWebRTC(activeRobot, webrtcSwitchNonce);
     }
     if (isWebrtcMainOnly()){
@@ -4763,7 +4793,13 @@ function setActiveRobot(robot, announce=true, source="local"){
       const fb = $("mainJpeg");
       if (fb) fb.style.display = "none";
     } else {
-      setupWebRTC(robot, webrtcSwitchNonce);
+      if (allowsWebrtcMain()){
+        setupWebRTC(robot, webrtcSwitchNonce);
+      } else {
+        const fb = $("mainJpeg");
+        if (fb) fb.style.display = "block";
+        updateTransportBadge();
+      }
     }
   }
 }

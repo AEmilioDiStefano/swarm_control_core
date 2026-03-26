@@ -145,14 +145,6 @@ def generate_launch_description() -> LaunchDescription:
             {"drive_cmd_rate_hz": ParameterValue(LaunchConfiguration("drive_cmd_rate_hz"), value_type=float)},
             {"drive_hold_timeout_s": ParameterValue(LaunchConfiguration("drive_hold_timeout_s"), value_type=float)},
             {"profiles_path": LaunchConfiguration("profiles_path")},
-            {"auth_mode": "off"},
-            {"auth_issuer": ""},
-            {"auth_audience": ""},
-            {"auth_jwks_url": ""},
-            {"allow_anonymous_readonly": False},
-            {"site_id": "community_local"},
-            {"dev_login_enabled": False},
-            {"dev_users_json": ""},
         ],
     )
 
