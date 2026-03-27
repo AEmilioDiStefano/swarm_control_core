@@ -162,6 +162,25 @@ def _bounded_int(raw: Any, fallback: int, minimum: int, maximum: int) -> int:
     return max(int(minimum), min(int(maximum), value))
 
 
+def _encode_rgb_to_jpeg_variant(rgb: np.ndarray, max_w: int, max_h: int, quality: int) -> bytes:
+    img = PILImage.fromarray(rgb, mode="RGB")
+
+    if max_w > 0 or max_h > 0:
+        width, height = img.size
+        target_w = max_w if max_w > 0 else width
+        target_h = max_h if max_h > 0 else height
+        scale = min(float(target_w) / float(width), float(target_h) / float(height), 1.0)
+        if scale < 0.999:
+            img = img.resize(
+                (max(1, int(round(width * scale))), max(1, int(round(height * scale)))),
+                PILImage.Resampling.BILINEAR if hasattr(PILImage, "Resampling") else PILImage.BILINEAR,
+            )
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=int(quality))
+    return buf.getvalue()
+
+
 def _detect_ipv4_addresses() -> List[str]:
     """
     Best-effort discovery of local IPv4 addresses for operator copy/paste.
@@ -429,6 +448,11 @@ class RosFleetHub(Node):
         # runs faster than camera publish FPS or when multiple clients attach.
         self._latest_rgb_cache: Dict[str, np.ndarray] = {}
         self._latest_rgb_cache_stamp: Dict[str, float] = {}
+        # Per-robot transformed JPEG variants keyed by latest frame stamp and
+        # remote-view profile (size + quality). This avoids repeated resize /
+        # encode work when multiple remote viewers request the same robot.
+        self._jpeg_variant_cache: Dict[str, Dict[Tuple[int, int, int], bytes]] = {}
+        self._jpeg_variant_cache_stamp: Dict[str, float] = {}
         self._camera_health_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
         self._cam_diag_subs: Dict[str, Any] = {}
         self._cam_diag_payload: Dict[str, Dict[str, Any]] = {}
@@ -732,6 +756,8 @@ class RosFleetHub(Node):
         self._latest_jpeg.pop(robot, None)
         self._latest_rgb_cache.pop(robot, None)
         self._latest_rgb_cache_stamp.pop(robot, None)
+        self._jpeg_variant_cache.pop(robot, None)
+        self._jpeg_variant_cache_stamp.pop(robot, None)
         self._img_last_frame_s.pop(robot, None)
         self._img_prev_frame_s.pop(robot, None)
         self._img_fps_ema.pop(robot, None)
@@ -1430,6 +1456,52 @@ class RosFleetHub(Node):
             self._latest_rgb_cache[robot] = decoded
             self._latest_rgb_cache_stamp[robot] = frame_stamp
         return decoded
+
+    def get_cached_jpeg_variant(
+        self,
+        robot: str,
+        frame_stamp: float,
+        *,
+        max_w: int,
+        max_h: int,
+        quality: int,
+    ) -> Optional[bytes]:
+        robot = str(robot or "").strip()
+        if not robot or frame_stamp <= 0.0:
+            return None
+        cached_stamp = float(self._jpeg_variant_cache_stamp.get(robot, -1.0))
+        if cached_stamp != float(frame_stamp):
+            return None
+        variants = self._jpeg_variant_cache.get(robot)
+        if not variants:
+            return None
+        return variants.get((int(max_w), int(max_h), int(quality)))
+
+    def cache_jpeg_variant(
+        self,
+        robot: str,
+        frame_stamp: float,
+        *,
+        max_w: int,
+        max_h: int,
+        quality: int,
+        jpeg_bytes: bytes,
+    ) -> None:
+        robot = str(robot or "").strip()
+        if not robot or frame_stamp <= 0.0 or not jpeg_bytes:
+            return
+        key = (int(max_w), int(max_h), int(quality))
+        cached_stamp = float(self._jpeg_variant_cache_stamp.get(robot, -1.0))
+        if cached_stamp != float(frame_stamp):
+            self._jpeg_variant_cache_stamp[robot] = float(frame_stamp)
+            self._jpeg_variant_cache[robot] = {}
+        variants = self._jpeg_variant_cache.setdefault(robot, {})
+        variants[key] = bytes(jpeg_bytes)
+        while len(variants) > 8:
+            oldest_key = next(iter(variants))
+            if oldest_key == key and len(variants) == 1:
+                break
+            variants.pop(oldest_key, None)
 
     def _publish_drive_once(self, robot: str, lin: float, yaw: float, lat: float = 0.0, vert: float = 0.0):
         robot = str(robot or "").strip()
@@ -2486,34 +2558,48 @@ class BrowserServer:
         if jpeg_blob and max_w <= 0 and max_h <= 0 and requested_quality in (None, ""):
             return web.Response(body=jpeg_blob, content_type="image/jpeg", headers=_no_cache_headers())
 
+        frame_stamp = float(self.hub._img_last_frame_s.get(robot, 0.0))
+        cached_variant = self.hub.get_cached_jpeg_variant(
+            robot,
+            frame_stamp,
+            max_w=max_w,
+            max_h=max_h,
+            quality=quality,
+        )
+        if cached_variant is not None:
+            return web.Response(body=cached_variant, content_type="image/jpeg", headers=_no_cache_headers())
+
         frame = self.hub.latest_rgb(robot)
-        img = None
-        if frame is not None:
-            img = PILImage.fromarray(frame, mode="RGB")
-        elif jpeg_blob:
-            try:
-                img = PILImage.open(io.BytesIO(jpeg_blob)).convert("RGB")
-            except Exception:
-                img = None
-        if img is None:
+        if frame is None:
             return web.Response(status=404, text="no frame yet")
+        frame_stamp = float(self.hub._latest_rgb_cache_stamp.get(robot, frame_stamp))
+        cached_variant = self.hub.get_cached_jpeg_variant(
+            robot,
+            frame_stamp,
+            max_w=max_w,
+            max_h=max_h,
+            quality=quality,
+        )
+        if cached_variant is not None:
+            return web.Response(body=cached_variant, content_type="image/jpeg", headers=_no_cache_headers())
 
-        if max_w > 0 or max_h > 0:
-            width, height = img.size
-            target_w = max_w if max_w > 0 else width
-            target_h = max_h if max_h > 0 else height
-            scale = min(float(target_w) / float(width), float(target_h) / float(height), 1.0)
-            if scale < 0.999:
-                resized = img.resize(
-                    (max(1, int(round(width * scale))), max(1, int(round(height * scale)))),
-                    PILImage.Resampling.BILINEAR if hasattr(PILImage, "Resampling") else PILImage.BILINEAR,
-                )
-                img = resized
-
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=quality)
+        jpeg_bytes = await asyncio.to_thread(
+            _encode_rgb_to_jpeg_variant,
+            frame,
+            max_w,
+            max_h,
+            quality,
+        )
+        self.hub.cache_jpeg_variant(
+            robot,
+            frame_stamp,
+            max_w=max_w,
+            max_h=max_h,
+            quality=quality,
+            jpeg_bytes=jpeg_bytes,
+        )
         return web.Response(
-            body=buf.getvalue(),
+            body=jpeg_bytes,
             content_type="image/jpeg",
             headers=_no_cache_headers(),
         )
