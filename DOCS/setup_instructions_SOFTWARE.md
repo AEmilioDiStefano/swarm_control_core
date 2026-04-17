@@ -43,181 +43,55 @@ Suggested labels:
 - `R-<robot-a>`
 - `R-<robot-b>`
 
-## Workspace Shell Prep
+## How This Guide Works
 
-Run this once in every fresh shell before following the remaining steps in this guide:
+- every command block below is safe to rerun
+- Step 1 is the same on the control machine and in every robot SSH terminal
+- the guide defaults to `~/ros2_ws_dev`; if you intentionally want a different
+  workspace, export `SWARM_CORE_WORKSPACE_ROOT=/path/to/your_ws` before Step 1
+- if you close and reopen a terminal later, rerun Step 1 in the new shell
 
-```bash
-SWARM_CORE_BOOTSTRAP_ENV="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
-if [[ -z "${SWARM_CORE_BOOTSTRAP_ENV:-}" ]]; then
-  echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-  return 1 2>/dev/null || exit 1
-fi
-source "$SWARM_CORE_BOOTSTRAP_ENV" --interactive
-unset SWARM_CORE_BOOTSTRAP_ENV
-```
-
-This exports `WS`, `WS_DEV`, `SC`, and `SWARM_CORE_WORKSPACE_ROOT`.
-
-## 1. Workspace Creation / Checkout
-
-Important:
-
-- if this is a fresh machine and you do not already have a ROS 2 workspace,
-  run only the first command block in this step
-- if you already have a ROS 2 workspace that you want to use for
-  `swarm_control_core`, skip the first command block and run only the second
-  command block
-- from Step 2 onward, the guide uses `WS` and `SC`, so the remaining steps work
-  regardless of the workspace directory name
-
-### 1.1 Fresh machine: choose a workspace and clone `swarm_control_core`
-
-Run this in the control-machine terminal and in each robot SSH terminal if that
-machine does not already have a ROS 2 workspace you want to keep using:
-
-```bash
-command -v git >/dev/null 2>&1 || {
-  sudo apt-get update
-  sudo apt-get install -y git
-}
-
-if [[ -z "${WORKSPACE_ROOT:-}" ]]; then
-  printf 'Enter workspace path to create (absolute path or ~/...): '
-  read -r WORKSPACE_ROOT
-fi
-[[ -n "${WORKSPACE_ROOT// }" ]] || {
-  echo "[FAIL] WORKSPACE_ROOT is required." >&2
-  return 1 2>/dev/null || exit 1
-}
-
-if [[ "$WORKSPACE_ROOT" == "~/"* ]]; then
-  WORKSPACE_ROOT="${HOME}/${WORKSPACE_ROOT#~/}"
-fi
-WORKSPACE_ROOT="${WORKSPACE_ROOT%/}"
-WORKSPACE_SRC="${WORKSPACE_ROOT}/src"
-WORKSPACE_SC="${WORKSPACE_SRC}/swarm_control_core"
-
-install -d "$WORKSPACE_SRC"
-if [[ ! -d "$WORKSPACE_SC/.git" ]]; then
-  git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$WORKSPACE_SC"
-fi
-
-if [[ -x "$WORKSPACE_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
-  eval "$("$WORKSPACE_SC/scripts/swarm_core_checkout_workspace.sh" --mode default --workspace "$WORKSPACE_ROOT" --emit-shell)"
-else
-  export WS="$WORKSPACE_ROOT"
-  export SC="$WORKSPACE_SC"
-  export SWARM_CORE_WORKSPACE_ROOT="$WS"
-  export WS_DEV="$WS"
-  export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
-  printf '[OK] Workspace root: %s\n' "$WS"
-  printf '[OK] Package checkout: %s\n' "$SC"
-fi
-unset WORKSPACE_ROOT WORKSPACE_SRC WORKSPACE_SC
-```
-
-Expected after the fresh-machine block:
-
-- `"$WS"` exists
-- `"$SC"` exists
-
-### 1.2 Existing workspace: use the workspace you already have
-
-Run this only if you already have a ROS 2 workspace and want to place
-`swarm_control_core` in that workspace.
-
-Before running the block below, change into that workspace's `src/` directory.
-This block checks that explicitly. If you are not in a `src/` directory, it
-prints a clear message and leaves your SSH session alone.
-
-If you accidentally run Step 1.1 and then Step 1.2 anyway, this block will
-reuse the workspace already exported in `SWARM_CORE_WORKSPACE_ROOT` when
-available unless you are already standing in another workspace's `src/` directory.
-
-```bash
-command -v git >/dev/null 2>&1 || {
-  sudo apt-get update
-  sudo apt-get install -y git
-}
-
-if [[ "$(basename "$PWD")" == "src" ]]; then
-  CUSTOM_SC="$PWD/swarm_control_core"
-  if [[ ! -d "$CUSTOM_SC/.git" ]]; then
-    git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$CUSTOM_SC"
-  fi
-  if [[ -x "$CUSTOM_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
-    eval "$("$CUSTOM_SC/scripts/swarm_core_checkout_workspace.sh" --mode existing --emit-shell)"
-  else
-    export WS="$(dirname "$PWD")"
-    export SC="$CUSTOM_SC"
-    export SWARM_CORE_WORKSPACE_ROOT="$WS"
-    export WS_DEV="$WS"
-    export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
-    printf '[OK] Workspace root: %s\n' "$WS"
-    printf '[OK] Package checkout: %s\n' "$SC"
-  fi
-elif [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]] && [[ -d "${SWARM_CORE_WORKSPACE_ROOT}/src" ]]; then
-  KNOWN_WS="${SWARM_CORE_WORKSPACE_ROOT%/}"
-  KNOWN_SC="$KNOWN_WS/src/swarm_control_core"
-  echo "[INFO] Current directory is not a workspace src directory." >&2
-  echo "[INFO] Reusing workspace from SWARM_CORE_WORKSPACE_ROOT at $KNOWN_WS." >&2
-  if [[ -x "$KNOWN_SC/scripts/swarm_core_checkout_workspace.sh" ]]; then
-    eval "$("$KNOWN_SC/scripts/swarm_core_checkout_workspace.sh" --mode existing --workspace "$KNOWN_WS" --emit-shell)"
-  else
-    export WS="$KNOWN_WS"
-    export SC="$KNOWN_SC"
-    export SWARM_CORE_WORKSPACE_ROOT="$WS"
-    export WS_DEV="$WS"
-    export SWARM_CORE_WORKSPACE_NAME="$(basename "$WS")"
-    printf '[OK] Workspace root: %s\n' "$WS"
-    printf '[OK] Package checkout: %s\n' "$SC"
-  fi
-elif [[ -n "${WS:-}" ]] && [[ -d "${WS}/src" ]]; then
-  echo "[INFO] Current directory is not a workspace src directory." >&2
-  echo "[INFO] Reusing workspace already exported in WS at $WS." >&2
-  export SC="$WS/src/swarm_control_core"
-  printf '[OK] Workspace root: %s\n' "$WS"
-  printf '[OK] Package checkout: %s\n' "$SC"
-else
-  echo "[FAIL] Existing-workspace checkout must be run from a ROS 2 workspace src directory." >&2
-  echo "[FAIL] Change into your workspace src directory first, for example:" >&2
-  echo "       cd /path/to/your_ws/src" >&2
-  echo "[FAIL] Or rerun Step 1.1 and provide the workspace path you want to create." >&2
-fi
-unset CUSTOM_SC KNOWN_WS KNOWN_SC
-```
-
-Expected after the existing-workspace block:
-
-- `<your-workspace>/src/swarm_control_core` exists
-- nothing is created in `~` unless your workspace is actually rooted there
-
-## 2. Workspace Bootstrap in Each Terminal
+## 1. Universal Workspace Bootstrap
 
 Run this once in the control-machine terminal and once in each dedicated robot
-SSH terminal:
+SSH terminal. Run the same block again any time you open a fresh shell or
+reconnect to a robot.
+
+This block:
+
+- reuses an existing `swarm_control_core` checkout in the target workspace when
+  one is already present
+- otherwise installs `git` if needed, creates `~/ros2_ws_dev/src`, and clones
+  `swarm_control_core`
+- runs the idempotent setup bootstrap helper
+- tells you whether bootstrap was already complete or which missing pieces it
+  created
+- exports `WS`, `WS_DEV`, `SC`, and `SWARM_CORE_WORKSPACE_ROOT`
 
 ```bash
-if [[ -n "${WS:-}" ]]; then
-  SWARM_CORE_BOOTSTRAP="$WS/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh"
-elif [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]]; then
-  SWARM_CORE_BOOTSTRAP="$SWARM_CORE_WORKSPACE_ROOT/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh"
-else
-  SWARM_CORE_BOOTSTRAP="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_workspace_bootstrap.sh" 2>/dev/null | sort | head -n1)"
+SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_WORKSPACE_ROOT:-${WS:-$HOME/ros2_ws_dev}}"
+SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_SETUP_WORKSPACE%/}"
+SWARM_CORE_SETUP_HELPER="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_setup_bootstrap.sh" 2>/dev/null | sort | head -n1)"
+
+if [[ -z "${SWARM_CORE_SETUP_HELPER:-}" ]]; then
+  command -v git >/dev/null 2>&1 || {
+    sudo apt-get update
+    sudo apt-get install -y git
+  }
+
+  SWARM_CORE_SETUP_PKG="${SWARM_CORE_SETUP_WORKSPACE}/src/swarm_control_core"
+  install -d "${SWARM_CORE_SETUP_WORKSPACE}/src"
+  if [[ ! -d "${SWARM_CORE_SETUP_PKG}/.git" ]]; then
+    git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$SWARM_CORE_SETUP_PKG"
+  fi
+  SWARM_CORE_SETUP_HELPER="${SWARM_CORE_SETUP_PKG}/scripts/swarm_core_setup_bootstrap.sh"
 fi
 
-if [[ -z "${SWARM_CORE_BOOTSTRAP:-}" || ! -f "$SWARM_CORE_BOOTSTRAP" ]]; then
-  echo "[FAIL] Could not locate swarm_control_core workspace bootstrap script." >&2
-  echo "[FAIL] Set WS or SWARM_CORE_WORKSPACE_ROOT first, or make sure the workspace exists under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-elif [[ -n "${WS:-}" ]]; then
-  eval "$("$SWARM_CORE_BOOTSTRAP" --workspace "$WS" --interactive --emit-shell)"
-elif [[ -n "${SWARM_CORE_WORKSPACE_ROOT:-}" ]]; then
-  eval "$("$SWARM_CORE_BOOTSTRAP" --workspace "$SWARM_CORE_WORKSPACE_ROOT" --interactive --emit-shell)"
-else
-  eval "$("$SWARM_CORE_BOOTSTRAP" --interactive --emit-shell)"
-fi
-unset SWARM_CORE_BOOTSTRAP
+eval "$("$SWARM_CORE_SETUP_HELPER" \
+  --workspace "$SWARM_CORE_SETUP_WORKSPACE" \
+  --emit-shell)"
+
+unset SWARM_CORE_SETUP_WORKSPACE SWARM_CORE_SETUP_HELPER SWARM_CORE_SETUP_PKG
 export SWARM_CORE_ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
 ```
 
@@ -225,11 +99,12 @@ Expected result:
 
 - `WS` points at the workspace that contains `src/swarm_control_core`
 - `SC` points at `"$WS/src/swarm_control_core"`
-- the rest of this guide will now work regardless of the workspace directory name
+- the helper prints either `Bootstrap already complete...` or a short list of
+  the changes it just applied
 
-## 3. Prepare the Control Machine From a Fresh Install
+## 2. Prepare the Control Machine
 
-Run this in the control-machine terminal:
+Run this in the control-machine terminal after Step 1:
 
 ```bash
 "$SC/scripts/swarm_core_bootstrap_machine.sh" \
@@ -255,21 +130,27 @@ Expected success signals:
 
 - dependency output ends with `All dependencies have been successfully installed.`
 - bootstrap summary shows `BUILD_STATUS = completed`
-- the shell has `WS` and `SC` exported from Step 2
+- the shell still has `WS` and `SC` exported
 
-## 4. Prepare Each Robot From a Fresh Ubuntu Pi Image
+## 3. Prepare Each Robot
 
 SSH into each robot from the control machine and keep one dedicated terminal
-open per robot.
-
-Example:
+open per robot:
 
 ```bash
 ssh <robot_user>@<robot_host>.local
 ```
 
-After completing Steps 1 and 2 on this robot, this terminal already has the
-right `WS` and `SC` values. Now run this robot bootstrap block:
+In each robot SSH terminal:
+
+1. run Step 1
+2. run the robot bootstrap block below
+3. if the bootstrap says GPIO access is not active in the current session,
+   open a new SSH session to that robot and rerun Step 1 there
+4. in the robot terminal you plan to keep open for quickstart, run the reset
+   block below
+
+Robot bootstrap block:
 
 ```bash
 "$SC/scripts/swarm_core_bootstrap_machine.sh" \
@@ -278,41 +159,9 @@ right `WS` and `SC` values. Now run this robot bootstrap block:
   --domain-id "$SWARM_CORE_ROS_DOMAIN_ID"
 ```
 
-The robot bootstrap block:
-
-- installs dependencies, including ROS 2 Jazzy if needed
-- seeds runtime config into `~/.config/swarm_control_core/`
-- prepares GPIO access
-- builds `swarm_control_core`
-
-### 4.1 Confirm GPIO Session Access
-
-Run this in the same robot SSH terminal immediately after the bootstrap block:
+Robot reset block:
 
 ```bash
-if [[ -e /dev/gpiomem && -r /dev/gpiomem && -w /dev/gpiomem ]]; then
-  echo "[OK] GPIO access is active in this SSH session."
-else
-  echo "[INFO] GPIO access is not active in this SSH session yet."
-  echo "[INFO] Close this SSH terminal, reconnect to the robot, rerun Step 2 in the new session, then continue with Step 4.2."
-fi
-```
-
-If you had to reconnect, do not rerun the full robot bootstrap block unless you
-want to refresh/update the install. Re-running Step 2 in the new session is
-enough before continuing.
-
-### 4.2 Prepare the Robot Terminal for Quickstart
-
-Run this in the active robot SSH terminal after bootstrap, or after the fresh
-SSH reconnect if Step 4.1 told you to reconnect:
-
-```bash
-eval "$("$SC/scripts/swarm_core_workspace_bootstrap.sh" \
-  --workspace "$WS" \
-  --non-interactive \
-  --emit-shell)"
-
 source "$SC/scripts/swarm_core_reset_env.sh" \
   --scope deep \
   --machine-role robot \
@@ -320,10 +169,21 @@ source "$SC/scripts/swarm_core_reset_env.sh" \
   --domain-id "$SWARM_CORE_ROS_DOMAIN_ID"
 ```
 
+Optional quick confirmation in the active robot terminal:
+
+```bash
+if [[ -e /dev/gpiomem && -r /dev/gpiomem && -w /dev/gpiomem ]]; then
+  echo "[OK] GPIO access is active in this SSH session."
+else
+  echo "[INFO] GPIO access is not active in this SSH session yet."
+  echo "[INFO] Open a new SSH session to this robot, rerun Step 1 there, then rerun the reset block above."
+fi
+```
+
 At this point the robot terminal is in the same prepared state expected by the
 quickstart.
 
-## 5. Save a Camera Profile on Each Robot
+## 4. Save a Camera Profile on Each Robot
 
 Run this in each prepared robot SSH terminal:
 
@@ -361,7 +221,7 @@ auto-fallback behavior, enable it in that shell with:
 export SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK=1
 ```
 
-## 6. Final Robot Profile Registration and Readiness Check
+## 5. Final Robot Profile Registration and Readiness Check
 
 Run this in each prepared robot SSH terminal after the camera save step:
 
@@ -394,13 +254,10 @@ What this command does:
 - finishes by printing a ready message when the robot is prepared for
   [QUICKSTART.md](./QUICKSTART.md)
 
-### 6.1 Sync Robot Entries Back to the Control Machine
+### 5.1 Sync Robot Entries Back to the Control Machine
 
-After Step 6 has been completed on every robot, run this in the
+After Step 5 has been completed on every robot, run this in the
 control-machine terminal:
-
-Do not run this on the robot itself. This step is for the control machine to
-pull the robot entries back from the robots.
 
 ```bash
 cd "$WS"
@@ -433,10 +290,10 @@ What this command does:
 Use the `robot_name=ssh_target` form if you intentionally set
 `SWARM_CORE_ROBOT_NAME` to something different from the robot's Linux username.
 
-Step 6 on each robot now prints the exact sync source strings that this step can
-accept.
+Step 5 on each robot now prints the exact sync source strings that this step
+can accept.
 
-## 7. Quick Verification Before the Live Session
+## 6. Quick Verification Before the Live Session
 
 Run this in each prepared robot SSH terminal:
 
@@ -462,7 +319,7 @@ set -u || true
 ros2 pkg executables swarm_control_core | rg "_core$"
 ```
 
-## 8. Handoff to QUICKSTART
+## 7. Handoff to QUICKSTART
 
 After this guide, the machines are ready for the live local FPV/control flow in
 [QUICKSTART.md](./QUICKSTART.md).
@@ -472,11 +329,11 @@ Recommended handoff:
 - if you keep these prepared terminals open, continue with
   [QUICKSTART.md](./QUICKSTART.md) starting at Step 2 for the robot terminals,
   then Step 3 on the control machine
-- if you open fresh terminals later, restart at Step 0 of
+- if you open fresh terminals later, rerun Step 1 of this guide or Step 0 of
   [QUICKSTART.md](./QUICKSTART.md) so the new shells get the same workspace
   bootstrap and reset flow
 
-## 9. Optional Robot Service Mode
+## 8. Optional Robot Service Mode
 
 Manual quickstart bringup is the recommended first run, but if you want a robot
 service installed after the fresh setup succeeds, run this in that robot SSH
@@ -492,7 +349,7 @@ terminal:
 
 If you want the service enabled immediately, add `--enable-service-now`.
 
-## 10. Troubleshooting Quick Checks
+## 9. Troubleshooting Quick Checks
 
 Robot-side quick checks:
 

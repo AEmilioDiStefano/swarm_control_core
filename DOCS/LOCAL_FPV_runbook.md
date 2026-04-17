@@ -5,13 +5,23 @@ This runbook is for local/LAN operation of `swarm_control_core`.
 Workspace bootstrap (run once per terminal before DRP steps):
 
 ```bash
-SWARM_CORE_BOOTSTRAP_ENV="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
-if [[ -z "${SWARM_CORE_BOOTSTRAP_ENV:-}" ]]; then
-  echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-  return 1 2>/dev/null || exit 1
+swarm_core_bootstrap_terminal() {
+  local helper=""
+  helper="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
+  if [[ -z "${helper:-}" ]]; then
+    echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
+    return 1
+  fi
+  if ! source "$helper" --interactive; then
+    echo "[FAIL] swarm_control_core terminal bootstrap failed; keeping this shell open for inspection." >&2
+    return 1
+  fi
+}
+
+if swarm_core_bootstrap_terminal; then
+  :
 fi
-source "$SWARM_CORE_BOOTSTRAP_ENV" --interactive
-unset SWARM_CORE_BOOTSTRAP_ENV
+unset -f swarm_core_bootstrap_terminal
 ```
 
 This bootstrap exports `WS`, `WS_DEV`, and `SC` for the commands below.

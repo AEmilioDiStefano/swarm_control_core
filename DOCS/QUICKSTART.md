@@ -26,6 +26,11 @@ Suggested terminal layout on the control machine:
 - `R-<robot-b>`: `ssh <robot_user>@<robot_host>.local`
 - add one terminal per additional robot.
 
+Desktop/SSH usage note:
+- Open the robot SSH session from the Ubuntu desktop first, then run the robot command blocks inside that SSH shell.
+- Source only `swarm_core_bootstrap_env.sh`; run `swarm_core_quickstart_step*.sh` as commands.
+- If bootstrap lookup fails, the shell should stay open so you can inspect the error instead of getting kicked out of SSH.
+
 Workspace selection below is handled by the Step 0 terminal-bootstrap helper.
 After that, use `WS` for the workspace root and `SC` for
 `"$WS/src/swarm_control_core"`.
@@ -59,29 +64,45 @@ sudo systemctl is-active swarm-robot.service || true
 ### Run on control machine:
 
 ```bash
-SWARM_CORE_BOOTSTRAP_ENV="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
-if [[ -z "${SWARM_CORE_BOOTSTRAP_ENV:-}" ]]; then
-  echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-  return 1 2>/dev/null || exit 1
-fi
-source "$SWARM_CORE_BOOTSTRAP_ENV" --interactive
-unset SWARM_CORE_BOOTSTRAP_ENV
+swarm_core_bootstrap_terminal() {
+  local helper=""
+  helper="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
+  if [[ -z "${helper:-}" ]]; then
+    echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
+    return 1
+  fi
+  if ! source "$helper" --interactive; then
+    echo "[FAIL] swarm_control_core terminal bootstrap failed; keeping this shell open for inspection." >&2
+    return 1
+  fi
+}
 
-"$SC/scripts/swarm_core_quickstart_step0.sh" --machine-role control
+if swarm_core_bootstrap_terminal; then
+  "$SC/scripts/swarm_core_quickstart_step0.sh" --machine-role control
+fi
+unset -f swarm_core_bootstrap_terminal
 ```
 
 ### Run in each dedicated robot SSH terminal (one per robot):
 
 ```bash
-SWARM_CORE_BOOTSTRAP_ENV="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
-if [[ -z "${SWARM_CORE_BOOTSTRAP_ENV:-}" ]]; then
-  echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-  return 1 2>/dev/null || exit 1
-fi
-source "$SWARM_CORE_BOOTSTRAP_ENV" --interactive
-unset SWARM_CORE_BOOTSTRAP_ENV
+swarm_core_bootstrap_terminal() {
+  local helper=""
+  helper="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
+  if [[ -z "${helper:-}" ]]; then
+    echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
+    return 1
+  fi
+  if ! source "$helper" --interactive; then
+    echo "[FAIL] swarm_control_core terminal bootstrap failed; keeping this shell open for inspection." >&2
+    return 1
+  fi
+}
 
-"$SC/scripts/swarm_core_quickstart_step0.sh" --machine-role robot
+if swarm_core_bootstrap_terminal; then
+  "$SC/scripts/swarm_core_quickstart_step0.sh" --machine-role robot
+fi
+unset -f swarm_core_bootstrap_terminal
 ```
 
 ### Verify success
