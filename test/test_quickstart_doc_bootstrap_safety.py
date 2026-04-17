@@ -25,3 +25,22 @@ def test_setup_instructions_use_idempotent_setup_bootstrap():
     assert "swarm_core_setup_bootstrap.sh" in text
     assert "## 1. Workspace Creation / Checkout" not in text
     assert "## 2. Workspace Bootstrap in Each Terminal" not in text
+
+
+def test_setup_instructions_label_every_bash_block_with_machine_type():
+    path = CORE_ROOT / "DOCS" / "setup_instructions_SOFTWARE.md"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    allowed_labels = {"### CONTROL MACHINE:", "### ROBOT(S):"}
+
+    for idx, line in enumerate(lines):
+        if line != "```bash":
+            continue
+
+        probe = idx - 1
+        while probe >= 0 and lines[probe].strip() == "":
+            probe -= 1
+
+        assert probe >= 0, f"{path} has a bash block without a preceding machine label"
+        assert lines[probe] in allowed_labels, (
+            f"{path} bash block on line {idx + 1} must be preceded by one of {sorted(allowed_labels)}"
+        )

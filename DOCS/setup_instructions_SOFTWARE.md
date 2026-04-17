@@ -68,6 +68,37 @@ This block:
   created
 - exports `WS`, `WS_DEV`, `SC`, and `SWARM_CORE_WORKSPACE_ROOT`
 
+### CONTROL MACHINE:
+
+```bash
+SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_WORKSPACE_ROOT:-${WS:-$HOME/ros2_ws_dev}}"
+SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_SETUP_WORKSPACE%/}"
+SWARM_CORE_SETUP_HELPER="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_setup_bootstrap.sh" 2>/dev/null | sort | head -n1)"
+
+if [[ -z "${SWARM_CORE_SETUP_HELPER:-}" ]]; then
+  command -v git >/dev/null 2>&1 || {
+    sudo apt-get update
+    sudo apt-get install -y git
+  }
+
+  SWARM_CORE_SETUP_PKG="${SWARM_CORE_SETUP_WORKSPACE}/src/swarm_control_core"
+  install -d "${SWARM_CORE_SETUP_WORKSPACE}/src"
+  if [[ ! -d "${SWARM_CORE_SETUP_PKG}/.git" ]]; then
+    git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$SWARM_CORE_SETUP_PKG"
+  fi
+  SWARM_CORE_SETUP_HELPER="${SWARM_CORE_SETUP_PKG}/scripts/swarm_core_setup_bootstrap.sh"
+fi
+
+eval "$("$SWARM_CORE_SETUP_HELPER" \
+  --workspace "$SWARM_CORE_SETUP_WORKSPACE" \
+  --emit-shell)"
+
+unset SWARM_CORE_SETUP_WORKSPACE SWARM_CORE_SETUP_HELPER SWARM_CORE_SETUP_PKG
+export SWARM_CORE_ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
+```
+
+### ROBOT(S):
+
 ```bash
 SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_WORKSPACE_ROOT:-${WS:-$HOME/ros2_ws_dev}}"
 SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_SETUP_WORKSPACE%/}"
@@ -106,6 +137,8 @@ Expected result:
 
 Run this in the control-machine terminal after Step 1:
 
+### CONTROL MACHINE:
+
 ```bash
 "$SC/scripts/swarm_core_bootstrap_machine.sh" \
   --machine-role control \
@@ -137,6 +170,8 @@ Expected success signals:
 SSH into each robot from the control machine and keep one dedicated terminal
 open per robot:
 
+### CONTROL MACHINE:
+
 ```bash
 ssh <robot_user>@<robot_host>.local
 ```
@@ -152,6 +187,8 @@ In each robot SSH terminal:
 
 Robot bootstrap block:
 
+### ROBOT(S):
+
 ```bash
 "$SC/scripts/swarm_core_bootstrap_machine.sh" \
   --machine-role robot \
@@ -160,6 +197,8 @@ Robot bootstrap block:
 ```
 
 Robot reset block:
+
+### ROBOT(S):
 
 ```bash
 source "$SC/scripts/swarm_core_reset_env.sh" \
@@ -170,6 +209,8 @@ source "$SC/scripts/swarm_core_reset_env.sh" \
 ```
 
 Optional quick confirmation in the active robot terminal:
+
+### ROBOT(S):
 
 ```bash
 if [[ -e /dev/gpiomem && -r /dev/gpiomem && -w /dev/gpiomem ]]; then
@@ -186,6 +227,8 @@ quickstart.
 ## 4. Save a Camera Profile on Each Robot
 
 Run this in each prepared robot SSH terminal:
+
+### ROBOT(S):
 
 ```bash
 export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
@@ -217,6 +260,8 @@ profile and before launching the robot in quickstart.
 If the camera chooser warns about probing behavior and you intentionally want
 auto-fallback behavior, enable it in that shell with:
 
+### ROBOT(S):
+
 ```bash
 export SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK=1
 ```
@@ -224,6 +269,8 @@ export SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK=1
 ## 5. Final Robot Profile Registration and Readiness Check
 
 Run this in each prepared robot SSH terminal after the camera save step:
+
+### ROBOT(S):
 
 ```bash
 export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
@@ -258,6 +305,8 @@ What this command does:
 
 After Step 5 has been completed on every robot, run this in the
 control-machine terminal:
+
+### CONTROL MACHINE:
 
 ```bash
 cd "$WS"
@@ -297,6 +346,8 @@ can accept.
 
 Run this in each prepared robot SSH terminal:
 
+### ROBOT(S):
+
 ```bash
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
@@ -309,6 +360,8 @@ ros2 pkg executables swarm_control_core | rg "_core$"
 ```
 
 Run this in the control-machine terminal:
+
+### CONTROL MACHINE:
 
 ```bash
 set +u
@@ -339,6 +392,8 @@ Manual quickstart bringup is the recommended first run, but if you want a robot
 service installed after the fresh setup succeeds, run this in that robot SSH
 terminal:
 
+### ROBOT(S):
+
 ```bash
 "$SC/scripts/swarm_core_bootstrap_machine.sh" \
   --machine-role robot \
@@ -353,6 +408,8 @@ If you want the service enabled immediately, add `--enable-service-now`.
 
 Robot-side quick checks:
 
+### ROBOT(S):
+
 ```bash
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
@@ -366,6 +423,8 @@ ros2 run swarm_control_core save_camera_profile_core --robot "$ROBOT_NAME"
 ```
 
 Control-side quick checks:
+
+### CONTROL MACHINE:
 
 ```bash
 set +u
