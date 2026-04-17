@@ -219,6 +219,40 @@ run_bootstrap_step() {
   return "$step_status"
 }
 
+# Some child helpers render their own detailed progress UI; let them own the
+# terminal instead of nesting the outer bootstrap bar above them.
+run_bootstrap_step_with_subprogress() {
+  local weight="$1"
+  local label="$2"
+  shift 2
+  local step_status=0
+  local progress_was_enabled="$bootstrap_progress_enabled"
+
+  bootstrap_progress_current_label="$label"
+  bootstrap_progress_render
+
+  if [[ "$progress_was_enabled" == "1" ]]; then
+    bootstrap_progress_cleanup
+  fi
+
+  if "$@"; then
+    step_status=0
+  else
+    step_status=$?
+  fi
+
+  if [[ "$progress_was_enabled" == "1" ]]; then
+    bootstrap_progress_init
+  fi
+
+  if (( step_status == 0 )); then
+    bootstrap_progress_completed_weight=$(( bootstrap_progress_completed_weight + weight ))
+  fi
+  bootstrap_progress_current_label="$label"
+  bootstrap_progress_render
+  return "$step_status"
+}
+
 current_step="initialization"
 
 on_error() {
@@ -442,7 +476,7 @@ fi
 bootstrap_progress_init
 
 current_step="dependency-check"
-run_bootstrap_step 55 "Installing dependencies" \
+run_bootstrap_step_with_subprogress 55 "Installing dependencies" \
   "${target_pkg_dir}/scripts/swarm_core_check_install_dependencies.sh" \
   --machine-role "$machine_role" \
   --summary-file "$dep_summary_file"
