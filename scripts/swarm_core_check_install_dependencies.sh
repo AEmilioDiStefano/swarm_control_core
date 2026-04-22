@@ -76,6 +76,16 @@ record_just_installed() {
   just_installed+=("$1")
 }
 
+dependency_log() {
+  echo "[swarm_core_check_install_dependencies] $*" >&2
+}
+
+dependency_status() {
+  progress_current_label="$*"
+  progress_render
+  dependency_log "$*"
+}
+
 print_dependency_summary() {
   local title="$1"
   shift
@@ -281,7 +291,8 @@ ensure_apt_update() {
   if [[ "$apt_updated" == "1" ]]; then
     return 0
   fi
-  if sudo apt-get update; then
+  dependency_status "Running apt-get update"
+  if sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 update; then
     apt_updated="1"
     return 0
   fi
@@ -289,27 +300,32 @@ ensure_apt_update() {
 }
 
 install_apt_packages() {
+  dependency_status "Installing apt packages: $*"
   if ! ensure_apt_update; then
     return 1
   fi
-  sudo apt-get install -y "$@"
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y "$@"
 }
 
 ensure_ros_apt_repository() {
   local setup_file="/opt/ros/${ros_distro}/setup.bash"
   if [[ -f "$setup_file" ]]; then
+    dependency_status "ROS ${ros_distro} setup already present"
     return 0
   fi
 
   if [[ ! -f /etc/os-release ]]; then
+    dependency_status "Skipping ROS apt repository setup: /etc/os-release missing"
     return 0
   fi
 
   # shellcheck disable=SC1091
+  dependency_status "Checking Ubuntu release for ROS apt repository"
   source /etc/os-release
   local os_id="${ID:-}"
   local codename="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
   if [[ "$os_id" != "ubuntu" || -z "$codename" ]]; then
+    dependency_status "Skipping ROS apt repository setup: unsupported OS ${os_id:-unknown}"
     return 0
   fi
 
@@ -321,30 +337,39 @@ ensure_ros_apt_repository() {
   local changed="0"
 
   if ! command -v add-apt-repository >/dev/null 2>&1; then
+    dependency_status "Installing software-properties-common for add-apt-repository"
     install_apt_packages software-properties-common || return 1
   fi
-  if sudo add-apt-repository -y universe >/dev/null 2>&1; then
-    changed="1"
+
+  dependency_status "Enabling Ubuntu universe repository"
+  if ! sudo env DEBIAN_FRONTEND=noninteractive add-apt-repository -y universe; then
+    return 1
   fi
+  changed="1"
 
   if [[ ! -f "$keyring" ]]; then
+    dependency_status "Installing ROS apt key prerequisites"
     if ! install_apt_packages ca-certificates curl gnupg lsb-release; then
       return 1
     fi
-    if ! curl -fsSL "https://raw.githubusercontent.com/ros/rosdistro/master/ros.key" \
-      | sudo gpg --dearmor -o "$keyring"; then
+
+    dependency_status "Downloading ROS apt key from GitHub"
+    if ! curl --connect-timeout 15 --max-time 60 --retry 2 --retry-delay 2 -fsSL "https://raw.githubusercontent.com/ros/rosdistro/master/ros.key" \
+      | sudo gpg --batch --yes --dearmor -o "$keyring"; then
       return 1
     fi
     changed="1"
   fi
 
   if ! sudo test -f "$source_file" || ! sudo grep -Fxq "$repo_line" "$source_file"; then
+    dependency_status "Writing ROS apt source list for ${codename}/${arch}"
     echo "$repo_line" | sudo tee "$source_file" >/dev/null
     changed="1"
   fi
 
   if [[ "$changed" == "1" ]]; then
     apt_updated="0"
+    dependency_status "Refreshing apt package lists after ROS repository changes"
     ensure_apt_update || return 1
   fi
   return 0
@@ -437,6 +462,11 @@ check_ros_setup_dependency() {
 }
 
 echo "[swarm_core_check_install_dependencies] machine_role=${machine_role}"
+if [[ "${EUID:-$(id -u)}" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
+  dependency_log "Checking sudo credentials before dependency installation."
+  dependency_log "If prompted, enter the password once and wait for the script to continue."
+  sudo -v || exit 1
+fi
 
 progress_total_weight=50
 if [[ "$machine_role" == "control" ]]; then
