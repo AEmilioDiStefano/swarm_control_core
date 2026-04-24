@@ -157,12 +157,16 @@ Proceed to Step 2.
 ### Run in each dedicated robot SSH terminal:
 
 ```bash
+export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
+export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
 "$SC/scripts/swarm_core_quickstart_step2.sh"
 ```
 
 Behavior of the step-2 wrapper:
 - applies the robot compat reset
 - defaults `SWARM_CORE_ROBOT_NAME` to the Linux username when not already set
+- leaves `ROBOT_NAME` available in this shell for follow-up diagnostics when
+  you set it before running the wrapper
 - checks firewall/power-save state
 - runs the interactive camera-profile save
 - launches robot bringup and stays attached to it
@@ -360,7 +364,8 @@ source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
 
-ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
+export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
+export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
 ros2 node list
 ros2 topic list | rg "/${ROBOT_NAME}/(heartbeat|camera/image_raw|cmd_vel)"
 ros2 run swarm_control_core save_camera_profile_core --robot "$ROBOT_NAME"

@@ -206,6 +206,9 @@ source "$SC/scripts/swarm_core_reset_env.sh" \
   --machine-role robot \
   --compat-mode \
   --domain-id "$SWARM_CORE_ROS_DOMAIN_ID"
+
+export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
+export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
 ```
 
 Optional quick confirmation in the active robot terminal:
@@ -232,6 +235,7 @@ Run this in each prepared robot SSH terminal:
 
 ```bash
 export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
+export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
 
 cd "$WS"
 set +u
@@ -239,7 +243,7 @@ source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
 
-ros2 run swarm_control_core save_camera_profile_core --robot "$SWARM_CORE_ROBOT_NAME"
+ros2 run swarm_control_core save_camera_profile_core --robot "$ROBOT_NAME"
 ```
 
 What to do here:
@@ -251,6 +255,8 @@ What to do here:
 If you want the runtime robot name to be something other than the Linux
 username, export `SWARM_CORE_ROBOT_NAME=<name>` before running the command
 above, and keep using that same value later in the quickstart robot terminal.
+`ROBOT_NAME` is a convenience alias for manual diagnostic commands in the
+current shell.
 
 If you want the robot to use one of the named entries already present in
 `~/.config/swarm_control_core/robot_instances.yaml`, set
@@ -274,6 +280,7 @@ Run this in each prepared robot SSH terminal after the camera save step:
 
 ```bash
 export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
+export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
 
 cd "$WS"
 set +u
@@ -283,7 +290,7 @@ set -u || true
 
 ros2 run swarm_control_core configure_robot_profile_core \
   --workspace "$WS" \
-  --robot "$SWARM_CORE_ROBOT_NAME"
+  --robot "$ROBOT_NAME"
 ```
 
 What this command does:
