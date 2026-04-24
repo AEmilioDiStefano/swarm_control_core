@@ -8,7 +8,9 @@ visibility on a private network. It focuses on local/LAN operation, while
 `swarm_control_pro` covers the broader remote-operations workflows used in the
 larger project.
 
-![demo](media/hide-and-seek-GIF.gif)
+<p align="center">
+  <img src="media/remote_operation_GIF.gif" alt="Remote operation demo">
+</p>
 
 ## License Summary
 
@@ -92,3 +94,7 @@ If you are building and preparing the reference robot from scratch, start with:
 
 - Commercial licensing: `emilio@vitruvian.systems`
 - Security reports: see [SECURITY.md](./SECURITY.md)
+
+<p align="center">
+  <img src="media/hide-and-seek-GIF.gif" alt="Hide and seek demo">
+</p>
