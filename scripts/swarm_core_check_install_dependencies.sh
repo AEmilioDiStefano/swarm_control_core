@@ -110,8 +110,8 @@ write_summary_file() {
   local out_file="$1"
   mkdir -p "$(dirname "$out_file")"
   {
-    print_dependency_summary "DEPENDENCIES ALREADY INSTALLED:" "${already_installed[@]}"
-    print_dependency_summary "DEPENDENCIES JUST INSTALLED:" "${just_installed[@]}"
+    print_dependency_summary "DEPENDENCIES ALREADY INSTALLED AND UP TO DATE:" "${already_installed[@]}"
+    print_dependency_summary "DEPENDENCIES INSTALLED OR UPDATED:" "${just_installed[@]}"
     if [[ ${#failures[@]} -gt 0 ]]; then
       print_dependency_summary "DEPENDENCIES FAILED TO INSTALL:" "${failures[@]}"
     fi
@@ -307,6 +307,62 @@ install_apt_packages() {
   sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y "$@"
 }
 
+apt_installed_version() {
+  dpkg-query -W -f='${Version}' "$1" 2>/dev/null || true
+}
+
+apt_candidate_version() {
+  apt-cache policy "$1" 2>/dev/null | awk '/Candidate:/ {print $2; exit}'
+}
+
+apt_package_is_current() {
+  local pkg="$1"
+  local installed_version=""
+  local candidate_version=""
+
+  installed_version="$(apt_installed_version "$pkg")"
+  [[ -n "$installed_version" ]] || return 1
+
+  if ! ensure_apt_update; then
+    return 1
+  fi
+
+  candidate_version="$(apt_candidate_version "$pkg")"
+  if [[ -z "$candidate_version" || "$candidate_version" == "(none)" ]]; then
+    dependency_status "${pkg} is installed at ${installed_version}; no apt candidate is available to compare"
+    return 0
+  fi
+
+  dpkg --compare-versions "$installed_version" ge "$candidate_version"
+}
+
+apt_packages_are_current() {
+  local pkg=""
+  for pkg in "$@"; do
+    apt_package_is_current "$pkg" || return 1
+  done
+  return 0
+}
+
+ubuntu_component_enabled() {
+  local component="$1"
+  local codename="$2"
+  local apt_source_paths=(/etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources)
+  local source_path=""
+
+  for source_path in "${apt_source_paths[@]}"; do
+    [[ -f "$source_path" ]] || continue
+    if grep -Eq "^[[:space:]]*deb[[:space:]].*[[:space:]]${codename}([^[:space:]]*)?[[:space:]].*(^|[[:space:]])${component}($|[[:space:]])" "$source_path"; then
+      return 0
+    fi
+    if grep -Eq "^[[:space:]]*Components:.*(^|[[:space:]])${component}($|[[:space:]])" "$source_path"; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 ensure_ros_apt_repository() {
   local setup_file="/opt/ros/${ros_distro}/setup.bash"
   if [[ -f "$setup_file" ]]; then
@@ -341,11 +397,15 @@ ensure_ros_apt_repository() {
     install_apt_packages software-properties-common || return 1
   fi
 
-  dependency_status "Enabling Ubuntu universe repository"
-  if ! sudo env DEBIAN_FRONTEND=noninteractive add-apt-repository -y universe; then
-    return 1
+  if ubuntu_component_enabled universe "$codename"; then
+    dependency_status "Ubuntu universe repository already enabled"
+  else
+    dependency_status "Enabling Ubuntu universe repository"
+    if ! sudo env DEBIAN_FRONTEND=noninteractive add-apt-repository -y universe; then
+      return 1
+    fi
+    changed="1"
   fi
-  changed="1"
 
   if [[ ! -f "$keyring" ]]; then
     dependency_status "Installing ROS apt key prerequisites"
@@ -380,45 +440,45 @@ check_cmd_dependency() {
   local cmd="$2"
   shift 2
   local -a pkgs=("$@")
-  if command -v "$cmd" >/dev/null 2>&1; then
-    echo "[$dep] is already installed."
+  if command -v "$cmd" >/dev/null 2>&1 && apt_packages_are_current "${pkgs[@]}"; then
+    echo "[$dep] is already installed and up to date."
     record_already_installed "$dep"
     return 0
   fi
-  echo "[$dep] is not installed. Installing now..."
+  echo "[$dep] is missing or outdated. Installing/updating now..."
   if install_apt_packages "${pkgs[@]}" && command -v "$cmd" >/dev/null 2>&1; then
-    echo "[$dep] installation complete."
+    echo "[$dep] installation/update complete."
     record_just_installed "$dep"
     return 0
   fi
-  echo "[$dep] installation failed."
+  echo "[$dep] installation/update failed."
   record_failure "$dep"
   return 1
 }
 
 check_colcon_dependency() {
   local dep="colcon"
-  if command -v colcon >/dev/null 2>&1; then
-    echo "[$dep] is already installed."
+  if command -v colcon >/dev/null 2>&1 && apt_packages_are_current python3-colcon-common-extensions; then
+    echo "[$dep] is already installed and up to date."
     record_already_installed "$dep"
     return 0
   fi
 
-  echo "[$dep] is not installed. Installing now..."
+  echo "[$dep] is missing or outdated. Installing/updating now..."
   if install_apt_packages python3-colcon-common-extensions && command -v colcon >/dev/null 2>&1; then
-    echo "[$dep] installation complete."
+    echo "[$dep] installation/update complete."
     record_just_installed "$dep"
     return 0
   fi
 
   # Some Ubuntu variants expose a plain colcon package instead.
   if install_apt_packages colcon && command -v colcon >/dev/null 2>&1; then
-    echo "[$dep] installation complete."
+    echo "[$dep] installation/update complete."
     record_just_installed "$dep"
     return 0
   fi
 
-  echo "[$dep] installation failed."
+  echo "[$dep] installation/update failed."
   record_failure "$dep"
   return 1
 }
@@ -426,18 +486,18 @@ check_colcon_dependency() {
 check_apt_package_dependency() {
   local dep="$1"
   local pkg="$2"
-  if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
-    echo "[$dep] is already installed."
+  if apt_package_is_current "$pkg"; then
+    echo "[$dep] is already installed and up to date."
     record_already_installed "$dep"
     return 0
   fi
-  echo "[$dep] is not installed. Installing now..."
+  echo "[$dep] is missing or outdated. Installing/updating now..."
   if install_apt_packages "$pkg" && dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
-    echo "[$dep] installation complete."
+    echo "[$dep] installation/update complete."
     record_just_installed "$dep"
     return 0
   fi
-  echo "[$dep] installation failed."
+  echo "[$dep] installation/update failed."
   record_failure "$dep"
   return 1
 }
@@ -445,18 +505,18 @@ check_apt_package_dependency() {
 check_ros_setup_dependency() {
   local dep="ros-${ros_distro}-setup"
   local setup_file="/opt/ros/${ros_distro}/setup.bash"
-  if [[ -f "$setup_file" ]]; then
-    echo "[$dep] is already installed."
+  if [[ -f "$setup_file" ]] && apt_package_is_current "ros-${ros_distro}-ros-base"; then
+    echo "[$dep] is already installed and up to date."
     record_already_installed "$dep"
     return 0
   fi
-  echo "[$dep] is not installed. Installing now..."
+  echo "[$dep] is missing or outdated. Installing/updating now..."
   if install_apt_packages "ros-${ros_distro}-ros-base" && [[ -f "$setup_file" ]]; then
-    echo "[$dep] installation complete."
+    echo "[$dep] installation/update complete."
     record_just_installed "$dep"
     return 0
   fi
-  echo "[$dep] installation failed."
+  echo "[$dep] installation/update failed."
   record_failure "$dep"
   return 1
 }
@@ -513,8 +573,8 @@ progress_completed_weight="$progress_total_weight"
 progress_render
 
 echo
-print_dependency_summary "DEPENDENCIES ALREADY INSTALLED:" "${already_installed[@]}"
-print_dependency_summary "DEPENDENCIES JUST INSTALLED:" "${just_installed[@]}"
+print_dependency_summary "DEPENDENCIES ALREADY INSTALLED AND UP TO DATE:" "${already_installed[@]}"
+print_dependency_summary "DEPENDENCIES INSTALLED OR UPDATED:" "${just_installed[@]}"
 if [[ ${#failures[@]} -gt 0 ]]; then
   print_dependency_summary "DEPENDENCIES FAILED TO INSTALL:" "${failures[@]}"
 fi
@@ -525,7 +585,7 @@ fi
 
 if [[ ${#failures[@]} -eq 0 ]]; then
   echo
-  echo "All dependencies have been successfully installed."
+  echo "All dependencies are installed and up to date."
   exit 0
 fi
 

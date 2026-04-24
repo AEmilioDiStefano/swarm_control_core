@@ -109,10 +109,10 @@ unset -f swarm_core_bootstrap_terminal
 
 Expected output ends with:
 
-`All dependencies have been successfully installed.`
+`All dependencies are installed and up to date.`
 
 And includes:
-- `[iw] is already installed.` (or installed during this step), so Wi-Fi power-save checks are available on robots.
+- `[iw] is already installed and up to date.` (or installed/updated during this step), so Wi-Fi power-save checks are available on robots.
 
 ### IF dependency install/check fails
 

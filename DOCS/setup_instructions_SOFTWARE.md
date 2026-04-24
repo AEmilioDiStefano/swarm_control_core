@@ -161,7 +161,7 @@ What this does:
 
 Expected success signals:
 
-- dependency output ends with `All dependencies have been successfully installed.`
+- dependency output ends with `All dependencies are installed and up to date.`
 - bootstrap summary shows `BUILD_STATUS = completed`
 - the shell still has `WS` and `SC` exported
 
