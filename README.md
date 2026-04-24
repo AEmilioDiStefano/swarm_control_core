@@ -9,7 +9,7 @@ visibility on a private network. It focuses on local/LAN operation, while
 larger project.
 
 <p align="center">
-  <img src="media/remote_operation_GIF.gif" alt="Remote operation demo">
+  <img src="media/remote_operation_GIF.gif" alt="Remote operation demo"> <img src="media/hide-and-seek-GIF.gif" alt="Hide and seek demo">
 </p>
 
 ## License Summary
@@ -95,6 +95,4 @@ If you are building and preparing the reference robot from scratch, start with:
 - Commercial licensing: `emilio@vitruvian.systems`
 - Security reports: see [SECURITY.md](./SECURITY.md)
 
-<p align="center">
-  <img src="media/hide-and-seek-GIF.gif" alt="Hide and seek demo">
-</p>
+
