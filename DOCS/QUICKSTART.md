@@ -291,6 +291,15 @@ Video path:
 - To keep all robot camera streams subscribed continuously (higher load), set `SWARM_CORE_IMAGE_SUBSCRIPTION_MODE=all`.
 - Fleet thumbnails stay in side tiles and do not take over the main pane.
 
+Robot trust model:
+- The UI may discover robots that are publishing on the ROS domain before the
+  control machine has that robot in its local `robot_instances.yaml`.
+- Unknown robots are shown read-only for video/diagnostics, but drive and
+  autonomy commands are blocked by default.
+- If the UI reports an unknown/read-only robot such as `robot4`, run
+  `ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"` on the
+  control machine, then restart Step 3.
+
 Optional private LAN bind:
 
 ```bash
@@ -451,6 +460,23 @@ All machines must use the same domain id (default `17`) and sourced workspace.
 If robot terminals show heartbeat publishing but control still has no heartbeat topics,
 DDS traffic is being blocked (commonly by ufw state carried from proprietary setup).
 Keep compat defaults and rerun [Step 2](#step-2) on robots + [Step 3](#step-3) on control.
+
+If the UI sees a robot but logs it as unknown/read-only, the control machine is
+missing that robot's trusted registry entry. Run on the control machine:
+
+```bash
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
+```
+
+Then stop and restart [Step 3](#step-3). Only use
+`SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL=1` in a trusted lab when you intentionally
+want to allow control of robots not yet present in `robot_instances.yaml`.
 
 If you previously forced firewall preservation, remove that override:
 

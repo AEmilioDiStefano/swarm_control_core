@@ -190,6 +190,7 @@ export SWARM_CORE_WEBRTC_ICE_SERVERS_JSON='[]'
 export SWARM_CORE_WEBRTC_ICE_TRANSPORT_POLICY="all"
 export SWARM_CORE_WEBRTC_FPS="${SWARM_CORE_WEBRTC_FPS:-15.0}"
 export SWARM_CORE_WEBRTC_MAIN_ONLY="${SWARM_CORE_WEBRTC_MAIN_ONLY:-1}"
+export SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL="${SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL:-0}"
 export SWARM_CORE_THUMB_REFRESH_HZ="${SWARM_CORE_THUMB_REFRESH_HZ:-0.5}"
 export SWARM_CORE_IMAGE_SUBSCRIPTION_MODE="${SWARM_CORE_IMAGE_SUBSCRIPTION_MODE:-active_only}"
 export SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S="${SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S:-0.75}"
@@ -224,6 +225,7 @@ log "image_thumb_interest_ttl_s=${SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S}"
 log "thumb_robots_per_tick=${SWARM_CORE_THUMB_ROBOTS_PER_TICK}"
 log "drive_cmd_rate_hz=${SWARM_CORE_DRIVE_CMD_RATE_HZ}"
 log "drive_hold_timeout_s=${SWARM_CORE_DRIVE_HOLD_TIMEOUT_S}"
+log "allow_unknown_robot_control=${SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL}"
 if [[ "${SWARM_CORE_ALLOW_LAN_BIND:-0}" == "1" ]]; then
   log "LAN bind enabled (private LAN use only)."
 else
@@ -271,6 +273,7 @@ if command -v setsid >/dev/null 2>&1; then
     bind_port:="$SWARM_CORE_BIND_PORT" \
     webrtc_fps:="$SWARM_CORE_WEBRTC_FPS" \
     webrtc_main_only:="$SWARM_CORE_WEBRTC_MAIN_ONLY" \
+    allow_unknown_robot_control:="$SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL" \
     thumb_refresh_hz:="$SWARM_CORE_THUMB_REFRESH_HZ" \
     image_subscription_mode:="$SWARM_CORE_IMAGE_SUBSCRIPTION_MODE" \
     image_thumb_interest_ttl_s:="$SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S" \
@@ -284,6 +287,7 @@ else
     bind_port:="$SWARM_CORE_BIND_PORT" \
     webrtc_fps:="$SWARM_CORE_WEBRTC_FPS" \
     webrtc_main_only:="$SWARM_CORE_WEBRTC_MAIN_ONLY" \
+    allow_unknown_robot_control:="$SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL" \
     thumb_refresh_hz:="$SWARM_CORE_THUMB_REFRESH_HZ" \
     image_subscription_mode:="$SWARM_CORE_IMAGE_SUBSCRIPTION_MODE" \
     image_thumb_interest_ttl_s:="$SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S" \

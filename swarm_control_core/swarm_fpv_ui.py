@@ -393,6 +393,7 @@ class RosFleetHub(Node):
         self.declare_parameter("image_subscription_mode", "active_only")
         self.declare_parameter("image_thumb_interest_ttl_s", 0.75)
         self.declare_parameter("thumb_robots_per_tick", 0)
+        self.declare_parameter("allow_unknown_robot_control", False)
 
         self.webrtc_fps = float(self.get_parameter("webrtc_fps").value)
         self.webrtc_main_only = str(self.get_parameter("webrtc_main_only").value).strip().lower() in (
@@ -417,6 +418,9 @@ class RosFleetHub(Node):
             0,
             int(self.get_parameter("thumb_robots_per_tick").value),
         )
+        self.allow_unknown_robot_control = str(
+            self.get_parameter("allow_unknown_robot_control").value
+        ).strip().lower() in ("1", "true", "yes", "on")
         profiles_path = str(self.get_parameter("profiles_path").value).strip() or None
 
         self._profile_registry = None
@@ -427,6 +431,8 @@ class RosFleetHub(Node):
             raise
         except Exception:
             self._profile_registry = None
+        self._trusted_robots: Set[str] = self._load_trusted_robots()
+        self._unknown_robot_warned: Set[str] = set()
 
         self.active_robot: Optional[str] = None
         self.active_robot_sub = self.create_subscription(String, "/active_robot", self._on_active_robot, 10)
@@ -490,6 +496,66 @@ class RosFleetHub(Node):
                 float(self.image_thumb_interest_ttl_s),
                 int(self.thumb_robots_per_tick),
             )
+        )
+        self.get_logger().info(
+            "[swarm_fpv_ui] trusted_robots=%s allow_unknown_robot_control=%s"
+            % (
+                ",".join(sorted(self._trusted_robots)) or "<none>",
+                "true" if self.allow_unknown_robot_control else "false",
+            )
+        )
+
+    def _load_trusted_robots(self) -> Set[str]:
+        registry = self._profile_registry if isinstance(self._profile_registry, dict) else {}
+        robots = registry.get("robots", {}) or {}
+        if not isinstance(robots, dict):
+            return set()
+        return {str(name).strip() for name in robots.keys() if str(name).strip()}
+
+    def is_trusted_robot(self, robot: str) -> bool:
+        return str(robot or "").strip() in self._trusted_robots
+
+    def robot_control_allowed(self, robot: str) -> bool:
+        robot = str(robot or "").strip()
+        if not robot:
+            return False
+        return self.is_trusted_robot(robot) or bool(self.allow_unknown_robot_control)
+
+    def _robot_trust_public(self, robot: str) -> Dict[str, Any]:
+        trusted = self.is_trusted_robot(robot)
+        control_allowed = self.robot_control_allowed(robot)
+        if trusted:
+            status = "trusted"
+            reason = "Robot exists in the configured robot registry."
+        elif control_allowed:
+            status = "unknown_control_allowed"
+            reason = "Robot is not in the registry, but unknown robot control override is enabled."
+        else:
+            status = "unknown_readonly"
+            reason = (
+                "Robot is visible on ROS, but is not in the configured robot registry; "
+                "video/diagnostics are allowed and control is blocked."
+            )
+        return {
+            "trusted": bool(trusted),
+            "control_allowed": bool(control_allowed),
+            "trust_status": status,
+            "trust_reason": reason,
+        }
+
+    def _warn_unknown_robot_once(self, robot: str, context: str = "discovery") -> None:
+        robot = str(robot or "").strip()
+        if not robot or self.is_trusted_robot(robot) or self.allow_unknown_robot_control:
+            return
+        if robot in self._unknown_robot_warned:
+            return
+        self._unknown_robot_warned.add(robot)
+        known = ", ".join(sorted(self._trusted_robots)) or "<none>"
+        self.get_logger().warn(
+            "[swarm_fpv_ui] untrusted robot '%s' discovered via %s; keeping it read-only. "
+            "Known trusted robots: %s. Run sync_robot_entries_core/add_robot_core on the control machine, "
+            "or set SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL=1 only in a trusted lab."
+            % (robot, str(context or "discovery"), known)
         )
 
     def _on_active_robot(self, msg: String):
@@ -564,6 +630,7 @@ class RosFleetHub(Node):
         self._known_robots = set(visible)
 
         for robot in sorted(visible):
+            self._warn_unknown_robot_once(robot, "topic discovery")
             self.ensure_heartbeat_subscription(robot)
             self.ensure_camera_diag_subscription(robot)
         self._log_robot_liveness_transitions(t_now)
@@ -1070,8 +1137,8 @@ class RosFleetHub(Node):
 
         self._cam_diag_subs[robot] = self.create_subscription(String, topic, _cb, 10)
 
-    def _profile_meta(self, robot: str) -> Dict[str, str]:
-        out = {
+    def _profile_meta(self, robot: str) -> Dict[str, Any]:
+        out: Dict[str, Any] = {
             "drive_type": "unknown",
             "hardware": "unknown",
             "profile": "",
@@ -1079,6 +1146,10 @@ class RosFleetHub(Node):
             "adapter_name": "passthrough",
             "requested_adapter_name": "passthrough",
         }
+        out.update(self._robot_trust_public(robot))
+        if not self.is_trusted_robot(robot):
+            self._warn_unknown_robot_once(robot, "profile lookup")
+            return out
         if not self._profile_registry:
             return out
         binding = resolve_robot_adapter_binding(
@@ -1097,7 +1168,7 @@ class RosFleetHub(Node):
         )
         return out
 
-    def robot_meta(self, robot: str) -> Dict[str, str]:
+    def robot_meta(self, robot: str) -> Dict[str, Any]:
         base = self._profile_meta(robot)
         live = dict(self._robot_meta.get(robot, {}) or {})
         if str(live.get("drive_type", "")).strip():
@@ -1110,10 +1181,25 @@ class RosFleetHub(Node):
                 "requested_adapter_name": str(
                     base.get("requested_adapter_name", base.get("adapter_name", "passthrough"))
                 ),
+                "trusted": bool(base.get("trusted", False)),
+                "control_allowed": bool(base.get("control_allowed", False)),
+                "trust_status": str(base.get("trust_status", "")),
+                "trust_reason": str(base.get("trust_reason", "")),
             }
         return base
 
     def translate_task_payload(self, robot: str, payload: Mapping[str, Any], flow: str = "") -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        if not self.robot_control_allowed(robot):
+            self._warn_unknown_robot_once(robot, flow or "task translation")
+            return dict(payload), {
+                "robot": str(robot or "").strip(),
+                "adapter_profile": "blocked_untrusted_robot",
+                "requested_adapter_name": "none",
+                "adapter_name": "none",
+                "adapter_params": {},
+                "robot_profile": {},
+                "fallback_reason": "untrusted_robot_control_blocked",
+            }
         return translate_task_for_robot(
             self._profile_registry,
             robot,
@@ -1136,6 +1222,7 @@ class RosFleetHub(Node):
         Capability model intentionally generic for future aerial integration.
         """
         meta = self.robot_meta(robot)
+        trust = self._robot_trust_public(robot)
         dt = str(meta.get("drive_type", "")).lower()
         can_strafe = ("omni" in dt) or ("mecanum" in dt)
         can_vertical = ("aerial" in dt) or ("uav" in dt) or ("drone" in dt)
@@ -1146,7 +1233,7 @@ class RosFleetHub(Node):
             profile = "aerial_xyyawz"
 
         drive_params: Dict[str, Any] = {}
-        if self._profile_registry:
+        if self._profile_registry and self.is_trusted_robot(robot):
             try:
                 resolved = resolve_robot_profile(self._profile_registry, robot)
                 drive_params = dict(resolved.get("drive_params", {}) or {})
@@ -1203,6 +1290,10 @@ class RosFleetHub(Node):
                 "requested_adapter_name",
                 meta.get("adapter_name", "passthrough"),
             ),
+            "trusted": bool(trust["trusted"]),
+            "control_allowed": bool(trust["control_allowed"]),
+            "trust_status": str(trust["trust_status"]),
+            "trust_reason": str(trust["trust_reason"]),
             "teleop_linear_mps": teleop_linear,
             "teleop_angular_rps": teleop_angular,
             "teleop_speed_step": teleop_step,
@@ -1507,6 +1598,9 @@ class RosFleetHub(Node):
         robot = str(robot or "").strip()
         if not robot:
             return
+        if not self.robot_control_allowed(robot):
+            self._warn_unknown_robot_once(robot, "drive command")
+            return
         translated, binding = self.translate_task_payload(
             robot,
             {
@@ -1528,6 +1622,9 @@ class RosFleetHub(Node):
 
         data = dict(translated or {})
         target_robot = str(data.get("robot") or robot).strip() or robot
+        if not self.robot_control_allowed(target_robot):
+            self._warn_unknown_robot_once(target_robot, "translated drive target")
+            return
 
         lin_out = _as_float(
             data.get(
@@ -1578,7 +1675,10 @@ class RosFleetHub(Node):
     def set_drive_target(self, robot: str, lin: float, yaw: float, lat: float = 0.0, vert: float = 0.0):
         robot = str(robot or "").strip()
         if not robot:
-            return
+            return False
+        if not self.robot_control_allowed(robot):
+            self._warn_unknown_robot_once(robot, "drive target")
+            return False
         now = now_s()
         self._record_drive_rx(robot, now)
         self._drive_targets[robot] = {
@@ -1599,6 +1699,7 @@ class RosFleetHub(Node):
         )
         if is_stop or (now - last_pub) >= (0.5 / self.drive_cmd_rate_hz):
             self._publish_drive_once(robot, lin=lin, yaw=yaw, lat=lat, vert=vert)
+        return True
 
     def publish_drive(self, robot: str, lin: float, yaw: float, lat: float = 0.0, vert: float = 0.0):
         """
@@ -1632,6 +1733,9 @@ class RosFleetHub(Node):
         mode = str(mode or "").strip().lower()
         if not robot or not mode:
             return
+        if not self.robot_control_allowed(robot):
+            self._warn_unknown_robot_once(robot, "autonomy mode")
+            return
         translated, binding = self.translate_task_payload(
             robot,
             {
@@ -1643,6 +1747,9 @@ class RosFleetHub(Node):
         )
         data = dict(translated or {})
         target_robot = str(data.get("robot") or robot).strip() or robot
+        if not self.robot_control_allowed(target_robot):
+            self._warn_unknown_robot_once(target_robot, "translated autonomy target")
+            return
         target_mode = str(
             data.get("mode", data.get("autonomy_mode", mode))
         ).strip().lower() or mode
@@ -2726,6 +2833,8 @@ class BrowserServer:
                     if not self._principal_can_control(principal):
                         continue
                     robot = str(data.get("robot") or "").strip()
+                    if robot and not self.hub.robot_control_allowed(robot):
+                        continue
                     if robot and (not self._locked_by_other(robot, client_id)):
                         changed = self._touch_lock(robot, client_id, principal)
                         if changed:
@@ -2764,6 +2873,13 @@ class BrowserServer:
                     robot = str(data.get("robot") or "").strip()
                     if not robot:
                         continue
+                    if not self.hub.robot_control_allowed(robot):
+                        await self._send_ws_error(
+                            ws,
+                            f"Robot '{robot}' is visible but not trusted for control. "
+                            "Add/sync it into robot_instances.yaml before driving.",
+                        )
+                        continue
                     if self._locked_by_other(robot, client_id):
                         await self._send_ws_error(ws, f"Robot '{robot}' locked by another user")
                         continue
@@ -2784,6 +2900,13 @@ class BrowserServer:
                     robot = str(data.get("robot") or "").strip()
                     mode = str(data.get("mode") or "").strip().lower()
                     if not robot or not mode:
+                        continue
+                    if not self.hub.robot_control_allowed(robot):
+                        await self._send_ws_error(
+                            ws,
+                            f"Robot '{robot}' is visible but not trusted for control. "
+                            "Add/sync it into robot_instances.yaml before changing modes.",
+                        )
                         continue
                     if self._locked_by_other(robot, client_id):
                         await self._send_ws_error(ws, f"Robot '{robot}' locked by another user")
@@ -3608,6 +3731,7 @@ function _omniArcCommand(token, linearMag, angularMag){
 
 function driveCommandForToken(token){
   if (!activeRobot) return null;
+  if (!canControlRobot(activeRobot)) return null;
   const c = capFor(activeRobot);
   const S = Math.max(0.0, _toNumber(driveLinearSpeed, 0.0));
   const A = Math.max(0.0, _toNumber(driveAngularSpeed, 0.0));
@@ -3653,6 +3777,10 @@ function driveCommandForToken(token){
 
 function toggleStrafeMode(){
   if (!activeRobot) return false;
+  if (!canControlRobot(activeRobot)){
+    setStatus(`[TRUST] '${activeRobot}' is read-only until it is added/synced into the trusted robot registry.`);
+    return true;
+  }
   const c = capFor(activeRobot);
   if (!c.can_strafe){
     strafeMode = false;
@@ -4155,6 +4283,10 @@ function capFor(robot){
     drive_type: "unknown",
     hardware: "unknown",
     profile: "",
+    trusted: false,
+    control_allowed: false,
+    trust_status: "unknown_readonly",
+    trust_reason: "Robot is not in the trusted registry.",
     teleop_linear_mps: 0.5,
     teleop_angular_rps: 1.0,
     teleop_speed_step: 1.1,
@@ -4165,6 +4297,13 @@ function capFor(robot){
     teleop_diff_arc_inner_ratio: 0.6,
     wheel_separation_m: 0.18
   };
+}
+
+function canControlRobot(robot){
+  const name = String(robot || "").trim();
+  if (!name) return false;
+  const c = capFor(name);
+  return Boolean(c && c.control_allowed);
 }
 
 function renderThumbRail(){
@@ -4192,7 +4331,7 @@ function renderThumbRail(){
     lockBadge.className = "badge";
     const owner = locks[robot];
     if (!owner){
-      lockBadge.textContent = "AVAILABLE";
+      lockBadge.textContent = canControlRobot(robot) ? "AVAILABLE" : "READ ONLY";
     }else if (owner === clientId){
       lockBadge.textContent = "YOU";
     }else{
@@ -4249,10 +4388,12 @@ function renderCapabilityMeta(){
     return;
   }
   const c = capFor(activeRobot);
+  const trustLabel = c.control_allowed ? "trusted/control enabled" : "read-only/untrusted";
   el.innerHTML = `
     <div><b>Drive Type:</b> ${c.drive_type}</div>
     <div><b>Hardware:</b> ${c.hardware}</div>
     <div><b>Control Profile:</b> ${c.control_profile}</div>
+    <div><b>Trust:</b> ${trustLabel}</div>
     <div><b>Drive Mode:</b> ${strafeMode ? "STRAFE" : "NORMAL"}</div>
     <div><b>Speed:</b> linear=${driveLinearSpeed.toFixed(2)} angular=${driveAngularSpeed.toFixed(2)}</div>
   `;
@@ -4260,6 +4401,10 @@ function renderCapabilityMeta(){
 
 function drive(lin=0.0, yaw=0.0, lat=0.0, vert=0.0){
   if (!activeRobot) return;
+  if (!canControlRobot(activeRobot)){
+    setStatus(`[TRUST] '${activeRobot}' is visible but read-only. Add/sync it into robot_instances.yaml before driving.`);
+    return;
+  }
   if (isLockedByOther(activeRobot)){
     setStatus(`Robot '${activeRobot}' locked by another operator`);
     return;
@@ -4274,6 +4419,13 @@ function renderDriveControls(){
   activeDriveButtonTokens.clear();
   if (!activeRobot) return;
   const c = capFor(activeRobot);
+  if (!c.control_allowed){
+    const msg = document.createElement("div");
+    msg.className = "small";
+    msg.textContent = "Read-only: this robot is visible on ROS but is not in the trusted robot registry.";
+    wrap.appendChild(msg);
+    return;
+  }
 
   const pad = document.createElement("div");
   pad.className = "drive-pad " + (c.can_strafe ? "with-strafe" : "no-strafe");
@@ -4387,6 +4539,10 @@ function renderDriveControls(){
 
 function sendAutonomyMode(mode){
   if (!activeRobot) return;
+  if (!canControlRobot(activeRobot)){
+    setStatus(`[TRUST] '${activeRobot}' is visible but read-only. Add/sync it before changing modes.`);
+    return;
+  }
   if (isLockedByOther(activeRobot)){
     setStatus(`Robot '${activeRobot}' locked by another operator`);
     return;
@@ -4397,6 +4553,13 @@ function sendAutonomyMode(mode){
 function renderModeControls(){
   const wrap = $("modeControls");
   wrap.innerHTML = "";
+  if (activeRobot && !canControlRobot(activeRobot)){
+    const msg = document.createElement("div");
+    msg.className = "small";
+    msg.textContent = "Autonomy controls disabled until this robot is trusted.";
+    wrap.appendChild(msg);
+    return;
+  }
   const modes = [
     ["Manual", "manual"],
     ["Follow", "follow"],
@@ -4462,6 +4625,7 @@ function renderHealthPanel(){
       camera_strategy: "",
       camera_last_error: ""
     };
+    const cap = capFor(robot);
     const status = String(h.status || "no_frame");
     const cause = String(h.probable_cause || "No diagnostics available.");
     const safeCause = cause.replace(/"/g, "&quot;");
@@ -4480,6 +4644,7 @@ function renderHealthPanel(){
       <div class="health-row"><b>Strategy:</b> ${h.camera_strategy || "--"}</div>
       <div class="health-row"><b>Cam error:</b> ${h.camera_last_error || "--"}</div>
       <div class="health-row"><b>Presence:</b> ${h.presence_status || "--"}</div>
+      <div class="health-row"><b>Trust:</b> ${cap.control_allowed ? "control enabled" : "read-only"} (${cap.trust_status || "unknown"})</div>
       <div class="health-row"><b>Heartbeat age:</b> ${fmtHealthAge(h.heartbeat_age_s)}</div>
       <div class="health-row"><b>Topic age:</b> ${fmtHealthAge(h.topic_age_s)}</div>
       <div class="health-row"><b>Publishers:</b> ${Number(h.publisher_count || 0)}</div>

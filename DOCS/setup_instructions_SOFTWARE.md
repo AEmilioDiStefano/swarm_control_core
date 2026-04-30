@@ -16,6 +16,8 @@ When you finish this guide:
   per-robot tuning
 - GPIO access will be prepared on each robot
 - each robot will have a saved camera profile
+- the UI will only allow control of robots that are present in the trusted
+  control-machine `robot_instances.yaml`
 - you can continue with [QUICKSTART.md](./QUICKSTART.md) without doing any
   extra install/setup work first
 
@@ -298,6 +300,14 @@ This command treats `robot_instances.yaml` as the canonical source of robot
 identity, syncs the runtime `robot_instances.yaml`, refreshes runtime
 `control_types.yaml` and `control_interfaces.yaml`, preserves generated camera
 profiles, and prints the selected wiring document when available.
+
+Security note:
+
+- A robot can be visible on the ROS network before the control machine has synced
+  its trusted registry entry.
+- The FPV UI shows those unknown robots read-only for diagnostics/video, but it
+  blocks drive/autonomy commands until Step 5.1 syncs the robot entry back to the
+  control machine.
 
 If the camera chooser warns about probing behavior and you intentionally want
 auto-fallback behavior, enable it in that shell with:

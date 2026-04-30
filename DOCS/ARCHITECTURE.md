@@ -107,6 +107,10 @@ Design rule for future features:
 - `add_robot_core` is the preferred front door for creating or updating robot
   entries. It syncs runtime robot entries, refreshes runtime reusable core
   profiles, preserves camera profiles, and prints wiring guidance.
+- The FPV UI separates ROS discovery from trusted control. Robots visible on the
+  ROS domain but absent from the configured robot registry may appear read-only
+  for diagnostics/video; drive and autonomy commands are blocked unless the
+  explicit lab override `SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL=1` is set.
 - `wheel_test_core` validates physical wheel direction/order. Saved results are
   robot-specific GPIO overrides in `robot_instances.yaml`, not changes to the
   reusable hardware profile shared by every robot of that type.
