@@ -44,9 +44,9 @@ LOG = logging.getLogger("hardware_interface")
 
 
 class HardwareInterface:
-    """Abstraction for simple 2-channel differential motor outputs.
+    """Abstraction for H-bridge motor outputs.
 
-    This implementation focuses on the common H-bridge configuration used
+    This implementation focuses on the common H-bridge configurations used
     in our profiles. It exposes a minimal API so other modules need not
     import or depend on RPi.GPIO directly.
     """
@@ -102,7 +102,7 @@ class HardwareInterface:
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
 
-        # collect pins we expect for a 2-channel H-bridge
+        # collect pins we expect for 2-channel and mirrored 4-channel H-bridges
         pins = [
             self.gpio_map.get("in1_left"),
             self.gpio_map.get("in2_left"),
@@ -208,25 +208,30 @@ class HardwareInterface:
             self._cur_left_duty = float(left_duty)
             self._cur_right_duty = float(right_duty)
 
-        # left motor pins
-        in1 = self.gpio_map.get("in1_left")
-        in2 = self.gpio_map.get("in2_left")
-        if in1 is not None and in2 is not None:
-            GPIO.output(in1, GPIO.HIGH if left_dir > 0 else GPIO.LOW)
-            GPIO.output(in2, GPIO.LOW if left_dir > 0 else GPIO.HIGH)
+        def _set_dir(pin1, pin2, direction):
+            if pin1 is None or pin2 is None:
+                return
+            GPIO.output(pin1, GPIO.HIGH if direction > 0 else GPIO.LOW)
+            GPIO.output(pin2, GPIO.LOW if direction > 0 else GPIO.HIGH)
 
-        # right motor pins
-        in3 = self.gpio_map.get("in1_right")
-        in4 = self.gpio_map.get("in2_right")
-        if in3 is not None and in4 is not None:
-            GPIO.output(in3, GPIO.HIGH if right_dir > 0 else GPIO.LOW)
-            GPIO.output(in4, GPIO.LOW if right_dir > 0 else GPIO.HIGH)
+        def _set_pwm(pwm, duty):
+            if pwm is None:
+                return
+            pwm.ChangeDutyCycle(max(0.0, min(100.0, float(duty))))
 
-        # set PWM duty
-        if self.left_pwm is not None:
-            self.left_pwm.ChangeDutyCycle(max(0.0, min(100.0, float(self._cur_left_duty))))
-        if self.right_pwm is not None:
-            self.right_pwm.ChangeDutyCycle(max(0.0, min(100.0, float(self._cur_right_duty))))
+        _set_dir(self.gpio_map.get("in1_left"), self.gpio_map.get("in2_left"), left_dir)
+        _set_dir(self.gpio_map.get("in1_right"), self.gpio_map.get("in2_right"), right_dir)
+        _set_pwm(self.left_pwm, self._cur_left_duty)
+        _set_pwm(self.right_pwm, self._cur_right_duty)
+
+        _set_dir(self.gpio_map.get("fl_in1"), self.gpio_map.get("fl_in2"), left_dir)
+        _set_dir(self.gpio_map.get("rl_in1"), self.gpio_map.get("rl_in2"), left_dir)
+        _set_dir(self.gpio_map.get("fr_in1"), self.gpio_map.get("fr_in2"), right_dir)
+        _set_dir(self.gpio_map.get("rr_in1"), self.gpio_map.get("rr_in2"), right_dir)
+        _set_pwm(getattr(self, "fl_pwm", None), self._cur_left_duty)
+        _set_pwm(getattr(self, "rl_pwm", None), self._cur_left_duty)
+        _set_pwm(getattr(self, "fr_pwm", None), self._cur_right_duty)
+        _set_pwm(getattr(self, "rr_pwm", None), self._cur_right_duty)
 
     def set_mecanum(
         self,

@@ -194,9 +194,10 @@ profiles:
 
 
 def test_compatible_control_interfaces_prefers_matching_drive_family() -> None:
-    interfaces = ["L298N_diff", "dual_tb6612_diff", "dual_tb6612_mecanum"]
+    interfaces = ["L298N_diff", "dual_L298N_diff", "dual_tb6612_diff", "dual_tb6612_mecanum"]
     assert _compatible_control_interfaces("diff_drive", interfaces) == [
         "L298N_diff",
+        "dual_L298N_diff",
         "dual_tb6612_diff",
     ]
     assert _compatible_control_interfaces("mecanum_drive", interfaces) == [

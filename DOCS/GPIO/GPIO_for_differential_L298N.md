@@ -1,7 +1,7 @@
 # GPIO connections from L298N motor controller to Raspberry Pi 4 for differential drive chassis
 
-This mapping is aligned to `hardware_profiles.L298N_diff.gpio` in
-`config/robot_profiles.yaml` and should be treated as authoritative for this package.
+This mapping is aligned to `L298N_diff.gpio` in
+`config/control_interfaces.yaml` and should be treated as authoritative for this package.
 
 Left motor channel:
 

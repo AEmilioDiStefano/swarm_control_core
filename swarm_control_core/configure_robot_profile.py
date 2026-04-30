@@ -31,7 +31,7 @@ RobotEntry = Dict[str, Any]
 RuntimeSyncResult = Dict[str, Any]
 
 _FALLBACK_CONTROL_TYPES = ["diff_drive", "mecanum_drive"]
-_FALLBACK_CONTROL_INTERFACES = ["L298N_diff", "dual_tb6612_diff", "dual_tb6612_mecanum"]
+_FALLBACK_CONTROL_INTERFACES = ["L298N_diff", "dual_L298N_diff", "dual_tb6612_diff", "dual_tb6612_mecanum"]
 
 
 def _config_dir() -> Path:

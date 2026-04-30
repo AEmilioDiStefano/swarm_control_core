@@ -39,6 +39,32 @@ control_interfaces:
       cmd_rate_hz: 0
       pwm_slew_pct_per_s: 0
 
+  dual_L298N_diff:
+    gpio:
+      # L298N #1, Channel A -> left-front motor
+      fl_pwm: 12
+      fl_in1: 5
+      fl_in2: 6
+      # L298N #2, Channel A -> right-front motor
+      fr_pwm: 13
+      fr_in1: 16
+      fr_in2: 19
+      # L298N #1, Channel B -> left-rear motor
+      rl_pwm: 18
+      rl_in1: 20
+      rl_in2: 21
+      # L298N #2, Channel B -> right-rear motor
+      rr_pwm: 26
+      rr_in1: 23
+      rr_in2: 24
+    params:
+      pwm_hz: 1000
+      max_pwm: 100
+      pwm_ramp_ms: 40
+      pwm_deadband_pct: 0
+      cmd_rate_hz: 0
+      pwm_slew_pct_per_s: 0
+
   dual_tb6612_mecanum:
     gpio:
       fl_pwm: 12

@@ -39,6 +39,7 @@ profiles:
   robot1: {}
   robot2: {}
   robot3: {}
+  robot4: {}
   control_machine:
     source: usb
     camera_name: 'USB Camera: Azurewave Integrated Camera'

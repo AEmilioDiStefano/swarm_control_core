@@ -253,17 +253,13 @@ class MotorDriverNode(Node):
         if str(drive_type).lower() in ("mecanum", "omni", "omnidirectional", "mecanum_drive"):
             return gpio_map
 
-        # If profile already uses expected keys, return as-is
-        expected = ("en_left", "in1_left", "in2_left", "en_right", "in1_right", "in2_right")
-        if all(k in gpio_map for k in ("en_left", "in1_left", "in2_left")) or all(k in gpio_map for k in ("fl_pwm", "fr_pwm")):
-            # Map TB6612 style (fl/fr -> left/right) to en_left/en_right
-            mapped = {}
-            if "en_left" in gpio_map:
-                mapped.update(gpio_map)
-                return mapped
+        if all(k in gpio_map for k in ("en_left", "in1_left", "in2_left", "en_right", "in1_right", "in2_right")):
+            return dict(gpio_map)
+
+        if all(k in gpio_map for k in ("fl_pwm", "fl_in1", "fl_in2", "fr_pwm", "fr_in1", "fr_in2")):
+            return dict(gpio_map)
 
         mapped = {}
-        # TB6612 dual naming -> map front-left/front-right to left/right
         if "fl_pwm" in gpio_map and "fr_pwm" in gpio_map:
             mapped["en_left"] = gpio_map.get("fl_pwm")
             mapped["in1_left"] = gpio_map.get("fl_in1")

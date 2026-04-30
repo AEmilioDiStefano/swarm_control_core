@@ -96,6 +96,32 @@ robots:
         left_speed_scale: 1.04
         right_speed_scale: 1.00
 
+  robot4:
+    ssh_target: robot4@legion4.local
+    control_type: diff_drive
+    control_interface: dual_L298N_diff
+    params:
+      control_type:
+        playbook_linear_duration_scale: 1.00
+        playbook_angular_duration_scale: 1.00
+        max_linear_mps: 0.40
+        max_angular_rps: 2.0
+        spin_speed_mult: 1.0
+        left_speed_scale: 1.00
+        right_speed_scale: 1.00
+        stall_timeout_s: 0
+        stall_duty_pct: 0
+      control_interface:
+        max_pwm: 100
+        pwm_ramp_ms: 40
+        pwm_deadband_pct: 0
+        cmd_rate_hz: 0
+        pwm_slew_pct_per_s: 0
+        strict_single_cmd_vel_publisher: false
+        strict_cmd_vel_exempt_publishers:
+          - unit_executor_action_server
+        allow_rotate_bypass_safety: false
+
   robot_omni:
     ssh_target: robot_omni@legion-omni.local
     control_type: mecanum_drive
