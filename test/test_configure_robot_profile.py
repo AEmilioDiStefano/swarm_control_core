@@ -11,9 +11,20 @@ from swarm_control_core.configure_robot_profile import (
 )
 
 
+CORE_ROOT = Path(__file__).resolve().parents[1]
+
+
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def test_configure_robot_profile_does_not_claim_quickstart_ready_before_control_registration() -> None:
+    text = (CORE_ROOT / "swarm_control_core" / "configure_robot_profile.py").read_text(encoding="utf-8")
+
+    assert "This robot is ready for QUICKSTART" not in text
+    assert "Local robot profile is prepared on this robot" in text
+    assert "Register/approve this robot on the control machine" in text
 
 
 def test_ensure_robot_entry_creates_repo_and_runtime_entries(tmp_path: Path) -> None:

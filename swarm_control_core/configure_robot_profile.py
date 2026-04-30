@@ -710,12 +710,16 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     sync_specs = _suggest_control_machine_sync_specs(robot_name, entry)
     if sync_specs:
-        print("[ROBOT PROFILE] Control-machine sync source for this robot:")
+        print("[ROBOT PROFILE] Control-machine registration/approval source for this robot:")
         print(f"  {sync_specs[0]}")
         print("[ROBOT PROFILE] Explicit sync form if you want to force the robot name:")
         print(f"  {sync_specs[1]}")
 
-    print("[OK] This robot is ready for QUICKSTART.")
+    print("[OK] Local robot profile is prepared on this robot.")
+    print(
+        "[NEXT] Register/approve this robot on the control machine with "
+        "sync_robot_entries_core before expecting FPV UI drive/autonomy control."
+    )
     return 0
 
 

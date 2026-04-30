@@ -1,8 +1,9 @@
 # Setup Instructions: Software
 
-This guide takes a control machine plus one or more freshly imaged Ubuntu
-24.04 robot machines from first boot to a state that is ready for the live
-local/LAN bringup in [QUICKSTART.md](./QUICKSTART.md).
+This guide is the full software setup path for a control machine plus one or
+more freshly imaged Ubuntu 24.04 robot machines. A robot is not considered
+ready for the live local/LAN bringup in [QUICKSTART.md](./QUICKSTART.md) until
+it has been registered/approved on the control machine and verified below.
 
 When you finish this guide:
 
@@ -11,15 +12,17 @@ When you finish this guide:
 - required dependencies, including ROS 2 Jazzy, will be installed as needed
 - `swarm_control_core` will be built in the workspace on every machine
 - runtime config will be seeded into `~/.config/swarm_control_core/`
-- each robot will have a matching `robot_instances.yaml` entry
-- the control machine will have synced robot entries for UI metadata and
-  per-robot tuning
+- each robot will have a local `robot_instances.yaml` entry describing its own
+  drive type, hardware interface, and SSH target
+- the control machine will have registered/approved those robot entries for UI
+  trust, metadata, and per-robot tuning
 - GPIO access will be prepared on each robot
 - each robot will have a saved camera profile
 - the UI will only allow control of robots that are present in the trusted
   control-machine `robot_instances.yaml`
-- you can continue with [QUICKSTART.md](./QUICKSTART.md) without doing any
-  extra install/setup work first
+- you can continue with [QUICKSTART.md](./QUICKSTART.md) only after the
+  registration/approval step confirms the control machine can recognize the
+  robots as trusted
 
 ## Assumptions
 
@@ -228,10 +231,11 @@ else
 fi
 ```
 
-At this point the robot terminal is in the same prepared state expected by the
-quickstart.
+At this point the robot terminal has the shell/workspace environment expected
+by the later quickstart, but the robot has not been added or approved for
+control yet.
 
-## 4. Add or Update the Robot Profile
+## 4. Add or Update the Robot's Local Profile
 
 Run this in each prepared robot SSH terminal:
 
@@ -297,16 +301,20 @@ process in [`control_interface_profiles.md`](./control_interface_profiles.md)
 before running `add_robot_core`.
 
 This command treats `robot_instances.yaml` as the canonical source of robot
-identity, syncs the runtime `robot_instances.yaml`, refreshes runtime
-`control_types.yaml` and `control_interfaces.yaml`, preserves generated camera
-profiles, and prints the selected wiring document when available.
+identity on the robot, syncs that robot's runtime `robot_instances.yaml`,
+refreshes runtime `control_types.yaml` and `control_interfaces.yaml`, preserves
+generated camera profiles, and prints the selected wiring document when
+available.
+
+This is a local robot-profile step only. The robot is not approved for FPV UI
+drive/autonomy control until Step 5.1 registers it on the control machine.
 
 Security note:
 
-- A robot can be visible on the ROS network before the control machine has synced
-  its trusted registry entry.
+- A robot can be visible on the ROS network before the control machine has
+  registered and approved its trusted registry entry.
 - The FPV UI shows those unknown robots read-only for diagnostics/video, but it
-  blocks drive/autonomy commands until Step 5.1 syncs the robot entry back to the
+  blocks drive/autonomy commands until Step 5.1 registers the robot on the
   control machine.
 
 If the camera chooser warns about probing behavior and you intentionally want
@@ -365,7 +373,7 @@ Saved overrides are robot-specific. They are useful for wiring differences on
 one physical robot without changing the reusable hardware profile for every
 robot of that type.
 
-## 5. Readiness Check
+## 5. Local Robot Readiness Check
 
 Run this in each prepared robot SSH terminal after Step 4:
 
@@ -394,7 +402,7 @@ What this command does:
 - checks runtime `control_types.yaml` and `control_interfaces.yaml` for stale
   copies
 - reports whether a generated camera profile exists
-- prints control-machine sync hints
+- prints control-machine registration/approval hints
 
 If the doctor reports stale runtime core profiles, repair them with:
 
@@ -407,10 +415,11 @@ ros2 run swarm_control_core robot_doctor_core \
   --repair
 ```
 
-### 5.1 Sync Robot Entries Back to the Control Machine
+### 5.1 Register and Approve New Robots on the Control Machine
 
-After Step 5 has been completed on every robot, run this in the
-control-machine terminal:
+After Step 5 has been completed on every robot, register and approve each new
+robot from the control-machine terminal. This is the trust gate that allows the
+FPV UI to control the robot.
 
 ### CONTROL MACHINE:
 
@@ -424,16 +433,34 @@ set -u || true
 ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
 ```
 
-What this command does:
+When prompted, enter one source per line, then press Enter on a blank line when
+finished.
+
+Accepted source forms:
+
+- `robot_user@robot_host.local`
+- `robot_name=robot_user@robot_host.local`
+
+Examples:
+
+- `robot1@legion1.local`
+- `robot4=robot4@legion4.local`
+- `robot5=robot5@legion5.local`
+
+Non-interactive form for known robots:
+
+### CONTROL MACHINE:
+
+```bash
+ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS" \
+  --source robot4=robot4@legion4.local \
+  --source robot5=robot5@legion5.local
+```
+
+What this approval command does:
 
 - prompts for the robot sources that should be synced back to the control
   machine
-- accepts one source per line in either of these forms:
-  - `robot_user@robot_host.local`
-  - `robot_name=robot_user@robot_host.local`
-- examples:
-  - `robot1@legion1.local`
-  - `my_robot=robot1@legion1.local`
 - SSHes into each robot
 - pulls that robot's active runtime `robot_instances.yaml`
 - selects the matching robot entry automatically in the common case
@@ -445,12 +472,43 @@ What this command does:
 Use the `robot_name=ssh_target` form if you intentionally set
 `SWARM_CORE_ROBOT_NAME` to something different from the robot's Linux username.
 
-Step 5 on each robot now prints the exact sync source strings that this step
-can accept.
+Security behavior:
+
+- Newly discovered robots are allowed to publish camera/video and diagnostics.
+- Drive and autonomy commands are blocked until this registration step approves
+  the robot into the control-machine `robot_instances.yaml`.
+- After approving new robots, restart the local FPV UI so it reloads the trusted
+  robot registry.
+- Do not use `SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL=1` except for short,
+  trusted-lab debugging sessions.
+
+Only after this step should a new robot be considered added/approved for
+control-machine FPV UI control. Step 5 on each robot prints the exact source
+strings that this step can accept.
 
 ## 6. Quick Verification Before the Live Session
 
-Run this in each prepared robot SSH terminal:
+First verify each approved robot from the control-machine terminal. Replace the
+example robot names with the robots you just registered:
+
+### CONTROL MACHINE:
+
+```bash
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot robot4
+ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot robot5
+```
+
+The doctor should report `source_entry: present` and `robot_entry: current` for
+the control-machine runtime `robot_instances.yaml`. If either robot is missing
+or stale here, rerun Step 5.1 before opening the FPV UI.
+
+Then run this in each prepared robot SSH terminal:
 
 ### ROBOT(S):
 
@@ -480,7 +538,8 @@ ros2 pkg executables swarm_control_core | rg "_core$"
 
 ## 7. Handoff to QUICKSTART
 
-After this guide, the machines are ready for the live local FPV/control flow in
+After Step 5.1 registration/approval and Step 6 verification succeed, the
+machines are ready for the live local FPV/control flow in
 [QUICKSTART.md](./QUICKSTART.md).
 
 Recommended handoff:

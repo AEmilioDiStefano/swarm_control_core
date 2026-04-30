@@ -25,6 +25,19 @@ def test_setup_instructions_use_idempotent_setup_bootstrap():
     assert "swarm_core_setup_bootstrap.sh" in text
     assert "## 1. Workspace Creation / Checkout" not in text
     assert "## 2. Workspace Bootstrap in Each Terminal" not in text
+    assert "## 4. Add or Update the Robot's Local Profile" in text
+    assert "### 5.1 Register and Approve New Robots on the Control Machine" in text
+    assert "registration/approval step confirms" in text
+    assert "This is a local robot-profile step only" in text
+    assert "After Step 5.1 registration/approval and Step 6 verification succeed" in text
+
+
+def test_quickstart_ready_message_lives_after_control_machine_registration():
+    add_robot_text = (CORE_ROOT / "swarm_control_core" / "configure_robot_profile.py").read_text(encoding="utf-8")
+    sync_text = (CORE_ROOT / "swarm_control_core" / "sync_robot_entries.py").read_text(encoding="utf-8")
+
+    assert "ready for QUICKSTART" not in add_robot_text
+    assert "Registered/approved robots are ready for QUICKSTART handoff" in sync_text
 
 
 def test_setup_instructions_label_every_bash_block_with_machine_type():

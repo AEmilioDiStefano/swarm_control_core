@@ -465,7 +465,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("[SYNC] Imported robot entry:")
         print(textwrap.indent(json.dumps({robot_name: entry}, indent=2, sort_keys=False), "  "))
 
-    print("[OK] Control-machine robot entry sync complete.")
+    print("[OK] Control-machine robot registration/approval complete.")
+    print("[OK] Registered/approved robots are ready for QUICKSTART handoff.")
+    print("[NEXT] Restart the FPV UI so it reloads the trusted robot registry before driving.")
     return 0
 
 
