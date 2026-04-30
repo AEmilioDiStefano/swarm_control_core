@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import os
+import shutil
 import socket
 import sys
 import textwrap
@@ -32,6 +33,8 @@ RuntimeSyncResult = Dict[str, Any]
 
 _FALLBACK_CONTROL_TYPES = ["diff_drive", "mecanum_drive"]
 _FALLBACK_CONTROL_INTERFACES = ["L298N_diff", "dual_L298N_diff", "dual_tb6612_diff", "dual_tb6612_mecanum"]
+
+_CORE_PROFILE_FILES = ("control_types.yaml", "control_interfaces.yaml")
 
 
 def _config_dir() -> Path:
@@ -141,6 +144,70 @@ def _compatible_control_interfaces(control_type: str, interfaces: Sequence[str])
     return pool
 
 
+def _load_control_interface_metadata(path: Path, name: str) -> Dict[str, Any]:
+    data = _load_yaml_mapping(path, path.name, {"schema_version": "1.0", "control_interfaces": {}})
+    interfaces = data.get("control_interfaces", {}) or {}
+    if not isinstance(interfaces, dict):
+        return {}
+    entry = interfaces.get(name, {}) or {}
+    return entry if isinstance(entry, dict) else {}
+
+
+def wiring_doc_for_interface(control_interfaces_path: Path, control_interface: str) -> str:
+    entry = _load_control_interface_metadata(control_interfaces_path, control_interface)
+    docs = entry.get("docs", {}) or {}
+    if isinstance(docs, dict):
+        value = str(docs.get("wiring", "") or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def refresh_runtime_core_profiles(workspace_root: Path, runtime_profiles_paths: Sequence[Path]) -> List[RuntimeSyncResult]:
+    """
+    Refresh reusable core profile files next to runtime robot_instances.yaml.
+
+    Camera profiles are intentionally excluded because they are generated from
+    robot-local discovery and should not be overwritten by repo templates.
+    """
+    source_dir = workspace_root / "src" / "swarm_control_core" / "config"
+    runtime_dirs = []
+    seen = set()
+    for runtime_path in runtime_profiles_paths:
+        runtime_dir = Path(runtime_path).expanduser().parent
+        key = str(runtime_dir)
+        if key in seen:
+            continue
+        seen.add(key)
+        runtime_dirs.append(runtime_dir)
+
+    results: List[RuntimeSyncResult] = []
+    for runtime_dir in runtime_dirs:
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        for filename in _CORE_PROFILE_FILES:
+            src = source_dir / filename
+            dst = runtime_dir / filename
+            if not src.exists():
+                results.append({"path": dst, "state": "missing_source", "repaired": False})
+                continue
+            previous = dst.read_text(encoding="utf-8") if dst.exists() else None
+            next_text = src.read_text(encoding="utf-8")
+            if previous == next_text:
+                results.append({"path": dst, "state": "already_synced", "repaired": False})
+                continue
+            shutil.copyfile(src, dst)
+            try:
+                dst.chmod(0o644)
+            except Exception:
+                pass
+            results.append({
+                "path": dst,
+                "state": "missing_file" if previous is None else "stale_file",
+                "repaired": True,
+            })
+    return results
+
+
 def _prompt_choice(
     label: str,
     options: Sequence[str],
@@ -217,8 +284,9 @@ def _build_robot_entry(
     hostname: str,
 ) -> RobotEntry:
     host = str(hostname or "").strip() or robot_name
-    host = host.split(".")[0]
-    ssh_target = f"{linux_username}@{host}.local"
+    if "." not in host and ":" not in host:
+        host = f"{host}.local"
+    ssh_target = f"{linux_username}@{host}"
     return {
         "ssh_target": ssh_target,
         "control_type": str(control_type).strip(),
@@ -238,6 +306,7 @@ def ensure_robot_entry(
     control_interface: str = "",
     linux_username: str = "",
     hostname: str = "",
+    update_existing: bool = False,
 ) -> tuple[RobotEntry, bool, List[RuntimeSyncResult]]:
     repo_registry = _load_robot_registry(repo_profiles_path)
     repo_robots = repo_registry.get("robots", {}) or {}
@@ -309,6 +378,47 @@ def ensure_robot_entry(
         created = True
     else:
         entry = dict(entry)
+        requested_control_type = str(control_type or "").strip()
+        requested_control_interface = str(control_interface or "").strip()
+        if update_existing and (requested_control_type or requested_control_interface):
+            control_type_names = _load_named_options(
+                control_types_path,
+                "control_types",
+                _FALLBACK_CONTROL_TYPES,
+            )
+            control_interface_names = _load_named_options(
+                control_interfaces_path,
+                "control_interfaces",
+                _FALLBACK_CONTROL_INTERFACES,
+            )
+            selected_control_type = requested_control_type or str(entry.get("control_type", "")).strip()
+            if selected_control_type not in control_type_names:
+                raise ValueError(
+                    f"Unsupported control_type '{selected_control_type}'. Valid options: {', '.join(control_type_names)}"
+                )
+            compatible_interfaces = _compatible_control_interfaces(selected_control_type, control_interface_names)
+            selected_control_interface = requested_control_interface or str(entry.get("control_interface", "")).strip()
+            if selected_control_interface not in compatible_interfaces:
+                valid = ", ".join(compatible_interfaces)
+                raise ValueError(
+                    f"Unsupported control_interface '{selected_control_interface}' for control_type '{selected_control_type}'. "
+                    f"Valid options: {valid}"
+                )
+            entry["control_type"] = selected_control_type
+            entry["control_interface"] = selected_control_interface
+            if linux_username or hostname:
+                username = str(linux_username or "").strip() or str(entry.get("ssh_target", "")).split("@")[0] or getpass.getuser()
+                detected_host = str(hostname or "").strip() or socket.gethostname()
+                entry["ssh_target"] = _build_robot_entry(
+                    robot_name,
+                    selected_control_type,
+                    selected_control_interface,
+                    linux_username=username,
+                    hostname=detected_host,
+                )["ssh_target"]
+            repo_robots[robot_name] = entry
+            repo_registry["robots"] = repo_robots
+            _write_yaml(repo_profiles_path, repo_registry)
 
     sync_results: List[RuntimeSyncResult] = []
     for runtime_path in runtime_profiles_paths:
@@ -410,11 +520,28 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--workspace", default="", help="Workspace root containing src/swarm_control_core")
     parser.add_argument("--robot", default="", help="Robot name (defaults to SWARM_CORE_ROBOT_NAME / Linux username)")
+    parser.add_argument("--linux-username", default="", help="Linux username for ssh_target when creating/updating entry")
+    parser.add_argument("--hostname", default="", help="Hostname for ssh_target when creating/updating entry")
     parser.add_argument("--control-type", default="", help="Preselect control_type when creating a new robot entry")
     parser.add_argument(
         "--control-interface",
         default="",
         help="Preselect control_interface when creating a new robot entry",
+    )
+    parser.add_argument(
+        "--update-existing",
+        action="store_true",
+        help="Apply explicit --control-type/--control-interface values to an existing robot entry.",
+    )
+    parser.add_argument(
+        "--skip-camera-profile",
+        action="store_true",
+        help="Do not launch camera profile discovery if this robot has no camera profile yet.",
+    )
+    parser.add_argument(
+        "--no-refresh-core-profiles",
+        action="store_true",
+        help="Do not refresh runtime control_types.yaml/control_interfaces.yaml from the source tree.",
     )
     args = parser.parse_args(argv)
 
@@ -458,8 +585,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             prompt_input=prompt_input,
             control_type=str(args.control_type or "").strip(),
             control_interface=str(args.control_interface or "").strip(),
-            linux_username=getpass.getuser(),
-            hostname=socket.gethostname(),
+            linux_username=str(args.linux_username or "").strip(),
+            hostname=str(args.hostname or "").strip(),
+            update_existing=bool(args.update_existing),
         )
     except Exception as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
@@ -476,20 +604,27 @@ def main(argv: Optional[List[str]] = None) -> int:
         except Exception:
             pass
 
+    core_profile_results: List[RuntimeSyncResult] = []
+    if not args.no_refresh_core_profiles:
+        core_profile_results = refresh_runtime_core_profiles(workspace_root, runtime_robot_instances)
+
     camera_profiles_path = _active_camera_profiles_path()
 
     def _save_camera(robot: str, path: Path) -> int:
         return save_camera_profile_main(["--robot", robot, "--camera-profiles", str(path)])
 
-    try:
-        camera_entry, created_camera = ensure_camera_profile(
-            camera_profiles_path=camera_profiles_path,
-            robot_name=robot_name,
-            save_callback=_save_camera,
-        )
-    except Exception as exc:
-        print(f"[ERROR] {exc}", file=sys.stderr)
-        return 2
+    camera_entry: Dict[str, Any] = {}
+    created_camera = False
+    if not args.skip_camera_profile:
+        try:
+            camera_entry, created_camera = ensure_camera_profile(
+                camera_profiles_path=camera_profiles_path,
+                robot_name=robot_name,
+                save_callback=_save_camera,
+            )
+        except Exception as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            return 2
 
     state_text = "created" if created_robot else "already present"
     print(f"[ROBOT PROFILE] robot={robot_name}")
@@ -516,12 +651,29 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"[ROBOT PROFILE] Runtime robot entry repaired successfully at {runtime_path}.")
         else:
             print(f"[ROBOT PROFILE] Runtime robot entry already matched baseline at {runtime_path}.")
+    for result in core_profile_results:
+        path = result["path"]
+        state = str(result.get("state", "")).strip()
+        if state == "already_synced":
+            print(f"[ROBOT PROFILE] Runtime core profile already current: {path}")
+        elif result.get("repaired"):
+            print(f"[ROBOT PROFILE] Runtime core profile refreshed: {path}")
+        else:
+            print(f"[ROBOT PROFILE] Runtime core profile check failed ({state}): {path}")
     _print_yaml_block("[ROBOT PROFILE] robot_instances.yaml entry:", {robot_name: entry})
 
-    camera_state = "created" if created_camera else "already present"
-    _print_wrapped("  camera_profile_state: ", camera_state)
-    _print_wrapped("  camera_profiles_path: ", camera_profiles_path)
-    _print_yaml_block("[ROBOT PROFILE] camera profile:", {robot_name: camera_entry})
+    wiring_doc = wiring_doc_for_interface(control_interfaces_path, str(entry.get("control_interface", "")).strip())
+    if wiring_doc:
+        _print_wrapped("  wiring_doc: ", wiring_doc)
+
+    if args.skip_camera_profile:
+        _print_wrapped("  camera_profile_state: ", "skipped")
+        _print_wrapped("  camera_profiles_path: ", camera_profiles_path)
+    else:
+        camera_state = "created" if created_camera else "already present"
+        _print_wrapped("  camera_profile_state: ", camera_state)
+        _print_wrapped("  camera_profiles_path: ", camera_profiles_path)
+        _print_yaml_block("[ROBOT PROFILE] camera profile:", {robot_name: camera_entry})
 
     sync_specs = _suggest_control_machine_sync_specs(robot_name, entry)
     if sync_specs:

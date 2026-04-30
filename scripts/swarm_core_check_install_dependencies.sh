@@ -118,153 +118,29 @@ write_summary_file() {
   } > "$out_file"
 }
 
-repeat_char() {
-  local char="$1"
-  local count="${2:-0}"
-  local out=""
-  if (( count <= 0 )); then
-    printf '%s' ""
-    return 0
-  fi
-  printf -v out '%*s' "$count" ''
-  printf '%s' "${out// /$char}"
-}
-
-truncate_for_progress() {
-  local text="$1"
-  local max_len="${2:-0}"
-  if (( max_len <= 0 )); then
-    printf '%s' ""
-    return 0
-  fi
-  if (( ${#text} <= max_len )); then
-    printf '%s' "$text"
-    return 0
-  fi
-  if (( max_len <= 3 )); then
-    printf '%.*s' "$max_len" "$text"
-    return 0
-  fi
-  printf '%s...' "${text:0:max_len-3}"
-}
-
-progress_printf() {
-  if [[ "$progress_fd" == "2" ]]; then
-    printf "$@" >&2
-  else
-    printf "$@" >&1
-  fi
-}
-
-progress_render() {
-  local total=0
-  local done=0
+progress_percent() {
+  local total=$((progress_total_weight))
+  local done=$((progress_completed_weight))
   local percent=0
-  local bar_width=12
-  local filled=0
-  local complete=""
-  local remaining=""
-  local bar=""
-  local percent_text=""
-  local label_width=0
-  local label=""
-  local line=""
-
-  [[ "$progress_enabled" == "1" ]] || return 0
-
-  total=$((progress_total_weight))
-  done=$((progress_completed_weight))
   if (( total > 0 )); then
     percent=$(( done * 100 / total ))
   fi
   if (( percent > 100 )); then
     percent=100
   fi
+  printf '%d%%' "$percent"
+}
 
-  if (( progress_cols >= 100 )); then
-    bar_width=40
-  elif (( progress_cols >= 80 )); then
-    bar_width=30
-  elif (( progress_cols >= 60 )); then
-    bar_width=20
-  fi
-
-  if (( total > 0 )); then
-    filled=$(( done * bar_width / total ))
-  fi
-  if (( filled > bar_width )); then
-    filled=$bar_width
-  fi
-
-  complete="$(repeat_char '#' "$filled")"
-  if (( done >= total )); then
-    remaining="$(repeat_char '#' "$((bar_width - filled))")"
-    bar="${complete}${remaining}"
-  else
-    remaining="$(repeat_char '.' "$((bar_width - filled - 1))")"
-    bar="${complete}>${remaining}"
-  fi
-
-  printf -v percent_text '%3d%%' "$percent"
-  label_width=$(( progress_cols - bar_width - ${#percent_text} - 6 ))
-  if (( label_width < 0 )); then
-    label_width=0
-  fi
-  label="$(truncate_for_progress "$progress_current_label" "$label_width")"
-  line="[${bar}] ${percent_text}"
-  if [[ -n "$label" ]]; then
-    line="${line} ${label}"
-  fi
-
-  progress_printf '\0337'
-  progress_printf '\033[%d;1H' "$progress_lines"
-  progress_printf '\033[2K%s' "$line"
-  progress_printf '\0338'
+progress_render() {
+  return 0
 }
 
 progress_cleanup() {
-  [[ "$progress_enabled" == "1" ]] || return 0
-  progress_printf '\033[%d;1H' "$progress_lines"
-  progress_printf '\033[2K'
-  progress_printf '\033[r\033[?25h\r\n'
-  trap - EXIT
   progress_enabled="0"
 }
 
 progress_init() {
-  local tty_size=""
-
-  if [[ -t 2 ]]; then
-    progress_fd="2"
-  elif [[ -t 1 ]]; then
-    progress_fd="1"
-  else
-    return 0
-  fi
-
-  if [[ "$progress_fd" == "2" ]]; then
-    tty_size="$(stty size <&2 2>/dev/null || true)"
-  else
-    tty_size="$(stty size <&1 2>/dev/null || true)"
-  fi
-  if [[ -z "$tty_size" ]]; then
-    progress_fd=""
-    return 0
-  fi
-
-  read -r progress_lines progress_cols <<<"$tty_size"
-  if (( progress_lines < 8 || progress_cols < 72 )); then
-    progress_fd=""
-    progress_lines="0"
-    progress_cols="0"
-    return 0
-  fi
-
   progress_enabled="1"
-  trap progress_cleanup EXIT
-  progress_printf '\033[?25l'
-  progress_printf '\033[1;%dr' "$((progress_lines - 1))"
-  progress_render
 }
 
 run_progress_step() {
@@ -275,6 +151,7 @@ run_progress_step() {
 
   progress_current_label="$label"
   progress_render
+  dependency_log "START ($(progress_percent)): ${label}"
 
   if "$@"; then
     step_status=0
@@ -284,6 +161,11 @@ run_progress_step() {
 
   progress_completed_weight=$(( progress_completed_weight + weight ))
   progress_render
+  if (( step_status == 0 )); then
+    dependency_log "OK ($(progress_percent)): ${label}"
+  else
+    dependency_log "FAILED ($(progress_percent), exit=${step_status}): ${label}"
+  fi
   return "$step_status"
 }
 

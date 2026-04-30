@@ -227,7 +227,7 @@ fi
 At this point the robot terminal is in the same prepared state expected by the
 quickstart.
 
-## 4. Save a Camera Profile on Each Robot
+## 4. Add or Update the Robot Profile
 
 Run this in each prepared robot SSH terminal:
 
@@ -243,13 +243,18 @@ source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
 
-ros2 run swarm_control_core save_camera_profile_core --robot "$ROBOT_NAME"
+ros2 run swarm_control_core add_robot_core \
+  --workspace "$WS" \
+  --name "$ROBOT_NAME"
 ```
 
 What to do here:
 
-- choose the camera entry that robot should use
-- confirm the saved profile lands in
+- choose the robot `control_type` and `control_interface` if this robot is not
+  already in the canonical `robot_instances.yaml`
+- choose the camera entry that robot should use if no generated camera profile
+  exists yet
+- confirm generated camera data lands in
   `~/.config/swarm_control_core/camera_profiles.yaml`
 
 If you want the runtime robot name to be something other than the Linux
@@ -258,10 +263,23 @@ above, and keep using that same value later in the quickstart robot terminal.
 `ROBOT_NAME` is a convenience alias for manual diagnostic commands in the
 current shell.
 
-If you want the robot to use one of the named entries already present in
-`~/.config/swarm_control_core/robot_instances.yaml`, set
-`SWARM_CORE_ROBOT_NAME` to that same entry key before saving the camera
-profile and before launching the robot in quickstart.
+If you already know the selected hardware profile, pass it explicitly. Example
+for the four-channel dual-L298N robot4 profile:
+
+### ROBOT(S):
+
+```bash
+ros2 run swarm_control_core add_robot_core \
+  --workspace "$WS" \
+  --name "$ROBOT_NAME" \
+  --control-type diff_drive \
+  --control-interface dual_L298N_diff
+```
+
+This command treats `robot_instances.yaml` as the canonical source of robot
+identity, syncs the runtime `robot_instances.yaml`, refreshes runtime
+`control_types.yaml` and `control_interfaces.yaml`, preserves generated camera
+profiles, and prints the selected wiring document when available.
 
 If the camera chooser warns about probing behavior and you intentionally want
 auto-fallback behavior, enable it in that shell with:
@@ -272,9 +290,9 @@ auto-fallback behavior, enable it in that shell with:
 export SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK=1
 ```
 
-## 5. Final Robot Profile Registration and Readiness Check
+## 5. Readiness Check
 
-Run this in each prepared robot SSH terminal after the camera save step:
+Run this in each prepared robot SSH terminal after Step 4:
 
 ### ROBOT(S):
 
@@ -288,25 +306,31 @@ source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
 
-ros2 run swarm_control_core configure_robot_profile_core \
+ros2 run swarm_control_core robot_doctor_core \
   --workspace "$WS" \
   --robot "$ROBOT_NAME"
 ```
 
 What this command does:
 
-- checks whether this robot already has an entry in
-  `"$WS/src/swarm_control_core/config/robot_instances.yaml"`
-- if the entry already exists, prints it and syncs it into the active runtime
-  `robot_instances.yaml`
-- if the entry does not exist yet, guides you through creating it interactively
-  using the current core-supported `control_type` and `control_interface`
-  options
-- auto-fills `ssh_target` from the current Linux username and hostname
-- checks whether this robot already has a camera profile and launches the
-  camera chooser automatically if one is still missing
-- finishes by printing a ready message when the robot is prepared for
-  [QUICKSTART.md](./QUICKSTART.md)
+- verifies the canonical source robot entry exists
+- verifies the selected `control_interface` exists in source profiles
+- checks runtime `robot_instances.yaml`
+- checks runtime `control_types.yaml` and `control_interfaces.yaml` for stale
+  copies
+- reports whether a generated camera profile exists
+- prints control-machine sync hints
+
+If the doctor reports stale runtime core profiles, repair them with:
+
+### ROBOT(S):
+
+```bash
+ros2 run swarm_control_core robot_doctor_core \
+  --workspace "$WS" \
+  --robot "$ROBOT_NAME" \
+  --repair
+```
 
 ### 5.1 Sync Robot Entries Back to the Control Machine
 

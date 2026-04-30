@@ -10,12 +10,13 @@ source "${SCRIPT_DIR}/lib/swarm_core_quickstart_common.sh"
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_core_quickstart_step2.sh [--robot-name <name>] [--domain-id <id>] [--skip-camera-profile]
+  swarm_core_quickstart_step2.sh [--robot-name <name>] [--domain-id <id>] [--control-type <name>] [--control-interface <name>] [--skip-camera-profile]
 
 Behavior:
   - Runs the robot-side quickstart prep in one script.
   - Applies compat reset and robot identity defaults.
   - Verifies ufw state and disables Wi-Fi power save when possible.
+  - Ensures the canonical robot entry exists and runtime core profiles are current.
   - Runs interactive camera profile save unless --skip-camera-profile is used.
   - Launches robot bringup and stays attached to it.
 USAGE
@@ -24,6 +25,8 @@ USAGE
 robot_name="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
 domain_id="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
 skip_camera_profile="0"
+control_type=""
+control_interface=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,6 +37,14 @@ while [[ $# -gt 0 ]]; do
     --domain-id)
       shift
       domain_id="${1:-}"
+      ;;
+    --control-type)
+      shift
+      control_type="${1:-}"
+      ;;
+    --control-interface)
+      shift
+      control_interface="${1:-}"
       ;;
     --skip-camera-profile)
       skip_camera_profile="1"
@@ -76,8 +87,19 @@ fi
 
 swarm_core_qs_source_ros_overlay "$WS"
 
+add_robot_args=(--workspace "$WS" --name "$robot_name" --skip-camera)
+if [[ -n "$control_type" ]]; then
+  add_robot_args+=(--control-type "$control_type")
+fi
+if [[ -n "$control_interface" ]]; then
+  add_robot_args+=(--control-interface "$control_interface")
+fi
+ros2 run swarm_control_core add_robot_core "${add_robot_args[@]}"
+
 if [[ "$skip_camera_profile" != "1" ]]; then
   ros2 run swarm_control_core save_camera_profile_core --robot "$robot_name"
 fi
+
+ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot "$robot_name"
 
 exec "${SCRIPT_DIR}/swarm_core_run_robot.sh" "$robot_name"

@@ -35,7 +35,9 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
+            "add_robot_core = swarm_control_core.add_robot:main",
             "configure_robot_profile_core = swarm_control_core.configure_robot_profile:main",
+            "robot_doctor_core = swarm_control_core.robot_doctor:main",
             "sync_robot_entries_core = swarm_control_core.sync_robot_entries:main",
             "swarm_fpv_ui_core = swarm_control_core.swarm_fpv_ui:main",
             "motor_driver_node_core = swarm_control_core.motor_driver_node:main",

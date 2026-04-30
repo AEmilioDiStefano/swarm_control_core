@@ -73,6 +73,7 @@ If you are building and preparing the reference robot from scratch, start with:
 ## Documentation
 
 - Quickstart: [DOCS/QUICKSTART.md](./DOCS/QUICKSTART.md)
+- Add/update robots: [DOCS/add_robot.md](./DOCS/add_robot.md)
 - Assembly setup: [DOCS/setup_instructions_ASSEMBLY.md](./DOCS/setup_instructions_ASSEMBLY.md)
 - Software setup: [DOCS/setup_instructions_SOFTWARE.md](./DOCS/setup_instructions_SOFTWARE.md)
 - GPIO wiring guides: [DOCS/GPIO/README.md](./DOCS/GPIO/README.md)
@@ -87,7 +88,7 @@ If you are building and preparing the reference robot from scratch, start with:
 - `swarm_control_core/`: ROS 2 Python package and UI server
 - `swarm_launch/`: robot and UI launch files
 - `scripts/`: bootstrap, reset, runtime, and release-gate tooling
-- `config/`: baseline robot, control, interface, and camera profile templates
+- `config/`: canonical robot registry plus reusable control/interface/camera defaults
 - `DOCS/`: runbooks, GPIO wiring guides, architecture notes, and ADRs
 
 ## Contact
@@ -95,8 +96,8 @@ If you are building and preparing the reference robot from scratch, start with:
 - Commercial licensing: `emilio@vitruvian.systems`
 - Security reports: see [SECURITY.md](./SECURITY.md)
 
-<br> 
-<br> 
+<br>
+<br>
 
 <p align="center">
   <img src="media/hide-and-seek-GIF.gif" alt="Hide and seek demo">

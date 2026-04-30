@@ -86,9 +86,22 @@ Design rule for future features:
 
 ## Configuration Model
 
-- Robot behavior is profile-driven from `config/*.yaml`.
-- Runtime overrides can be placed in machine-local config paths.
-- Camera profile persistence is supported through `save_camera_profile_core`.
+- `config/robot_instances.yaml` is the canonical robot registry: robot name,
+  SSH target, control type, selected hardware/control interface, and per-robot
+  tuning belong there.
+- `config/control_types.yaml` and `config/control_interfaces.yaml` are reusable
+  component/profile libraries. Hardware profiles can declare a `docs.wiring`
+  pointer so operator tools can print the correct wiring guide automatically.
+- `camera_profiles.yaml` is generated robot-local state. It records detected
+  camera choices from `save_camera_profile_core`; robots do not need empty
+  placeholders in the repository template.
+- `add_robot_core` is the preferred front door for creating or updating robot
+  entries. It syncs runtime robot entries, refreshes runtime reusable core
+  profiles, preserves camera profiles, and prints wiring guidance.
+- `robot_doctor_core` reports source/runtime/install drift, including stale
+  `control_interfaces.yaml` files that would hide newly added hardware profiles.
+- Runtime overrides can still be placed in machine-local config paths when a
+  deployment intentionally diverges from the source baseline.
 
 ## Safety and Constraints
 

@@ -17,6 +17,7 @@ Active ADRs:
 - [ADR-0005: Local/LAN Runtime Stabilization](./ADR-0005-runtime-stabilization.md)
 - [ADR-0008: Per-Robot Fault Isolation In Local FPV Sessions](./ADR-0008-per-robot-fault-isolation.md)
 - [ADR-0009: Transport Resource Isolation And Optional Discovery Modes](./ADR-0009-transport-resource-isolation-and-discovery-modes.md)
+- [ADR-0010: Canonical Robot Registry and Generated Runtime Profiles](./ADR-0010-canonical-robot-registry.md)
 
 Companion validation doc:
 - [LOW_LATENCY_VALIDATION.md](../LOW_LATENCY_VALIDATION.md)

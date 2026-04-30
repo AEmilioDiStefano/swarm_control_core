@@ -168,12 +168,18 @@ Behavior of the step-2 wrapper:
 - leaves `ROBOT_NAME` available in this shell for follow-up diagnostics when
   you set it before running the wrapper
 - checks firewall/power-save state
+- ensures the canonical `robot_instances.yaml` entry exists
+- refreshes runtime `control_types.yaml` and `control_interfaces.yaml` from the
+  source tree while preserving generated camera profiles
+- prints the selected hardware profile's wiring document when available
 - runs the interactive camera-profile save
 - launches robot bringup and stays attached to it
 
 Optional:
 - if you already trust the saved camera profile and want to skip the interactive camera menu:
   `"$SC/scripts/swarm_core_quickstart_step2.sh" --skip-camera-profile`
+- if this is a new robot with a known hardware profile, preselect it:
+  `"$SC/scripts/swarm_core_quickstart_step2.sh" --control-type diff_drive --control-interface dual_L298N_diff`
 
 Runtime config seeding behavior:
 - `swarm_core_run_robot.sh` seeds missing runtime config files from
@@ -181,9 +187,10 @@ Runtime config seeding behavior:
 - Existing runtime files are kept by default, including
   `robot_instances.yaml`, `control_types.yaml`, `control_interfaces.yaml`,
   and `camera_profiles.yaml`.
-- If you want to refresh the core profile files while preserving
-  `camera_profiles.yaml`, run:
-  `"$WS/src/swarm_control_core/scripts/swarm_core_seed_runtime_config.sh" --workspace "$WS" --overwrite-core-profiles`
+- Step 2 and `add_robot_core` refresh reusable core profile files while
+  preserving `camera_profiles.yaml`.
+- To diagnose stale source/runtime profile state manually, run:
+  `"$WS/src/swarm_control_core/scripts/swarm_core_robot_doctor.sh" --robot "$ROBOT_NAME"`
 
 ### Verify success
 
