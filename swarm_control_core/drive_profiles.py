@@ -531,11 +531,15 @@ def resolve_robot_profile(reg: Dict[str, Any], robot_name: str) -> Dict[str, Any
     hw = hardware_profiles[hw_profile_name] or {}
     capabilities = capability_profiles.get(capability_profile_name, {}) if capability_profile_name else {}
     adapter_profile = adapter_profiles.get(adapter_profile_name, {}) or {}
+    gpio_map = dict(hw.get("gpio", {}) or {})
 
     # Merge params with optional per-robot overrides (if present).
     drive_params = dict(drive.get("params", {}) or {})
     hw_params = dict(hw.get("params", {}) or {})
     adapter_params = dict(adapter_profile.get("params", {}) or {})
+    robot_gpio = robot_entry.get("gpio") or {}
+    if isinstance(robot_gpio, dict):
+        gpio_map.update(robot_gpio)
 
     robot_params = robot_entry.get("params") or {}
     if isinstance(robot_params, dict):
@@ -545,6 +549,10 @@ def resolve_robot_profile(reg: Dict[str, Any], robot_name: str) -> Dict[str, Any
         hw_params.update(robot_params.get("control_interface", {}) or {})
         adapter_params.update(robot_params.get("adapter", {}) or {})
         adapter_params.update(robot_params.get("adapter_profile", {}) or {})
+        for gpio_key in ("gpio", "hardware_gpio", "control_interface_gpio"):
+            gpio_overrides = robot_params.get(gpio_key) or {}
+            if isinstance(gpio_overrides, dict):
+                gpio_map.update(gpio_overrides)
 
     _validate_params(drive_params, hw_params, drive_profile_name, hw_profile_name)
 
@@ -568,7 +576,7 @@ def resolve_robot_profile(reg: Dict[str, Any], robot_name: str) -> Dict[str, Any
         "hw": hw,
         "capabilities": capabilities if isinstance(capabilities, dict) else {},
         "adapter": adapter_profile if isinstance(adapter_profile, dict) else {},
-        "gpio": hw.get("gpio", {}),
+        "gpio": gpio_map,
         "drive_params": drive_params,
         "hardware_params": hw_params,
         "adapter_params": adapter_params,

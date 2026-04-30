@@ -51,6 +51,17 @@ Suggested labels:
   workspace, export `SWARM_CORE_WORKSPACE_ROOT=/path/to/your_ws` before Step 1
 - if you close and reopen a terminal later, rerun Step 1 in the new shell
 
+## 0. SSH into your Raspberry Pi(s)
+
+SSH into each robot from the control machine and keep one dedicated terminal
+open per robot:
+
+### CONTROL MACHINE:
+
+```bash
+ssh <robot_user>@<robot_host>.local
+```
+
 ## 1. Universal Workspace Bootstrap
 
 Run this once in the control-machine terminal and once in each dedicated robot
@@ -167,15 +178,6 @@ Expected success signals:
 
 ## 3. Prepare Each Robot
 
-SSH into each robot from the control machine and keep one dedicated terminal
-open per robot:
-
-### CONTROL MACHINE:
-
-```bash
-ssh <robot_user>@<robot_host>.local
-```
-
 In each robot SSH terminal:
 
 1. run Step 1
@@ -289,6 +291,53 @@ auto-fallback behavior, enable it in that shell with:
 ```bash
 export SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK=1
 ```
+
+### 4.1 Optional Wheel Direction Test
+
+Run this after Step 4 when the robot uses GPIO motor control and before the
+live quickstart bringup. This test drives the GPIO hardware directly, so keep
+the robot on blocks, wheels/tracks clear, and do not run robot bringup at the
+same time.
+
+### ROBOT(S):
+
+```bash
+"$SC/scripts/swarm_core_wheel_test.sh" --robot "$ROBOT_NAME"
+```
+
+The terminal app accepts movement keys and prints the expected wheel directions.
+Example for the forward command:
+
+```text
+Command:
+FORWARD
+
+Expected:
+FL = FORWARD
+BL = FORWARD
+FR = FORWARD
+BR = FORWARD
+```
+
+Movement keys match terminal teleop and the Swarm Control UI:
+
+- `8/2`: forward/backward
+- `4/6`: rotate left/right, or strafe left/right when strafe mode is enabled
+- `7/9/1/3`: arc diagonals in normal mode, strafe diagonals in strafe mode
+- arrow keys: same movement behavior as `8/2/4/6`
+- `0`: toggle strafe mode for mecanum/omni robots
+- `space`, `s`, or `5`: stop
+
+Calibration keys:
+
+- `v`: choose FL/BL/FR/BR and toggle wheel inversion when a wheel spins backward
+- `c`: swap two wheel channel mappings when the wrong wheel moves
+- `P`: print pending GPIO overrides
+- `S`: save pending GPIO overrides into `robot_instances.yaml`
+
+Saved overrides are robot-specific. They are useful for wiring differences on
+one physical robot without changing the reusable hardware profile for every
+robot of that type.
 
 ## 5. Readiness Check
 

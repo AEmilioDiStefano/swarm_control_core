@@ -65,28 +65,55 @@ class HardwareInterface:
         self._cur_rl_duty = 0.0
         self._cur_rr_duty = 0.0
         self._last_update = time.monotonic()
-        # Allow per-motor polarity inversion via profile flags. Accept several key names.
-        self.invert_left = bool(
-            self.gpio_map.get("invert_left")
-            or self.gpio_map.get("left_inverted")
-            or self.gpio_map.get("left_polarity_invert")
-        )
-        self.invert_right = bool(
-            self.gpio_map.get("invert_right")
-            or self.gpio_map.get("right_inverted")
-            or self.gpio_map.get("right_polarity_invert")
-        )
+        # Allow side-level and per-wheel polarity inversion via profile flags.
+        # Side-level flags preserve existing diff-drive behavior; per-wheel flags
+        # let wheel-test calibration correct one miswired H-bridge channel.
+        self.invert_left = self._bool_from_keys("invert_left", "left_inverted", "left_polarity_invert")
+        self.invert_right = self._bool_from_keys("invert_right", "right_inverted", "right_polarity_invert")
+        self.invert_fl = self.invert_left or self._bool_from_keys("invert_fl", "fl_inverted", "front_left_inverted")
+        self.invert_rl = self.invert_left or self._bool_from_keys("invert_rl", "rl_inverted", "back_left_inverted", "rear_left_inverted", "bl_inverted", "invert_bl")
+        self.invert_fr = self.invert_right or self._bool_from_keys("invert_fr", "fr_inverted", "front_right_inverted")
+        self.invert_rr = self.invert_right or self._bool_from_keys("invert_rr", "rr_inverted", "back_right_inverted", "rear_right_inverted", "br_inverted", "invert_br")
 
         if GPIO_AVAILABLE and self.gpio_map:
             try:
                 self._setup_gpio()
                 LOG.info("GPIO hardware interface initialized")
-                LOG.info("GPIO map keys: %s; invert_left=%s invert_right=%s", list(self.gpio_map.keys()), self.invert_left, self.invert_right)
+                LOG.info(
+                    "GPIO map keys: %s; invert_left=%s invert_right=%s invert_fl=%s invert_rl=%s invert_fr=%s invert_rr=%s",
+                    list(self.gpio_map.keys()),
+                    self.invert_left,
+                    self.invert_right,
+                    self.invert_fl,
+                    self.invert_rl,
+                    self.invert_fr,
+                    self.invert_rr,
+                )
             except Exception as e:
                 LOG.warning("GPIO init failed: %s", e)
                 self._mock_mode()
         else:
             self._mock_mode()
+
+    def _bool_from_keys(self, *keys: str) -> bool:
+        for key in keys:
+            value = self.gpio_map.get(key)
+            if isinstance(value, bool):
+                if value:
+                    return True
+                continue
+            if isinstance(value, (int, float)):
+                if value != 0:
+                    return True
+                continue
+            text = str(value or "").strip().lower()
+            if text in ("1", "true", "yes", "y", "on"):
+                return True
+        return False
+
+    @staticmethod
+    def _apply_invert(direction: int, invert: bool) -> int:
+        return -direction if invert else direction
 
     def _mock_mode(self):
         """Fallback that doesn't touch hardware; logs instead.
@@ -170,11 +197,12 @@ class HardwareInterface:
             LOG.debug("MOCK set_motor: L(duty=%s,dir=%s) R(duty=%s,dir=%s)", left_duty, left_dir, right_duty, right_dir)
             return
 
-        # Apply configured polarity inversion if requested by the profile
-        if self.invert_left:
-            left_dir = -left_dir
-        if self.invert_right:
-            right_dir = -right_dir
+        left_side_dir = self._apply_invert(left_dir, self.invert_left)
+        right_side_dir = self._apply_invert(right_dir, self.invert_right)
+        fl_dir = self._apply_invert(left_dir, self.invert_fl)
+        rl_dir = self._apply_invert(left_dir, self.invert_rl)
+        fr_dir = self._apply_invert(right_dir, self.invert_fr)
+        rr_dir = self._apply_invert(right_dir, self.invert_rr)
 
         # Soft-start ramp / slew limiter (limits duty change per call)
         if not bypass_ramp and ((self.pwm_ramp_ms and self.pwm_ramp_ms > 0) or (self.pwm_slew_pct_per_s and self.pwm_slew_pct_per_s > 0)):
@@ -219,15 +247,15 @@ class HardwareInterface:
                 return
             pwm.ChangeDutyCycle(max(0.0, min(100.0, float(duty))))
 
-        _set_dir(self.gpio_map.get("in1_left"), self.gpio_map.get("in2_left"), left_dir)
-        _set_dir(self.gpio_map.get("in1_right"), self.gpio_map.get("in2_right"), right_dir)
+        _set_dir(self.gpio_map.get("in1_left"), self.gpio_map.get("in2_left"), left_side_dir)
+        _set_dir(self.gpio_map.get("in1_right"), self.gpio_map.get("in2_right"), right_side_dir)
         _set_pwm(self.left_pwm, self._cur_left_duty)
         _set_pwm(self.right_pwm, self._cur_right_duty)
 
-        _set_dir(self.gpio_map.get("fl_in1"), self.gpio_map.get("fl_in2"), left_dir)
-        _set_dir(self.gpio_map.get("rl_in1"), self.gpio_map.get("rl_in2"), left_dir)
-        _set_dir(self.gpio_map.get("fr_in1"), self.gpio_map.get("fr_in2"), right_dir)
-        _set_dir(self.gpio_map.get("rr_in1"), self.gpio_map.get("rr_in2"), right_dir)
+        _set_dir(self.gpio_map.get("fl_in1"), self.gpio_map.get("fl_in2"), fl_dir)
+        _set_dir(self.gpio_map.get("rl_in1"), self.gpio_map.get("rl_in2"), rl_dir)
+        _set_dir(self.gpio_map.get("fr_in1"), self.gpio_map.get("fr_in2"), fr_dir)
+        _set_dir(self.gpio_map.get("rr_in1"), self.gpio_map.get("rr_in2"), rr_dir)
         _set_pwm(getattr(self, "fl_pwm", None), self._cur_left_duty)
         _set_pwm(getattr(self, "rl_pwm", None), self._cur_left_duty)
         _set_pwm(getattr(self, "fr_pwm", None), self._cur_right_duty)
@@ -249,13 +277,10 @@ class HardwareInterface:
             )
             return
 
-        # Apply configured polarity inversion if requested by the profile
-        if self.invert_left:
-            fl_dir = -fl_dir
-            rl_dir = -rl_dir
-        if self.invert_right:
-            fr_dir = -fr_dir
-            rr_dir = -rr_dir
+        fl_dir = self._apply_invert(fl_dir, self.invert_fl)
+        rl_dir = self._apply_invert(rl_dir, self.invert_rl)
+        fr_dir = self._apply_invert(fr_dir, self.invert_fr)
+        rr_dir = self._apply_invert(rr_dir, self.invert_rr)
 
         # Hard-stop path: when all targets are zero, bypass ramp/slew so stop is immediate.
         # This prevents short residual motion at command end on mecanum platforms.

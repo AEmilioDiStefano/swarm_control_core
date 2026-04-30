@@ -59,6 +59,38 @@ The command:
 - prints the wiring doc for the selected hardware profile
 - launches camera discovery unless `--skip-camera` is used
 
+## Wheel Direction Test
+
+After adding a robot with GPIO motor control, run the wheel test before live
+operation:
+
+```bash
+"$WS/src/swarm_control_core/scripts/swarm_core_wheel_test.sh" --robot robot4
+```
+
+The direct mode drives GPIO without requiring robot bringup. It prints the
+expected wheel directions for each command so the operator can compare physical
+wheel motion:
+
+```text
+Command:
+FORWARD
+
+Expected:
+FL = FORWARD
+BL = FORWARD
+FR = FORWARD
+BR = FORWARD
+```
+
+Movement keys match terminal teleop and the Swarm Control UI: `8/2/4/6`,
+`7/9/1/3`, arrow keys, `0` for mecanum strafe mode, and `space`, `s`, or `5` to
+stop.
+
+If a wheel is reversed, press `v`, choose FL/BL/FR/BR, and toggle that wheel's
+inversion. If the wrong wheel moves, press `c` and swap the affected wheel
+channels. Press `S` to save the robot-specific GPIO overrides.
+
 ## Diagnose Stale Config
 
 Run:

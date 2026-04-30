@@ -3615,11 +3615,11 @@ function driveCommandForToken(token){
   if (token === "arrow_up") return { lin: +S, yaw: 0.0, lat: 0.0, vert: 0.0 };
   if (token === "arrow_down") return { lin: -S, yaw: 0.0, lat: 0.0, vert: 0.0 };
   if (token === "arrow_left"){
-    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: -S, vert: 0.0 };
+    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: +S, vert: 0.0 };
     return { lin: 0.0, yaw: +A, lat: 0.0, vert: 0.0 };
   }
   if (token === "arrow_right"){
-    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: +S, vert: 0.0 };
+    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: -S, vert: 0.0 };
     return { lin: 0.0, yaw: -A, lat: 0.0, vert: 0.0 };
   }
 
@@ -3627,20 +3627,20 @@ function driveCommandForToken(token){
   if (token === "2") return { lin: -S, yaw: 0.0, lat: 0.0, vert: 0.0 };
 
   if (token === "4"){
-    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: -S, vert: 0.0 };
+    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: +S, vert: 0.0 };
     return { lin: 0.0, yaw: +A, lat: 0.0, vert: 0.0 };
   }
   if (token === "6"){
-    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: +S, vert: 0.0 };
+    if (strafeMode && c.can_strafe) return { lin: 0.0, yaw: 0.0, lat: -S, vert: 0.0 };
     return { lin: 0.0, yaw: -A, lat: 0.0, vert: 0.0 };
   }
 
   if (token === "7" || token === "9" || token === "1" || token === "3"){
     if (strafeMode && c.can_strafe){
-      if (token === "7") return { lin: +S, yaw: 0.0, lat: -S, vert: 0.0 };
-      if (token === "9") return { lin: +S, yaw: 0.0, lat: +S, vert: 0.0 };
-      if (token === "1") return { lin: -S, yaw: 0.0, lat: -S, vert: 0.0 };
-      if (token === "3") return { lin: -S, yaw: 0.0, lat: +S, vert: 0.0 };
+      if (token === "7") return { lin: +S, yaw: 0.0, lat: +S, vert: 0.0 };
+      if (token === "9") return { lin: +S, yaw: 0.0, lat: -S, vert: 0.0 };
+      if (token === "1") return { lin: -S, yaw: 0.0, lat: +S, vert: 0.0 };
+      if (token === "3") return { lin: -S, yaw: 0.0, lat: -S, vert: 0.0 };
     }
     if (_isDiffDrive(c)){
       return _diffArcCommand(token, S);

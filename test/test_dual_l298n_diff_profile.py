@@ -110,6 +110,47 @@ def test_set_motor_mirrors_diff_command_to_four_l298n_channels(monkeypatch) -> N
     assert fake_gpio.pwms[26].duty_cycles[-1] == 66.0
 
 
+def test_set_mecanum_honors_per_wheel_inversion(monkeypatch) -> None:
+    fake_gpio = _FakeGpio()
+    monkeypatch.setattr(hardware_interface, "GPIO_AVAILABLE", True)
+    monkeypatch.setattr(hardware_interface, "GPIO", fake_gpio, raising=False)
+
+    gpio_map = {
+        "fl_pwm": 12,
+        "fl_in1": 5,
+        "fl_in2": 6,
+        "fr_pwm": 13,
+        "fr_in1": 16,
+        "fr_in2": 19,
+        "rl_pwm": 18,
+        "rl_in1": 20,
+        "rl_in2": 21,
+        "rr_pwm": 26,
+        "rr_in1": 23,
+        "rr_in2": 24,
+        "invert_rl": True,
+        "invert_rr": True,
+        "pwm_hz": 1000,
+    }
+
+    hw = HardwareInterface(gpio_map)
+    hw.set_mecanum(
+        fl_duty=25.0,
+        fl_dir=1,
+        fr_duty=25.0,
+        fr_dir=-1,
+        rl_duty=25.0,
+        rl_dir=1,
+        rr_duty=25.0,
+        rr_dir=-1,
+    )
+
+    assert fake_gpio.outputs[5] == fake_gpio.HIGH
+    assert fake_gpio.outputs[16] == fake_gpio.LOW
+    assert fake_gpio.outputs[20] == fake_gpio.LOW
+    assert fake_gpio.outputs[23] == fake_gpio.HIGH
+
+
 def test_motor_driver_normalization_preserves_four_channel_diff_map() -> None:
     pytest.importorskip("rclpy")
     from swarm_control_core.motor_driver_node import MotorDriverNode

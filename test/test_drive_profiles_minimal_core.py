@@ -82,6 +82,65 @@ def test_split_registry_loads_without_optional_profile_files(tmp_path: Path) -> 
     assert prof["hardware_params"]["max_pwm"] == 50
 
 
+def test_robot_instance_can_override_gpio_map(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "control_types.yaml",
+        """
+        schema_version: "1.0"
+        control_types:
+          mecanum_drive:
+            type: omni
+            params:
+              max_linear_mps: 0.4
+        """,
+    )
+    _write(
+        tmp_path / "control_interfaces.yaml",
+        """
+        schema_version: "1.0"
+        control_interfaces:
+          dual_test:
+            gpio:
+              fl_pwm: 12
+              fl_in1: 5
+              fl_in2: 6
+              fr_pwm: 13
+              fr_in1: 16
+              fr_in2: 19
+            params:
+              max_pwm: 70
+        """,
+    )
+    _write(
+        tmp_path / "robot_instances.yaml",
+        """
+        schema_version: "1.0"
+        defaults:
+          control_type: mecanum_drive
+          control_interface: dual_test
+        robots:
+          robot5:
+            control_type: mecanum_drive
+            control_interface: dual_test
+            gpio:
+              fl_pwm: 21
+              invert_fl: true
+            params:
+              control_interface_gpio:
+                fr_pwm: 22
+                invert_fr: true
+        """,
+    )
+
+    reg = load_profile_registry(str(tmp_path / "robot_instances.yaml"))
+    prof = resolve_robot_profile(reg, "robot5")
+
+    assert prof["gpio"]["fl_pwm"] == 21
+    assert prof["gpio"]["fr_pwm"] == 22
+    assert prof["gpio"]["invert_fl"] is True
+    assert prof["gpio"]["invert_fr"] is True
+
+
 def test_seed_runtime_config_requires_only_minimal_core_files(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     src_config = workspace / "src" / "swarm_control_core" / "config"

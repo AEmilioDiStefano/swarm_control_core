@@ -123,7 +123,7 @@ Proceed to Step 1.
 <a id="step-1"></a>
 ## Step 1: Sync/Build/Source Gate (All Machines)
 
-### Run on control machine, then run the same sync/build block in each dedicated robot SSH terminal:
+### Run on control machine:
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step1.sh" --machine-role control
@@ -180,6 +180,9 @@ Optional:
   `"$SC/scripts/swarm_core_quickstart_step2.sh" --skip-camera-profile`
 - if this is a new robot with a known hardware profile, preselect it:
   `"$SC/scripts/swarm_core_quickstart_step2.sh" --control-type diff_drive --control-interface dual_L298N_diff`
+- if wheels move but directions/order are wrong, keep Step 2 running and run
+  the live `cmd_vel` wheel test from a second robot SSH terminal:
+  `"$SC/scripts/swarm_core_wheel_test.sh" --robot "$ROBOT_NAME" --mode cmd_vel`
 
 Runtime config seeding behavior:
 - `swarm_core_run_robot.sh` seeds missing runtime config files from
@@ -203,6 +206,10 @@ Expected robot-side nodes include:
 ### IF robot nodes or camera do not come up
 
 Go to [Fix Step 2.1](#ref-2-1), then return to [Step 2](#step-2).
+
+### IF wheels move but direction/order is wrong
+
+Go to [Fix Step 2.2](#ref-2-2), then return to [Step 2](#step-2).
 
 For multi-robot sessions:
 - keep each robot SSH terminal running.
@@ -379,6 +386,30 @@ ros2 run swarm_control_core save_camera_profile_core --robot "$ROBOT_NAME"
 ```
 
 Then return to [Step 2](#step-2).
+
+<a id="ref-2-2"></a>
+## Fix Step 2.2: Wheel Direction or Wheel Order Is Wrong
+
+For a robot that already has bringup running, open a second SSH terminal to that
+same robot and run:
+
+```bash
+export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
+export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
+"$SC/scripts/swarm_core_wheel_test.sh" --robot "$ROBOT_NAME" --mode cmd_vel
+```
+
+Each movement key uses the same controls as terminal teleop and the Swarm
+Control UI, then prints the intended wheel directions before publishing the test
+command. Use `8/2/4/6/7/9/1/3` or arrow keys for movement, `0` for mecanum
+strafe mode, and `space`, `s`, or `5` for stop.
+
+If a wheel direction is reversed, use `v` to choose FL/BL/FR/BR and toggle that
+wheel inversion, then press `S` to save. If the wrong wheel moves, use `c` to
+swap wheel channel mappings and press `S` to save.
+
+Saved profile changes are consumed on the next robot bringup. Stop the affected
+Step 2 terminal with `Ctrl-C`, then return to [Step 2](#step-2).
 
 <a id="ref-3-1"></a>
 ## Fix Step 3.1: UI does not load or bind

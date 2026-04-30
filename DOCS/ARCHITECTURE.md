@@ -98,6 +98,9 @@ Design rule for future features:
 - `add_robot_core` is the preferred front door for creating or updating robot
   entries. It syncs runtime robot entries, refreshes runtime reusable core
   profiles, preserves camera profiles, and prints wiring guidance.
+- `wheel_test_core` validates physical wheel direction/order. Saved results are
+  robot-specific GPIO overrides in `robot_instances.yaml`, not changes to the
+  reusable hardware profile shared by every robot of that type.
 - `robot_doctor_core` reports source/runtime/install drift, including stale
   `control_interfaces.yaml` files that would hide newly added hardware profiles.
 - Runtime overrides can still be placed in machine-local config paths when a
