@@ -36,7 +36,10 @@ setup(
     entry_points={
         "console_scripts": [
             "add_robot_core = swarm_control_core.add_robot:main",
+            "add_control_interface_core = swarm_control_core.add_control_interface:main",
             "configure_robot_profile_core = swarm_control_core.configure_robot_profile:main",
+            "generate_profile_docs_core = swarm_control_core.profile_docs:main",
+            "validate_profiles_core = swarm_control_core.profile_validation:main",
             "robot_doctor_core = swarm_control_core.robot_doctor:main",
             "sync_robot_entries_core = swarm_control_core.sync_robot_entries:main",
             "wheel_test_core = swarm_control_core.wheel_test:main",

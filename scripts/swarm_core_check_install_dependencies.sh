@@ -410,7 +410,7 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
   sudo -v || exit 1
 fi
 
-progress_total_weight=50
+progress_total_weight=55
 if [[ "$machine_role" == "control" ]]; then
   progress_total_weight=$(( progress_total_weight + 12 ))
 else
@@ -429,6 +429,8 @@ run_progress_step 1 "Checking dependency: jq" check_cmd_dependency "jq" "jq" jq 
 run_progress_step 1 "Checking dependency: rg (ripgrep)" check_cmd_dependency "rg (ripgrep)" "rg" ripgrep || true
 run_progress_step 4 "Checking dependency: colcon" check_colcon_dependency || true
 run_progress_step 18 "Checking dependency: ros-${ros_distro}-ros-base" check_ros_setup_dependency || true
+run_progress_step 2 "Checking dependency: ros-${ros_distro}-launch" check_apt_package_dependency "ros-${ros_distro}-launch" "ros-${ros_distro}-launch" || true
+run_progress_step 2 "Checking dependency: ros-${ros_distro}-launch-ros" check_apt_package_dependency "ros-${ros_distro}-launch-ros" "ros-${ros_distro}-launch-ros" || true
 run_progress_step 4 "Checking dependency: ros-${ros_distro}-cyclonedds" check_apt_package_dependency "ros-${ros_distro}-cyclonedds" "ros-${ros_distro}-cyclonedds" || true
 run_progress_step 4 "Checking dependency: ros-${ros_distro}-rmw-cyclonedds-cpp" check_apt_package_dependency "ros-${ros_distro}-rmw-cyclonedds-cpp" "ros-${ros_distro}-rmw-cyclonedds-cpp" || true
 run_progress_step 1 "Checking dependency: python3-yaml" check_apt_package_dependency "python3-yaml" "python3-yaml" || true

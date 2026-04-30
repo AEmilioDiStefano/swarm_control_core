@@ -66,7 +66,7 @@ Recommended:
 Connect Pi ground to motor-controller ground first and keep that common ground
 through the whole build.
 
-The default `swarm_control_core` reference wiring for `L298N_diff` is:
+The default `swarm_control_core` reference wiring for `l298n_diff` is:
 
 | Drive side | Function | BCM GPIO | Physical pin |
 | --- | --- | --- | --- |
@@ -79,7 +79,7 @@ The default `swarm_control_core` reference wiring for `L298N_diff` is:
 
 Important notes:
 
-- This mapping is chosen to match the current default `L298N_diff` interface in
+- This mapping is chosen to match the current default `l298n_diff` interface in
   [../config/control_interfaces.yaml](../config/control_interfaces.yaml).
 - Treat one L298N motor channel as one side of the drivetrain and the other
   L298N motor channel as the opposite side.

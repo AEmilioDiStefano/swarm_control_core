@@ -20,6 +20,7 @@ from .path_defaults import (
     default_robot_name,
     detect_workspace_root,
 )
+from .profile_metadata import canonical_profile_name, compatible_interface_names
 from .save_camera_profile import (
     _acquire_prompt_input,
     _print_wrapped,
@@ -32,7 +33,13 @@ RobotEntry = Dict[str, Any]
 RuntimeSyncResult = Dict[str, Any]
 
 _FALLBACK_CONTROL_TYPES = ["diff_drive", "mecanum_drive"]
-_FALLBACK_CONTROL_INTERFACES = ["L298N_diff", "dual_L298N_diff", "dual_tb6612_diff", "dual_tb6612_mecanum"]
+_FALLBACK_CONTROL_INTERFACES = [
+    "l298n_diff",
+    "dual_l298n_diff",
+    "dual_l298n_mecanum",
+    "dual_tb6612_diff",
+    "dual_tb6612_mecanum",
+]
 
 _CORE_PROFILE_FILES = ("control_types.yaml", "control_interfaces.yaml")
 
@@ -91,7 +98,7 @@ def _empty_robot_registry() -> Dict[str, Any]:
         "schema_version": "1.0",
         "defaults": {
             "control_type": "diff_drive",
-            "control_interface": "L298N_diff",
+            "control_interface": "l298n_diff",
         },
         "robots": {},
     }
@@ -109,7 +116,7 @@ def _load_robot_registry(path: Path) -> Dict[str, Any]:
         "schema_version": str(data.get("schema_version", "")).strip() or "1.0",
         "defaults": {
             "control_type": str(defaults.get("control_type", "")).strip() or "diff_drive",
-            "control_interface": str(defaults.get("control_interface", "")).strip() or "L298N_diff",
+            "control_interface": str(defaults.get("control_interface", "")).strip() or "l298n_diff",
         },
         "robots": robots,
     }
@@ -127,21 +134,20 @@ def _load_named_options(
     return [str(v) for v in fallback]
 
 
-def _compatible_control_interfaces(control_type: str, interfaces: Sequence[str]) -> List[str]:
-    control_type_l = str(control_type or "").strip().lower()
-    pool = [str(v) for v in interfaces]
-    if not control_type_l:
-        return pool
+def _load_named_mapping(path: Path, mapping_key: str, fallback: Sequence[str]) -> Dict[str, Any]:
+    data = _load_yaml_mapping(path, path.name, {"schema_version": "1.0", mapping_key: {}})
+    mapping = data.get(mapping_key, {}) or {}
+    if isinstance(mapping, dict) and mapping:
+        return mapping
+    return {str(v): {} for v in fallback}
 
-    if "mecanum" in control_type_l or "omni" in control_type_l:
-        matches = [name for name in pool if "mecanum" in name.lower() or "omni" in name.lower()]
-        return matches or pool
 
-    if "diff" in control_type_l:
-        matches = [name for name in pool if "diff" in name.lower()]
-        return matches or pool
-
-    return pool
+def _compatible_control_interfaces(
+    control_type: str,
+    interfaces: Sequence[str],
+    interface_metadata: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    return compatible_interface_names(control_type, interfaces, interface_metadata)
 
 
 def _load_control_interface_metadata(path: Path, name: str) -> Dict[str, Any]:
@@ -149,7 +155,8 @@ def _load_control_interface_metadata(path: Path, name: str) -> Dict[str, Any]:
     interfaces = data.get("control_interfaces", {}) or {}
     if not isinstance(interfaces, dict):
         return {}
-    entry = interfaces.get(name, {}) or {}
+    canonical_name = canonical_profile_name(interfaces, name)
+    entry = interfaces.get(canonical_name, {}) or {}
     return entry if isinstance(entry, dict) else {}
 
 
@@ -316,26 +323,34 @@ def ensure_robot_entry(
     created = False
     entry = repo_robots.get(robot_name)
     if not isinstance(entry, dict):
-        control_type_names = _load_named_options(
+        control_type_mapping = _load_named_mapping(
             control_types_path,
             "control_types",
             _FALLBACK_CONTROL_TYPES,
         )
-        control_interface_names = _load_named_options(
+        control_interface_mapping = _load_named_mapping(
             control_interfaces_path,
             "control_interfaces",
             _FALLBACK_CONTROL_INTERFACES,
         )
+        control_type_names = [str(k) for k in control_type_mapping.keys()]
+        control_interface_names = [str(k) for k in control_interface_mapping.keys()]
         selected_control_type = str(control_type or "").strip()
+        if selected_control_type:
+            selected_control_type = canonical_profile_name(control_type_mapping, selected_control_type)
         if not selected_control_type:
             if prompt_input is None:
                 raise RuntimeError(
                     f"Robot '{robot_name}' does not exist in robot_instances.yaml and no interactive terminal is available."
                 )
+            default_control_type = canonical_profile_name(
+                control_type_mapping,
+                repo_registry["defaults"].get("control_type", control_type_names[0]),
+            )
             selected_control_type = _prompt_choice(
                 "control_type",
                 control_type_names,
-                repo_registry["defaults"].get("control_type", control_type_names[0]),
+                default_control_type,
                 prompt_input,
             )
         elif selected_control_type not in control_type_names:
@@ -343,17 +358,27 @@ def ensure_robot_entry(
                 f"Unsupported control_type '{selected_control_type}'. Valid options: {', '.join(control_type_names)}"
             )
 
-        compatible_interfaces = _compatible_control_interfaces(selected_control_type, control_interface_names)
+        compatible_interfaces = _compatible_control_interfaces(
+            selected_control_type,
+            control_interface_names,
+            control_interface_mapping,
+        )
         selected_control_interface = str(control_interface or "").strip()
+        if selected_control_interface:
+            selected_control_interface = canonical_profile_name(control_interface_mapping, selected_control_interface)
         if not selected_control_interface:
             if prompt_input is None:
                 raise RuntimeError(
                     f"Robot '{robot_name}' does not exist in robot_instances.yaml and no interactive terminal is available."
                 )
+            default_control_interface = canonical_profile_name(
+                control_interface_mapping,
+                repo_registry["defaults"].get("control_interface", compatible_interfaces[0]),
+            )
             selected_control_interface = _prompt_choice(
                 "control_interface",
                 compatible_interfaces,
-                repo_registry["defaults"].get("control_interface", compatible_interfaces[0]),
+                default_control_interface,
                 prompt_input,
             )
         elif selected_control_interface not in compatible_interfaces:
@@ -381,23 +406,31 @@ def ensure_robot_entry(
         requested_control_type = str(control_type or "").strip()
         requested_control_interface = str(control_interface or "").strip()
         if update_existing and (requested_control_type or requested_control_interface):
-            control_type_names = _load_named_options(
+            control_type_mapping = _load_named_mapping(
                 control_types_path,
                 "control_types",
                 _FALLBACK_CONTROL_TYPES,
             )
-            control_interface_names = _load_named_options(
+            control_interface_mapping = _load_named_mapping(
                 control_interfaces_path,
                 "control_interfaces",
                 _FALLBACK_CONTROL_INTERFACES,
             )
+            control_type_names = [str(k) for k in control_type_mapping.keys()]
+            control_interface_names = [str(k) for k in control_interface_mapping.keys()]
             selected_control_type = requested_control_type or str(entry.get("control_type", "")).strip()
+            selected_control_type = canonical_profile_name(control_type_mapping, selected_control_type)
             if selected_control_type not in control_type_names:
                 raise ValueError(
                     f"Unsupported control_type '{selected_control_type}'. Valid options: {', '.join(control_type_names)}"
                 )
-            compatible_interfaces = _compatible_control_interfaces(selected_control_type, control_interface_names)
+            compatible_interfaces = _compatible_control_interfaces(
+                selected_control_type,
+                control_interface_names,
+                control_interface_mapping,
+            )
             selected_control_interface = requested_control_interface or str(entry.get("control_interface", "")).strip()
+            selected_control_interface = canonical_profile_name(control_interface_mapping, selected_control_interface)
             if selected_control_interface not in compatible_interfaces:
                 valid = ", ".join(compatible_interfaces)
                 raise ValueError(

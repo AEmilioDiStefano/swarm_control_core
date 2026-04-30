@@ -26,7 +26,7 @@ def test_select_robot_entry_prefers_exact_ssh_target_match() -> None:
             "robot3": {
                 "ssh_target": "robot3@legion3.local",
                 "control_type": "diff_drive",
-                "control_interface": "L298N_diff",
+                "control_interface": "l298n_diff",
             },
             "other": {
                 "ssh_target": "other@other-host.local",
@@ -44,7 +44,7 @@ def test_select_robot_entry_prefers_exact_ssh_target_match() -> None:
     )
 
     assert robot_name == "robot3"
-    assert entry["control_interface"] == "L298N_diff"
+    assert entry["control_interface"] == "l298n_diff"
 
 
 def test_merge_imported_robot_entry_updates_control_machine_repo_and_runtime(tmp_path: Path) -> None:
@@ -57,12 +57,12 @@ def test_merge_imported_robot_entry_updates_control_machine_repo_and_runtime(tmp
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: L298N_diff
+  control_interface: l298n_diff
 robots:
   robot3:
     ssh_target: robot3@legion3.local
     control_type: diff_drive
-    control_interface: L298N_diff
+    control_interface: l298n_diff
 """,
     )
 
@@ -99,7 +99,7 @@ def test_detect_likely_local_robot_source_from_runtime_registry(tmp_path: Path) 
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: L298N_diff
+  control_interface: l298n_diff
 robots: {}
 """,
     )
@@ -108,12 +108,12 @@ robots: {}
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: L298N_diff
+  control_interface: l298n_diff
 robots:
   robot1:
     ssh_target: robot1@legion1.local
     control_type: diff_drive
-    control_interface: L298N_diff
+    control_interface: l298n_diff
 """,
     )
 

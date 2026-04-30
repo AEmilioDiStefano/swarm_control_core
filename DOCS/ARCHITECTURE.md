@@ -90,8 +90,17 @@ Design rule for future features:
   SSH target, control type, selected hardware/control interface, and per-robot
   tuning belong there.
 - `config/control_types.yaml` and `config/control_interfaces.yaml` are reusable
-  component/profile libraries. Hardware profiles can declare a `docs.wiring`
-  pointer so operator tools can print the correct wiring guide automatically.
+  component/profile libraries. Hardware profiles declare
+  `compatible_control_types`, `backend`, `wheel_layout`, controller metadata,
+  GPIO maps, params, and a `docs.wiring` pointer so tools can filter, validate,
+  and document interfaces without hardcoded profile names.
+- Control interface IDs use canonical lowercase snake case such as
+  `dual_l298n_mecanum`; legacy aliases remain supported for older robot entries.
+- `validate_profiles_core` performs generic profile schema validation, and
+  `generate_profile_docs_core` renders `DOCS/GPIO/CONTROL_INTERFACE_INDEX.md`
+  from YAML.
+- `add_control_interface_core` scaffolds new reusable control interfaces so most
+  motor-controller additions touch YAML/docs only, not runtime Python.
 - `camera_profiles.yaml` is generated robot-local state. It records detected
   camera choices from `save_camera_profile_core`; robots do not need empty
   placeholders in the repository template.

@@ -24,6 +24,7 @@ from .configure_robot_profile import (
     wiring_doc_for_interface,
 )
 from .path_defaults import MissingConfigError, default_robot_name, detect_workspace_root
+from .profile_metadata import canonical_profile_name
 
 
 def _workspace(requested: str) -> Path:
@@ -106,7 +107,12 @@ def collect_report(
         {"schema_version": "1.0", "control_interfaces": {}},
     )
     source_interfaces = interfaces_data.get("control_interfaces", {}) or {}
-    source_interface_exists = isinstance(source_interfaces, dict) and control_interface in source_interfaces
+    canonical_control_interface = (
+        canonical_profile_name(source_interfaces, control_interface)
+        if isinstance(source_interfaces, dict)
+        else control_interface
+    )
+    source_interface_exists = isinstance(source_interfaces, dict) and canonical_control_interface in source_interfaces
 
     runtime_reports = []
     for runtime_path in runtime_robot_instances:
@@ -128,7 +134,8 @@ def collect_report(
         installed_interfaces = installed_data.get("control_interfaces", {}) or {}
         installed_state = (
             "has_selected_interface"
-            if isinstance(installed_interfaces, dict) and control_interface in installed_interfaces
+            if isinstance(installed_interfaces, dict)
+            and canonical_profile_name(installed_interfaces, control_interface) in installed_interfaces
             else "missing_selected_interface"
         )
 
@@ -138,7 +145,7 @@ def collect_report(
         "source_robot_instances": str(source_robot_instances),
         "source_entry_state": "present" if source_entry else "missing",
         "source_entry": source_entry if isinstance(source_entry, dict) else {},
-        "selected_control_interface": control_interface,
+        "selected_control_interface": canonical_control_interface,
         "source_control_interface_state": "present" if source_interface_exists else "missing",
         "wiring_doc": wiring_doc_for_interface(source_control_interfaces, control_interface) if control_interface else "",
         "runtime": runtime_reports,

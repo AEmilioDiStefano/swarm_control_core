@@ -74,6 +74,7 @@ If you are building and preparing the reference robot from scratch, start with:
 
 - Quickstart: [DOCS/QUICKSTART.md](./DOCS/QUICKSTART.md)
 - Add/update robots: [DOCS/add_robot.md](./DOCS/add_robot.md)
+- Control interface profiles: [DOCS/control_interface_profiles.md](./DOCS/control_interface_profiles.md)
 - Assembly setup: [DOCS/setup_instructions_ASSEMBLY.md](./DOCS/setup_instructions_ASSEMBLY.md)
 - Software setup: [DOCS/setup_instructions_SOFTWARE.md](./DOCS/setup_instructions_SOFTWARE.md)
 - GPIO wiring guides: [DOCS/GPIO/README.md](./DOCS/GPIO/README.md)

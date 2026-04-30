@@ -26,6 +26,8 @@ def test_dependency_installer_checks_apt_candidate_versions_before_skipping():
     assert "apt_package_is_current()" in script
     assert "apt-cache policy" in script
     assert "dpkg --compare-versions" in script
+    assert "ros-${ros_distro}-launch" in script
+    assert "ros-${ros_distro}-launch-ros" in script
     assert "is already installed and up to date." in script
     assert "is missing or outdated. Installing/updating now..." in script
     assert "All dependencies are installed and up to date." in script

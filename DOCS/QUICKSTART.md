@@ -179,7 +179,11 @@ Optional:
 - if you already trust the saved camera profile and want to skip the interactive camera menu:
   `"$SC/scripts/swarm_core_quickstart_step2.sh" --skip-camera-profile`
 - if this is a new robot with a known hardware profile, preselect it:
-  `"$SC/scripts/swarm_core_quickstart_step2.sh" --control-type diff_drive --control-interface dual_L298N_diff`
+  `"$SC/scripts/swarm_core_quickstart_step2.sh" --control-type diff_drive --control-interface dual_l298n_diff`
+- for a mecanum robot using two L298N boards, preselect:
+  `"$SC/scripts/swarm_core_quickstart_step2.sh" --control-type mecanum_drive --control-interface dual_l298n_mecanum`
+- for a new hardware profile, add/validate it first with
+  [control_interface_profiles.md](./control_interface_profiles.md)
 - if wheels move but directions/order are wrong, keep Step 2 running and run
   the live `cmd_vel` wheel test from a second robot SSH terminal:
   `"$SC/scripts/swarm_core_wheel_test.sh" --robot "$ROBOT_NAME" --mode cmd_vel`

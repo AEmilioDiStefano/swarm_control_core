@@ -16,13 +16,13 @@ How to add a new drive type (tiny README):
      class HoverDrive(DriveType):
          name = "hover"
          def mix(self, msg, params): ...
-  2) Return it from get_drive_type() when the name matches
-     if name in ("hover", "flight"): return HoverDrive()
+  2) Register it:
+     register_drive_type(HoverDrive, "hover", "flight")
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Type
 
 from geometry_msgs.msg import Twist
 
@@ -102,8 +102,22 @@ class MecanumDrive(DriveType):
         return DriveCommand(fl=fl, fr=fr, rl=rl, rr=rr)
 
 
+_DRIVE_TYPE_REGISTRY: Dict[str, Type[DriveType]] = {}
+
+
+def register_drive_type(cls: Type[DriveType], *names: str) -> None:
+    aliases = [cls.name, *names]
+    for raw_name in aliases:
+        name = str(raw_name or "").strip().lower()
+        if name:
+            _DRIVE_TYPE_REGISTRY[name] = cls
+
+
+register_drive_type(DiffDrive, "diff", "diff-drive")
+register_drive_type(MecanumDrive, "omni", "omnidirectional", "mecanum_drive", "mecanum-drive")
+
+
 def get_drive_type(name: str) -> DriveType:
     name = (name or "diff_drive").lower()
-    if name in ("mecanum", "omni", "omnidirectional"):
-        return MecanumDrive()
-    return DiffDrive()
+    cls = _DRIVE_TYPE_REGISTRY.get(name, DiffDrive)
+    return cls()

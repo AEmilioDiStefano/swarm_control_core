@@ -19,19 +19,19 @@ def test_robot_doctor_reports_stale_runtime_control_interface(tmp_path: Path, mo
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: L298N_diff
+  control_interface: l298n_diff
 robots:
   robot4:
     ssh_target: robot4@legion4.local
     control_type: diff_drive
-    control_interface: dual_L298N_diff
+    control_interface: dual_l298n_diff
 """,
     )
     _write(
         config / "control_interfaces.yaml",
         """schema_version: "1.0"
 control_interfaces:
-  dual_L298N_diff:
+  dual_l298n_diff:
     docs:
       wiring: DOCS/GPIO/GPIO_for_differential_DUAL_L298N.md
     gpio: {}

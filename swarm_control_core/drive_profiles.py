@@ -21,6 +21,7 @@ import os
 
 import yaml
 from .path_defaults import MissingConfigError, default_profiles_path
+from .profile_metadata import canonical_profile_name
 
 
 _BUILTIN_ADAPTER_PROFILE_NAME = "passthrough_local"
@@ -200,6 +201,8 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
         or inst_defaults.get("hardware_profile")
         or ci_defaults.get("control_interface")
     )
+    default_control_type = canonical_profile_name(control_types, str(default_control_type or ""))
+    default_control_interface = canonical_profile_name(control_interfaces, str(default_control_interface or ""))
     default_capability_profile = (
         inst_defaults.get("capability_profile")
         or cap_defaults.get("capability_profile")
@@ -254,6 +257,8 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
             or entry.get("hardware_profile")
             or default_control_interface
         )
+        control_type_name = canonical_profile_name(control_types, str(control_type_name or ""))
+        control_interface_name = canonical_profile_name(control_interfaces, str(control_interface_name or ""))
         capability_name = (
             entry.get("capability_profile")
             or default_capability_profile
@@ -513,6 +518,8 @@ def resolve_robot_profile(reg: Dict[str, Any], robot_name: str) -> Dict[str, Any
     hardware_profiles = (reg.get("hardware_profiles", {}) or reg.get("control_interfaces", {}) or {})
     capability_profiles = reg.get("capability_profiles", {}) or {}
     adapter_profiles = reg.get("adapter_profiles", {}) or {}
+    drive_profile_name = canonical_profile_name(drive_profiles, str(drive_profile_name or ""))
+    hw_profile_name = canonical_profile_name(hardware_profiles, str(hw_profile_name or ""))
 
     if drive_profile_name not in drive_profiles:
         raise KeyError(

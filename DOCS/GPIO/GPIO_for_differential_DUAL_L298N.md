@@ -1,6 +1,6 @@
 # GPIO connections from two L298N motor controllers to Raspberry Pi 4 for differential drive
 
-This mapping is aligned to `dual_L298N_diff.gpio` in
+This mapping is aligned to `dual_l298n_diff.gpio` in
 `config/control_interfaces.yaml` and is intended for a four-motor differential
 drive robot where each motor has its own L298N channel.
 

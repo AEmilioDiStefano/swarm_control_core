@@ -275,8 +275,24 @@ ros2 run swarm_control_core add_robot_core \
   --workspace "$WS" \
   --name "$ROBOT_NAME" \
   --control-type diff_drive \
-  --control-interface dual_L298N_diff
+  --control-interface dual_l298n_diff
 ```
+
+For a mecanum robot using two L298N boards, use:
+
+### ROBOT(S):
+
+```bash
+ros2 run swarm_control_core add_robot_core \
+  --workspace "$WS" \
+  --name "$ROBOT_NAME" \
+  --control-type mecanum_drive \
+  --control-interface dual_l298n_mecanum
+```
+
+For new hardware profiles that are not already listed, use the metadata-driven
+process in [`control_interface_profiles.md`](./control_interface_profiles.md)
+before running `add_robot_core`.
 
 This command treats `robot_instances.yaml` as the canonical source of robot
 identity, syncs the runtime `robot_instances.yaml`, refreshes runtime

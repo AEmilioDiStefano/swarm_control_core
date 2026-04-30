@@ -23,6 +23,11 @@ Reusable profiles live separately:
 - `config/control_interfaces.yaml`: GPIO/hardware profiles and wiring-doc links
 - `~/.config/swarm_control_core/camera_profiles.yaml`: generated camera choices
 
+Control interface names use canonical lowercase snake case, for example
+`dual_l298n_mecanum`. Legacy mixed-case aliases are accepted for backward
+compatibility, but new robot entries should use the canonical names. See
+[`control_interface_profiles.md`](./control_interface_profiles.md).
+
 ## Preferred Command
 
 From the robot or a configured workspace terminal:
@@ -37,7 +42,7 @@ ros2 run swarm_control_core add_robot_core \
   --name robot4 \
   --host robot4@legion4.local \
   --control-type diff_drive \
-  --control-interface dual_L298N_diff
+  --control-interface dual_l298n_diff
 ```
 
 Equivalent source-tree wrapper:
@@ -47,7 +52,7 @@ Equivalent source-tree wrapper:
   --name robot4 \
   --host robot4@legion4.local \
   --control-type diff_drive \
-  --control-interface dual_L298N_diff
+  --control-interface dual_l298n_diff
 ```
 
 The command:
@@ -120,7 +125,7 @@ ros2 run swarm_control_core robot_doctor_core \
   --robot robot4 \
   --repair \
   --control-type diff_drive \
-  --control-interface dual_L298N_diff
+  --control-interface dual_l298n_diff
 ```
 
 ## Camera Profiles
@@ -146,9 +151,27 @@ ros2 run swarm_control_core add_robot_core \
   --name robot4 \
   --host robot4@legion4.local \
   --control-type diff_drive \
-  --control-interface dual_L298N_diff
+  --control-interface dual_l298n_diff
 ```
 
 Wiring guide:
 
 - [`GPIO_for_differential_DUAL_L298N.md`](./GPIO/GPIO_for_differential_DUAL_L298N.md)
+
+## Mecanum Dual-L298N Example
+
+For a four-wheel mecanum robot using two L298N boards, one H-bridge channel per
+wheel:
+
+```bash
+ros2 run swarm_control_core add_robot_core \
+  --workspace "$WS" \
+  --name robot5 \
+  --host robot5@legion5.local \
+  --control-type mecanum_drive \
+  --control-interface dual_l298n_mecanum
+```
+
+Wiring guide:
+
+- [`GPIO_for_mecanum_DUAL_L298N.md`](./GPIO/GPIO_for_mecanum_DUAL_L298N.md)

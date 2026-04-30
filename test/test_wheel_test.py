@@ -141,12 +141,12 @@ def test_save_gpio_overrides_writes_robot_entry(tmp_path: Path) -> None:
         """schema_version: "1.0"
 defaults:
   control_type: mecanum_drive
-  control_interface: dual_L298N_mecanum
+  control_interface: dual_l298n_mecanum
 robots:
   robot5:
     ssh_target: robot5@legion5.local
     control_type: mecanum_drive
-    control_interface: dual_L298N_mecanum
+    control_interface: dual_l298n_mecanum
 """,
         encoding="utf-8",
     )

@@ -63,12 +63,32 @@ def test_robot4_resolves_to_dual_l298n_diff_profile() -> None:
     profile = resolve_robot_profile(reg, "robot4")
 
     assert profile["control_type"] == "diff_drive"
-    assert profile["control_interface"] == "dual_L298N_diff"
+    assert profile["control_interface"] == "dual_l298n_diff"
     assert profile["gpio"]["fl_pwm"] == 12
     assert profile["gpio"]["rl_pwm"] == 18
     assert profile["gpio"]["fr_pwm"] == 13
     assert profile["gpio"]["rr_pwm"] == 26
     assert profile["drive_params"]["spin_speed_mult"] == 1.0
+
+
+def test_dual_l298n_mecanum_profile_resolves_four_wheel_gpio() -> None:
+    config_dir = Path(__file__).resolve().parents[1] / "config"
+    reg = load_profile_registry(str(config_dir / "robot_instances.yaml"))
+    reg["robots"]["robot_l298n_mecanum"] = {
+        "control_type": "mecanum_drive",
+        "control_interface": "dual_l298n_mecanum",
+    }
+
+    profile = resolve_robot_profile(reg, "robot_l298n_mecanum")
+
+    assert profile["control_type"] == "mecanum_drive"
+    assert profile["control_interface"] == "dual_l298n_mecanum"
+    assert profile["drive_type"] == "omni"
+    assert profile["gpio"]["fl_pwm"] == 12
+    assert profile["gpio"]["fr_pwm"] == 13
+    assert profile["gpio"]["rl_pwm"] == 18
+    assert profile["gpio"]["rr_pwm"] == 26
+    assert profile["hardware_params"]["pwm_ramp_ms"] == 40
 
 
 def test_set_motor_mirrors_diff_command_to_four_l298n_channels(monkeypatch) -> None:

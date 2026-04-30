@@ -270,7 +270,7 @@ class MotorDriverNode(Node):
             mapped["in2_right"] = gpio_map.get("fr_in2")
             return mapped
 
-        # L298N_diff (hbridge_2ch) style mapping
+        # l298n_diff (hbridge_2ch) style mapping
         if "en_left" in gpio_map or "in1_left" in gpio_map:
             mapped.update(gpio_map)
             return mapped
