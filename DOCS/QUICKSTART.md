@@ -432,9 +432,9 @@ Step 2 terminal with `Ctrl-C`, then return to [Step 2](#step-2).
 <a id="ref-2-4"></a>
 ## Optional Step 2.4: Camera Orientation Flip
 
-If the camera image is inverted after camera configuration, use the camera
-flipper tool to save software orientation in that robot's camera profile. Run
-this on the affected robot, not the control machine.
+If the camera image is inverted after camera configuration, use the interactive
+camera flipper tool to save software orientation in that robot's camera profile.
+Run this on the affected robot, not the control machine.
 
 ```bash
 export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
@@ -446,13 +446,16 @@ source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
 
-# Use this when left/right are mirrored/backward.
-ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME" --set horizontal
-
-# Use this instead when the camera is physically upside-down but left/right
-# already look correct.
-# ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME" --set vertical
+ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME"
 ```
+
+Main menu options:
+
+- `1) Flip horizontally / left-right mirror`
+- `2) Flip vertically / up-down`
+- `3) Clear all flips`
+- `4) Show status`
+- `5) Exit`
 
 `camera_flipper_core` only saves the flip when the currently plugged-in camera
 matches the saved camera profile. That keeps a robot5-specific mirrored camera

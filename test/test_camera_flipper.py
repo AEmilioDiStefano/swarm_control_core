@@ -7,6 +7,11 @@ from swarm_control_core import save_camera_profile
 from swarm_control_core.save_camera_profile import CameraCandidate
 
 
+class _TtyStdin:
+    def isatty(self) -> bool:
+        return True
+
+
 def test_camera_devices_match_exact_and_resolved_symlink(tmp_path: Path) -> None:
     target = tmp_path / "video0"
     target.write_text("camera", encoding="utf-8")
@@ -116,6 +121,45 @@ def test_camera_flipper_main_writes_guarded_profile(tmp_path: Path, monkeypatch)
     assert profile["flip_vertical"] is False
     assert profile["orientation_device"] == "/dev/video0"
     assert profile["orientation_camera_name"] == "Robot5 Camera"
+
+
+def test_camera_flipper_interactive_menu_toggles_and_exits(tmp_path: Path, monkeypatch) -> None:
+    profiles_path = tmp_path / "camera_profiles.yaml"
+    profiles_path.write_text(
+        yaml.safe_dump(
+            {
+                "defaults": {},
+                "profiles": {
+                    "robot5": {
+                        "source": "usb",
+                        "camera_name": "Robot5 Camera",
+                        "device": "/dev/video0",
+                        "flip_horizontal": False,
+                        "flip_vertical": False,
+                    }
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(camera_flipper.sys, "stdin", _TtyStdin())
+    input_values = iter(["1", "", "5"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(input_values))
+    monkeypatch.setattr(
+        camera_flipper,
+        "_inventory_camera_candidates",
+        lambda: [CameraCandidate(kind="usb", display_name="Robot5 Camera", device="/dev/video0")],
+    )
+
+    rc = camera_flipper.main(["--robot", "robot5", "--camera-profiles", str(profiles_path)])
+
+    data = yaml.safe_load(profiles_path.read_text(encoding="utf-8"))
+    profile = data["profiles"]["robot5"]
+    assert rc == 0
+    assert profile["flip_horizontal"] is True
+    assert profile["flip_vertical"] is False
+    assert profile["orientation_device"] == "/dev/video0"
 
 
 def test_camera_flipper_refuses_unmatched_camera_without_force(tmp_path: Path, monkeypatch) -> None:

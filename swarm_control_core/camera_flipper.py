@@ -14,6 +14,7 @@ from .save_camera_profile import CameraCandidate, _inventory_camera_candidates, 
 
 
 FlipAction = str
+EXIT_ACTIONS = ("exit", "exit")
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -174,29 +175,102 @@ def _print_status(
                 _print_wrapped("    - ", f"{candidate.display_name} ({candidate.device})")
 
 
-def _prompt_actions(profile: Dict[str, Any]) -> Tuple[FlipAction, FlipAction]:
+def _print_menu_header(
+    *,
+    robot: str,
+    profile: Dict[str, Any],
+    matched_camera: Optional[CameraCandidate],
+) -> None:
     current_h = _bool_from_profile(profile, "flip_horizontal")
     current_v = _bool_from_profile(profile, "flip_vertical")
     print()
-    print("Choose camera orientation:")
-    print(f"  h = horizontal mirror toggle (currently {current_h})")
-    print(f"  v = vertical flip toggle (currently {current_v})")
-    print("  n = no flip")
-    print("  b = both flips")
-    print("  q = quit")
+    print("=== Camera Flipper Main Menu ===")
+    print(f"Robot: {robot}")
+    if matched_camera is not None:
+        _print_wrapped("Camera: ", f"{matched_camera.display_name} ({matched_camera.device})")
+    else:
+        _print_wrapped("Camera: ", str(profile.get("device", "")))
+    print(f"Current horizontal flip (left/right mirror): {current_h}")
+    print(f"Current vertical flip (up/down): {current_v}")
+    print()
+    print("1) Flip horizontally / left-right mirror")
+    print("2) Flip vertically / up-down")
+    print("3) Clear all flips")
+    print("4) Show status")
+    print("5) Exit")
+
+
+def _prompt_actions(
+    *,
+    robot: str,
+    profile: Dict[str, Any],
+    matched_camera: Optional[CameraCandidate],
+) -> Tuple[FlipAction, FlipAction]:
     while True:
-        raw = input("Selection [h/v/n/b/q]: ").strip().lower()
-        if raw in ("q", "quit"):
-            return "keep", "keep"
-        if raw in ("h", "horizontal"):
+        _print_menu_header(robot=robot, profile=profile, matched_camera=matched_camera)
+        raw = input("Select option [1-5]: ").strip().lower()
+        if raw in ("5", "e", "exit", "q", "quit"):
+            return EXIT_ACTIONS
+        if raw in ("1", "h", "horizontal", "left", "right", "mirror"):
             return "toggle", "keep"
-        if raw in ("v", "vertical"):
+        if raw in ("2", "v", "vertical", "up", "down"):
             return "keep", "toggle"
-        if raw in ("n", "none"):
+        if raw in ("3", "n", "none", "clear", "reset"):
             return "off", "off"
-        if raw in ("b", "both"):
-            return "on", "on"
-        print("[WARN] Enter h, v, n, b, or q.")
+        if raw in ("4", "s", "status"):
+            print()
+            _print_wrapped("saved_device: ", profile.get("device", ""))
+            _print_wrapped("orientation_device: ", profile.get("orientation_device", ""))
+            input("Press Enter to return to the camera flipper menu...")
+            continue
+        print("[WARN] Enter 1, 2, 3, 4, or 5.")
+
+
+def _save_orientation_update(
+    *,
+    data: Dict[str, Any],
+    profiles: Dict[str, Any],
+    robot: str,
+    profiles_path: Path,
+    profile: Dict[str, Any],
+    matched_camera: Optional[CameraCandidate],
+    horizontal_action: FlipAction,
+    vertical_action: FlipAction,
+    dry_run: bool,
+) -> Dict[str, Any]:
+    updated = update_orientation_profile(
+        profile,
+        horizontal_action=horizontal_action,
+        vertical_action=vertical_action,
+        matched_camera=matched_camera,
+    )
+    print(f"[CAMERA FLIPPER] robot={robot}")
+    _print_wrapped("  camera_profiles: ", profiles_path)
+    _print_wrapped("  current_camera: ", (
+        f"{matched_camera.display_name} ({matched_camera.device})"
+        if matched_camera is not None
+        else f"forced profile device ({profile.get('device', '')})"
+    ))
+    _print_wrapped(
+        "  flip_horizontal: ",
+        f"{_bool_from_profile(profile, 'flip_horizontal')} -> {updated['flip_horizontal']}",
+    )
+    _print_wrapped(
+        "  flip_vertical: ",
+        f"{_bool_from_profile(profile, 'flip_vertical')} -> {updated['flip_vertical']}",
+    )
+    _print_wrapped("  orientation_device: ", updated.get("orientation_device", ""))
+
+    if dry_run:
+        print("[DRY RUN] No file was written.")
+        return updated
+
+    profiles[robot] = updated
+    data["profiles"] = profiles
+    _write_yaml(profiles_path, data)
+    print("[OK] camera orientation saved.")
+    print("[NEXT] Restart robot bringup so FPV reloads the camera profile.")
+    return updated
 
 
 def _resolve_robot(raw_robot: str) -> str:
@@ -289,6 +363,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     horizontal_action = set_h if set_h != "keep" else str(args.horizontal or "keep")
     vertical_action = set_v if set_v != "keep" else str(args.vertical or "keep")
 
+    interactive = False
     if horizontal_action == "keep" and vertical_action == "keep":
         _print_status(
             robot=robot,
@@ -298,14 +373,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             candidates=candidates,
         )
         if sys.stdin.isatty():
-            horizontal_action, vertical_action = _prompt_actions(profile)
+            interactive = True
         else:
             print("[NEXT] Add --set horizontal, --set vertical, --set both, or --set none to change orientation.")
             return 0
-
-    if horizontal_action == "keep" and vertical_action == "keep":
-        print("[OK] No camera orientation changes requested.")
-        return 0
 
     if matched_camera is None and not args.force:
         _print_status(
@@ -326,38 +397,46 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         return 2
 
-    updated = update_orientation_profile(
-        profile,
-        horizontal_action=horizontal_action,
-        vertical_action=vertical_action,
-        matched_camera=matched_camera,
-    )
-    print(f"[CAMERA FLIPPER] robot={robot}")
-    _print_wrapped("  camera_profiles: ", profiles_path)
-    _print_wrapped("  current_camera: ", (
-        f"{matched_camera.display_name} ({matched_camera.device})"
-        if matched_camera is not None
-        else f"forced profile device ({profile.get('device', '')})"
-    ))
-    _print_wrapped(
-        "  flip_horizontal: ",
-        f"{_bool_from_profile(profile, 'flip_horizontal')} -> {updated['flip_horizontal']}",
-    )
-    _print_wrapped(
-        "  flip_vertical: ",
-        f"{_bool_from_profile(profile, 'flip_vertical')} -> {updated['flip_vertical']}",
-    )
-    _print_wrapped("  orientation_device: ", updated.get("orientation_device", ""))
+    if interactive:
+        while True:
+            horizontal_action, vertical_action = _prompt_actions(
+                robot=robot,
+                profile=profile,
+                matched_camera=matched_camera,
+            )
+            if (horizontal_action, vertical_action) == EXIT_ACTIONS:
+                print("[OK] Exiting camera flipper.")
+                return 0
+            profile = _save_orientation_update(
+                data=data,
+                profiles=profiles,
+                robot=robot,
+                profiles_path=profiles_path,
+                profile=profile,
+                matched_camera=matched_camera,
+                horizontal_action=horizontal_action,
+                vertical_action=vertical_action,
+                dry_run=args.dry_run,
+            )
+            if args.dry_run:
+                return 0
+            input("Press Enter to return to the camera flipper menu, or Ctrl-C to stop...")
 
-    if args.dry_run:
-        print("[DRY RUN] No file was written.")
+    if horizontal_action == "keep" and vertical_action == "keep":
+        print("[OK] No camera orientation changes requested.")
         return 0
 
-    profiles[robot] = updated
-    data["profiles"] = profiles
-    _write_yaml(profiles_path, data)
-    print("[OK] camera orientation saved.")
-    print("[NEXT] Restart robot bringup so FPV reloads the camera profile.")
+    _save_orientation_update(
+        data=data,
+        profiles=profiles,
+        robot=robot,
+        profiles_path=profiles_path,
+        profile=profile,
+        matched_camera=matched_camera,
+        horizontal_action=horizontal_action,
+        vertical_action=vertical_action,
+        dry_run=args.dry_run,
+    )
     return 0
 
 

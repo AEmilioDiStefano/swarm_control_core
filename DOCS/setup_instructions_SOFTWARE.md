@@ -786,26 +786,11 @@ source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
 
-ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME" --status
+ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME"
 ```
 
-For a mirror image where left/right are backward, save a horizontal software
-flip.
-
-### ROBOT(S):
-
-```bash
-ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME" --set horizontal
-```
-
-For a physically upside-down camera where left/right already look correct, save
-a vertical software flip instead.
-
-### ROBOT(S):
-
-```bash
-ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME" --set vertical
-```
+Use the interactive menu to choose horizontal flip, vertical flip, clear all
+flips, show status, or exit.
 
 `camera_flipper_core` refuses to save a flip when the currently plugged-in
 camera does not match the saved profile unless `--force` is used. That prevents
