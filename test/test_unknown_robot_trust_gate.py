@@ -24,5 +24,9 @@ def test_unknown_robot_control_override_is_explicit_launch_config():
 
     assert "SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL" in launch_text
     assert "allow_unknown_robot_control" in launch_text
+    assert "PROFILES_PATH" in launch_text
     assert 'SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL="${SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL:-0}"' in run_text
     assert 'allow_unknown_robot_control:="$SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL"' in run_text
+    assert "--overwrite-core-profiles" in run_text
+    assert 'profiles_path:="${PROFILES_PATH:-}"' in run_text
+    assert "CONTROL_INTERFACES_PATH" in run_text

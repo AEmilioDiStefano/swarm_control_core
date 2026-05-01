@@ -429,7 +429,10 @@ class RosFleetHub(Node):
         except FileNotFoundError as ex:
             self.get_logger().error(f"[fpv_ui] Required profile registry missing: {ex}")
             raise
-        except Exception:
+        except Exception as ex:
+            self.get_logger().error(
+                f"[fpv_ui] Failed to load profile registry from {profiles_path or '<default>'}: {ex}"
+            )
             self._profile_registry = None
         self._trusted_robots: Set[str] = self._load_trusted_robots()
         self._unknown_robot_warned: Set[str] = set()

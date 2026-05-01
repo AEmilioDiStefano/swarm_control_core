@@ -170,6 +170,26 @@ source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
 
+runtime_cfg_dir="${SWARM_CORE_CONFIG_DIR:-$HOME/.config/swarm_control_core}"
+if [[ -x "${SCRIPT_DIR}/swarm_core_seed_runtime_config.sh" ]]; then
+  "${SCRIPT_DIR}/swarm_core_seed_runtime_config.sh" \
+    --workspace "$WS" \
+    --target-dir "$runtime_cfg_dir" \
+    --overwrite-core-profiles || true
+fi
+if [[ -f "${runtime_cfg_dir}/robot_instances.yaml" ]]; then
+  export PROFILES_PATH="${runtime_cfg_dir}/robot_instances.yaml"
+  export SWARM_CORE_PROFILES_PATH="${runtime_cfg_dir}/robot_instances.yaml"
+fi
+if [[ -f "${runtime_cfg_dir}/control_types.yaml" ]]; then
+  export CONTROL_TYPES_PATH="${runtime_cfg_dir}/control_types.yaml"
+  export SWARM_CORE_CONTROL_TYPES_PATH="${runtime_cfg_dir}/control_types.yaml"
+fi
+if [[ -f "${runtime_cfg_dir}/control_interfaces.yaml" ]]; then
+  export CONTROL_INTERFACES_PATH="${runtime_cfg_dir}/control_interfaces.yaml"
+  export SWARM_CORE_CONTROL_INTERFACES_PATH="${runtime_cfg_dir}/control_interfaces.yaml"
+fi
+
 # Enforce community LAN discovery defaults after sourcing overlays.
 unset ROS_DISCOVERY_SERVER
 unset ROS_SUPER_CLIENT
@@ -226,6 +246,9 @@ log "thumb_robots_per_tick=${SWARM_CORE_THUMB_ROBOTS_PER_TICK}"
 log "drive_cmd_rate_hz=${SWARM_CORE_DRIVE_CMD_RATE_HZ}"
 log "drive_hold_timeout_s=${SWARM_CORE_DRIVE_HOLD_TIMEOUT_S}"
 log "allow_unknown_robot_control=${SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL}"
+log "profiles_path=${PROFILES_PATH:-<default>}"
+log "control_types_path=${CONTROL_TYPES_PATH:-<default>}"
+log "control_interfaces_path=${CONTROL_INTERFACES_PATH:-<default>}"
 if [[ "${SWARM_CORE_ALLOW_LAN_BIND:-0}" == "1" ]]; then
   log "LAN bind enabled (private LAN use only)."
 else
@@ -279,7 +302,8 @@ if command -v setsid >/dev/null 2>&1; then
     image_thumb_interest_ttl_s:="$SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S" \
     thumb_robots_per_tick:="$SWARM_CORE_THUMB_ROBOTS_PER_TICK" \
     drive_cmd_rate_hz:="$SWARM_CORE_DRIVE_CMD_RATE_HZ" \
-    drive_hold_timeout_s:="$SWARM_CORE_DRIVE_HOLD_TIMEOUT_S" &
+    drive_hold_timeout_s:="$SWARM_CORE_DRIVE_HOLD_TIMEOUT_S" \
+    profiles_path:="${PROFILES_PATH:-}" &
 else
   ros2 launch swarm_control_core swarm_fpv_ui.launch.py \
     ros_domain_id:="$ROS_DOMAIN_ID" \
@@ -293,7 +317,8 @@ else
     image_thumb_interest_ttl_s:="$SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S" \
     thumb_robots_per_tick:="$SWARM_CORE_THUMB_ROBOTS_PER_TICK" \
     drive_cmd_rate_hz:="$SWARM_CORE_DRIVE_CMD_RATE_HZ" \
-    drive_hold_timeout_s:="$SWARM_CORE_DRIVE_HOLD_TIMEOUT_S" &
+    drive_hold_timeout_s:="$SWARM_CORE_DRIVE_HOLD_TIMEOUT_S" \
+    profiles_path:="${PROFILES_PATH:-}" &
 fi
 ui_pid="$!"
 wait "$ui_pid"

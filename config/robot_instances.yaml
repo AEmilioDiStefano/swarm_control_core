@@ -130,4 +130,4 @@ robots:
   robot5:
     ssh_target: robot5@legion5.local
     control_type: mecanum_drive
-    control_interface: dual_tb6612_mecanum
+    control_interface: dual_l298n_mecanum

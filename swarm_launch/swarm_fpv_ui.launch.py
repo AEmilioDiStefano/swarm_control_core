@@ -99,6 +99,15 @@ def _default_drive_hold_timeout_s() -> str:
         return "0.35"
 
 
+def _default_profiles_path() -> str:
+    for key in ("PROFILES_PATH", "SWARM_CORE_PROFILES_PATH"):
+        raw = str(os.environ.get(key, "")).strip()
+        if raw:
+            return raw
+    candidate = os.path.expanduser("~/.config/swarm_control_core/robot_instances.yaml")
+    return candidate if os.path.exists(candidate) else ""
+
+
 def generate_launch_description() -> LaunchDescription:
     args = [
         DeclareLaunchArgument(
@@ -119,7 +128,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("drive_hold_timeout_s", default_value=_default_drive_hold_timeout_s()),
         DeclareLaunchArgument(
             "profiles_path",
-            default_value="",
+            default_value=_default_profiles_path(),
             description="Path to robot_instances.yaml (or legacy robot_profiles.yaml). Set explicitly or via PROFILES_PATH.",
         ),
     ]

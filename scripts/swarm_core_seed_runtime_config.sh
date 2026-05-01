@@ -97,7 +97,7 @@ for f in "${required_files[@]}"; do
   dst_file="${target_dir}/${f}"
   [[ -f "$src_file" ]] || fail "Missing required source file: $src_file"
   if [[ -f "$dst_file" && "$overwrite" != "1" ]]; then
-    if [[ "$overwrite_core_profiles" == "1" && "$f" != "camera_profiles.yaml" ]]; then
+    if [[ "$overwrite_core_profiles" == "1" && "$f" != "robot_instances.yaml" && "$f" != "camera_profiles.yaml" ]]; then
       cp -f "$src_file" "$dst_file"
       chmod 644 "$dst_file" || true
       copied=$((copied + 1))

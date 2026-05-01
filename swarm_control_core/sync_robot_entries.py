@@ -21,7 +21,9 @@ from .configure_robot_profile import (
     _repo_robot_instances_path,
     _runtime_robot_instances_paths,
     _write_yaml,
+    refresh_runtime_core_profiles,
 )
+from .drive_profiles import load_profile_registry
 from .save_camera_profile import _acquire_prompt_input, _print_wrapped, _read_prompt_line
 
 
@@ -313,6 +315,17 @@ def _print_sync_result(result: SyncResult, *, robot_name: str, prefix: str) -> N
         print(f"[SYNC] {prefix} entry already matched at {path}.")
 
 
+def _print_core_profile_result(result: SyncResult) -> None:
+    path = result["path"]
+    state = str(result.get("state", "")).strip()
+    if state == "already_synced":
+        print(f"[SYNC] Runtime core profile already current: {path}")
+    elif result.get("repaired"):
+        print(f"[SYNC] Runtime core profile refreshed: {path}")
+    else:
+        print(f"[SYNC] Runtime core profile check failed ({state}): {path}")
+
+
 def _detect_likely_local_robot_source(
     *,
     repo_profiles_path: Path,
@@ -464,6 +477,20 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         print("[SYNC] Imported robot entry:")
         print(textwrap.indent(json.dumps({robot_name: entry}, indent=2, sort_keys=False), "  "))
+
+    core_results = refresh_runtime_core_profiles(workspace_root, runtime_profiles_paths)
+    for result in core_results:
+        _print_core_profile_result(result)
+
+    for runtime_path in runtime_profiles_paths:
+        try:
+            registry = load_profile_registry(str(runtime_path))
+        except Exception as exc:
+            print(f"[ERROR] Control-machine runtime registry is not loadable at {runtime_path}: {exc}", file=sys.stderr)
+            return 2
+        robots = registry.get("robots", {}) or {}
+        known = ", ".join(sorted(str(name) for name in robots.keys())) or "<none>"
+        print(f"[SYNC] Control-machine trusted robot registry load check OK: {known}")
 
     print("[OK] Control-machine robot registration/approval complete.")
     print("[OK] Registered/approved robots are ready for QUICKSTART handoff.")

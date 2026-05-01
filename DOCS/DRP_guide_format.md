@@ -1,11 +1,8 @@
 # DRP Guide Format
 
-DRP means **Direct Run Path**. A DRP guide keeps the normal operator path clean
-and puts alternatives, debug commands, and fix procedures in a reference section
-at the bottom.
+**DRP (Direct Run Path)** refers to the series of steps that should easily produce the intended outcome of a run guide.  In a DRP-style guide document, all alternative/Debug/Fix steps in a separate section below the  the page.
 
-Use this format for setup guides, quickstarts, runbooks, and other documents
-that an operator may follow line-by-line while hardware is running.
+Use this format for setup guides, quickstarts, runbooks, and other documents that an operator may follow line-by-line while hardware is running.
 
 ## Goals
 

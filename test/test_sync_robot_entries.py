@@ -125,3 +125,13 @@ robots:
             )
 
     assert detected == ("robot1", "robot1@legion1.local")
+
+
+def test_sync_command_refreshes_runtime_core_profiles_and_validates_registry() -> None:
+    source = (Path(__file__).resolve().parents[1] / "swarm_control_core" / "sync_robot_entries.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "refresh_runtime_core_profiles(workspace_root, runtime_profiles_paths)" in source
+    assert "load_profile_registry(str(runtime_path))" in source
+    assert "Control-machine trusted robot registry load check OK" in source
