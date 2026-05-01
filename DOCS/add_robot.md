@@ -5,8 +5,13 @@ hardware.
 
 ## Source of Truth
 
-`config/robot_instances.yaml` is the canonical robot registry. A robot should be
-declared there once with:
+`config/robot_instances.yaml` is the reusable source baseline. Runtime setup
+normally writes robot-specific entries to
+`~/.config/swarm_control_core/robot_instances.yaml` so adding robots does not
+dirty a git checkout. Maintainers can intentionally update the source baseline
+with `--update-source-baseline`.
+
+A robot entry should declare:
 
 - robot name
 - SSH target
@@ -57,8 +62,8 @@ Equivalent source-tree wrapper:
 
 The command:
 
-- creates or updates the canonical robot entry
-- syncs the runtime robot entry
+- creates or updates the runtime robot entry
+- optionally updates the source baseline when `--update-source-baseline` is used
 - refreshes runtime `control_types.yaml` and `control_interfaces.yaml`
 - preserves generated `camera_profiles.yaml`
 - prints the wiring doc for the selected hardware profile
@@ -140,6 +145,17 @@ ros2 run swarm_control_core save_camera_profile_core \
 
 `camera_profiles.yaml` does not need an empty `robot4: {}` entry. A missing
 camera profile means camera discovery has not been completed yet.
+
+Camera orientation can also be saved in the generated profile. Prefer
+`camera_flipper_core` over hand-editing YAML because it ties the flip to the
+currently plugged-in camera:
+
+```bash
+ros2 run swarm_control_core camera_flipper_core --robot robot5 --set horizontal
+```
+
+Use `--set horizontal` when left/right are mirrored. Use `--set vertical` when
+the camera is physically upside-down but left/right already look correct.
 
 ## Robot4 Dual-L298N Example
 

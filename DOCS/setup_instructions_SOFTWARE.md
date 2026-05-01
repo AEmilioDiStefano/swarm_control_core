@@ -293,6 +293,11 @@ Go to [Alternative Step 4.1](#setup-ref-4-1), then return to [Step 4](#setup-ste
 
 Go to [Fix Step 4.2](#setup-ref-4-2), then return to [Step 4](#setup-step-4).
 
+### IF you see an inverted image (either upside-down or mirror image) after camera configuration
+
+Go to [Optional: Camera Orientation Flip](#setup-ref-optional-camera-flip),
+then continue to [Step 5](#setup-step-5).
+
 <a id="setup-step-5"></a>
 ## Step 5: Check Local Robot Readiness
 
@@ -383,8 +388,9 @@ Go to [Fix Step 6.1](#setup-ref-6-1), then return to [Step 6](#setup-step-6).
 <a id="setup-step-7"></a>
 ## Step 7: Verify Control-Machine Recognition
 
-Run this in the control-machine terminal. Replace the example robot names with
-the robots you just registered.
+Run this in the control-machine terminal. It prints every robot currently in
+the control machine's registered/approved runtime registry, then checks each
+one with `robot_doctor_core`.
 
 ### CONTROL MACHINE:
 
@@ -395,8 +401,35 @@ source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
 
-ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot robot4
-ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot robot5
+REGISTERED_ROBOTS="$(
+python3 - <<'PY'
+from pathlib import Path
+import os
+import yaml
+
+default_config_dir = Path.home() / ".config" / "swarm_control_core"
+config_dir = Path(os.environ.get("SWARM_CORE_CONFIG_DIR", str(default_config_dir)))
+path = config_dir / "robot_instances.yaml"
+data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+robots = data.get("robots", {}) if isinstance(data, dict) else {}
+for name in sorted(robots):
+    print(name)
+PY
+)"
+
+if [[ -z "${REGISTERED_ROBOTS//[[:space:]]/}" ]]; then
+  echo "[FAIL] No registered/approved robots found in the control-machine runtime registry." >&2
+  echo "[NEXT] Return to Step 6 and register/approve at least one robot." >&2
+else
+  echo "[OK] Registered/approved robots:"
+  printf '  %s\n' $REGISTERED_ROBOTS
+
+  for robot in $REGISTERED_ROBOTS; do
+    echo
+    echo "[CHECK] robot_doctor_core --robot ${robot}"
+    ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot "$robot"
+  done
+fi
 ```
 
 Expected success signals for each robot:
@@ -734,6 +767,52 @@ ros2 pkg executables swarm_control_core | rg "_core$"
 ```
 
 Return to [Step 8](#setup-step-8).
+
+<a id="setup-ref-optional-camera-flip"></a>
+## Optional: Camera Orientation Flip
+
+Use this after the robot has a generated camera profile and the FPV image is
+inverted: upside-down or mirrored left/right.
+
+### ROBOT(S):
+
+```bash
+export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
+export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
+
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME" --status
+```
+
+For a mirror image where left/right are backward, save a horizontal software
+flip.
+
+### ROBOT(S):
+
+```bash
+ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME" --set horizontal
+```
+
+For a physically upside-down camera where left/right already look correct, save
+a vertical software flip instead.
+
+### ROBOT(S):
+
+```bash
+ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME" --set vertical
+```
+
+`camera_flipper_core` refuses to save a flip when the currently plugged-in
+camera does not match the saved profile unless `--force` is used. That prevents
+one camera's correction from silently applying to a different replacement
+camera. Restart that robot's quickstart Step 2 terminal after saving.
+
+Return to [QUICKSTART.md](./QUICKSTART.md) Step 2 for that robot.
 
 <a id="setup-ref-optional-wheel-test"></a>
 ## Optional: Wheel Direction Test

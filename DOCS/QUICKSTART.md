@@ -177,13 +177,18 @@ Go to [Fix Step 2.1](#ref-2-1), then return to [Step 2](#step-2).
 
 Go to [Alternative Step 2.2](#ref-2-2), then return to [Step 2](#step-2).
 
+### IF you see an inverted image (either upside-down or mirror image) after camera configuration
+
+Go to [Optional Step 2.4: Camera Orientation Flip](#ref-2-4), then return to
+[Step 2](#step-2).
+
 ### IF wheels move but direction/order is wrong
 
 Go to [Fix Step 2.3](#ref-2-3), then return to [Step 2](#step-2).
 
 ### IF one camera is dark or teleop/video feels laggy
 
-Go to [Fix Step 2.4](#ref-2-4), then return to [Step 2](#step-2).
+Go to [Fix Step 2.5](#ref-2-5), then return to [Step 2](#step-2).
 
 For multi-robot sessions:
 - keep each robot SSH terminal running.
@@ -425,7 +430,37 @@ Saved profile changes are consumed on the next robot bringup. Stop the affected
 Step 2 terminal with `Ctrl-C`, then return to [Step 2](#step-2).
 
 <a id="ref-2-4"></a>
-## Fix Step 2.4: Dark Camera or Laggy Video/Control
+## Optional Step 2.4: Camera Orientation Flip
+
+If the camera image is inverted after camera configuration, use the camera
+flipper tool to save software orientation in that robot's camera profile. Run
+this on the affected robot, not the control machine.
+
+```bash
+export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
+export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
+
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+# Use this when left/right are mirrored/backward.
+ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME" --set horizontal
+
+# Use this instead when the camera is physically upside-down but left/right
+# already look correct.
+# ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME" --set vertical
+```
+
+`camera_flipper_core` only saves the flip when the currently plugged-in camera
+matches the saved camera profile. That keeps a robot5-specific mirrored camera
+fix from accidentally applying to a different camera later. Stop the affected
+Step 2 terminal with `Ctrl-C`, then return to [Step 2](#step-2).
+
+<a id="ref-2-5"></a>
+## Fix Step 2.5: Dark Camera or Laggy Video/Control
 
 If one robot feed is much darker than others while transport/control are
 healthy, validate camera controls on that robot:

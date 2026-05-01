@@ -102,8 +102,10 @@ Design rule for future features:
 - `add_control_interface_core` scaffolds new reusable control interfaces so most
   motor-controller additions touch YAML/docs only, not runtime Python.
 - `camera_profiles.yaml` is generated robot-local state. It records detected
-  camera choices from `save_camera_profile_core`; robots do not need empty
-  placeholders in the repository template.
+  camera choices and guarded software orientation (`flip_horizontal`,
+  `flip_vertical`, `orientation_device`) from `save_camera_profile_core` and
+  `camera_flipper_core`; robots do not need empty placeholders in the repository
+  template.
 - `add_robot_core` is the preferred front door for creating or updating robot
   entries. It syncs runtime robot entries, refreshes runtime reusable core
   profiles, preserves camera profiles, and prints wiring guidance.

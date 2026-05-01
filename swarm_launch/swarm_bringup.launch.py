@@ -68,6 +68,31 @@ def _parse_bool(raw_value: str, default: bool) -> bool:
     return bool(default)
 
 
+def _resolved_device_path(device: str) -> str:
+    value = str(device or "").strip()
+    if not value:
+        return ""
+    try:
+        path = os.path.expanduser(value)
+        if os.path.exists(path):
+            return os.path.realpath(path)
+    except Exception:
+        return ""
+    return ""
+
+
+def _camera_devices_match(left: str, right: str) -> bool:
+    left_s = str(left or "").strip()
+    right_s = str(right or "").strip()
+    if not left_s or not right_s:
+        return False
+    if left_s == right_s:
+        return True
+    left_resolved = _resolved_device_path(left_s)
+    right_resolved = _resolved_device_path(right_s)
+    return bool(left_resolved and right_resolved and left_resolved == right_resolved)
+
+
 def _sanitize_camera_fourcc(camera_source: str, raw_fourcc: str) -> str:
     """
     Normalize configured fourcc to safer source-aware defaults.
@@ -159,6 +184,8 @@ def _make_nodes(context, *args, **kwargs):
         "CAMERA_HEIGHT",
         "CAMERA_FOURCC",
         "CAMERA_FORCE_V4L2",
+        "CAMERA_FLIP_HORIZONTAL",
+        "CAMERA_FLIP_VERTICAL",
     )
     ignored_camera_env_vars = []
     if not camera_allow_env_overrides:
@@ -251,6 +278,38 @@ def _make_nodes(context, *args, **kwargs):
         else:
             merged_force_raw = str(camera_profile.get("force_v4l2", "true")).strip()
             camera_force_v4l2 = _parse_bool(merged_force_raw, default=True)
+
+    camera_flip_horizontal_arg_raw = (LaunchConfiguration("camera_flip_horizontal").perform(context) or "").strip()
+    camera_flip_horizontal_env_raw = ""
+    if not camera_flip_horizontal_arg_raw and camera_allow_env_overrides:
+        camera_flip_horizontal_env_raw = os.environ.get("CAMERA_FLIP_HORIZONTAL", "").strip()
+    camera_flip_horizontal_raw = (
+        camera_flip_horizontal_arg_raw
+        or camera_flip_horizontal_env_raw
+        or str(camera_profile.get("flip_horizontal", "")).strip()
+    )
+    camera_flip_horizontal = _parse_bool(camera_flip_horizontal_raw, default=False)
+    camera_flip_horizontal_overridden = bool(camera_flip_horizontal_arg_raw or camera_flip_horizontal_env_raw)
+
+    camera_flip_vertical_arg_raw = (LaunchConfiguration("camera_flip_vertical").perform(context) or "").strip()
+    camera_flip_vertical_env_raw = ""
+    if not camera_flip_vertical_arg_raw and camera_allow_env_overrides:
+        camera_flip_vertical_env_raw = os.environ.get("CAMERA_FLIP_VERTICAL", "").strip()
+    camera_flip_vertical_raw = (
+        camera_flip_vertical_arg_raw
+        or camera_flip_vertical_env_raw
+        or str(camera_profile.get("flip_vertical", "")).strip()
+    )
+    camera_flip_vertical = _parse_bool(camera_flip_vertical_raw, default=False)
+    camera_flip_vertical_overridden = bool(camera_flip_vertical_arg_raw or camera_flip_vertical_env_raw)
+    camera_orientation_device = str(camera_profile.get("orientation_device", "")).strip()
+    camera_orientation_guard_mismatch = False
+    if camera_orientation_device and not _camera_devices_match(camera_orientation_device, video_device):
+        camera_orientation_guard_mismatch = True
+        if not camera_flip_horizontal_overridden:
+            camera_flip_horizontal = False
+        if not camera_flip_vertical_overridden:
+            camera_flip_vertical = False
 
     original_camera_shape = (camera_width, camera_height, camera_fps, camera_fourcc)
     camera_width, camera_height, camera_fps, camera_fourcc, camera_clamp_notes = (
@@ -464,6 +523,15 @@ def _make_nodes(context, *args, **kwargs):
             f"[CAM] {video_device} {camera_width}x{camera_height} "
             f"{camera_fps}fps {camera_fourcc} v4l2={camera_force_v4l2}"
         )
+        if camera_orientation_guard_mismatch:
+            _wrap_and_append_log(
+                f"[CAM] orientation ignored; guard device {camera_orientation_device} "
+                f"does not match selected device {video_device}"
+            )
+        if camera_flip_horizontal or camera_flip_vertical:
+            _wrap_and_append_log(
+                f"[CAM] orientation flip_h={camera_flip_horizontal} flip_v={camera_flip_vertical}"
+            )
         _wrap_and_append_log(
             f"[CAM] jpeg_quality={camera_jpeg_quality} adaptive_jpeg={camera_adaptive_jpeg} "
             f"adaptive_floor={camera_adaptive_jpeg_min_quality}"
@@ -483,6 +551,8 @@ def _make_nodes(context, *args, **kwargs):
                 {"height": camera_height},
                 {"fourcc": camera_fourcc},
                 {"force_v4l2": camera_force_v4l2},
+                {"flip_horizontal": camera_flip_horizontal},
+                {"flip_vertical": camera_flip_vertical},
                 {"jpeg_quality": camera_jpeg_quality},
                 {"adaptive_jpeg": camera_adaptive_jpeg},
                 {"adaptive_jpeg_min_quality": camera_adaptive_jpeg_min_quality},
@@ -608,6 +678,16 @@ def generate_launch_description():
                 "camera_force_v4l2",
                 default_value="",
                 description="When true, adapter prefers V4L2-only open strategies (auto when empty).",
+            ),
+            DeclareLaunchArgument(
+                "camera_flip_horizontal",
+                default_value="",
+                description="Software mirror camera frames horizontally; empty uses camera profile/env.",
+            ),
+            DeclareLaunchArgument(
+                "camera_flip_vertical",
+                default_value="",
+                description="Software flip camera frames vertically; empty uses camera profile/env.",
             ),
             DeclareLaunchArgument("use_camera", default_value="true"),
             DeclareLaunchArgument(

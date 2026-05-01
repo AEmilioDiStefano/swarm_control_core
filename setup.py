@@ -47,6 +47,7 @@ setup(
             "motor_driver_node_core = swarm_control_core.motor_driver_node:main",
             "swarm_camera_node_core = swarm_control_core.swarm_camera_node:main",
             "save_camera_profile_core = swarm_control_core.save_camera_profile:main",
+            "camera_flipper_core = swarm_control_core.camera_flipper:main",
             "unit_executor_action_server_core = swarm_control_core.unit_executor_action_server:main",
             "camera_autonomy_node_core = swarm_control_core.camera_autonomy_node:main",
             "heartbeat_node_core = swarm_control_core.heartbeat_node:main",

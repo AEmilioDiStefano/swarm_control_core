@@ -39,6 +39,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
+from .camera_orientation import apply_frame_orientation
 from .path_defaults import default_robot_name
 from .runtime_env import ensure_ros_domain_id
 from .camera_runtime_defaults import choose_adaptive_jpeg_quality
@@ -234,6 +235,8 @@ class CameraAdapterNode(Node):
         self.declare_parameter("height", 480)
         self.declare_parameter("fourcc", "MJPG")
         self.declare_parameter("force_v4l2", True)
+        self.declare_parameter("flip_horizontal", False)
+        self.declare_parameter("flip_vertical", False)
         self.declare_parameter("publish_compressed", True)
         self.declare_parameter("jpeg_quality", 70)
         self.declare_parameter("adaptive_jpeg", True)
@@ -262,6 +265,8 @@ class CameraAdapterNode(Node):
         requested_fourcc = str(self.get_parameter("fourcc").value or "").upper()
         self.fourcc = _sanitize_fourcc(self.camera_source, requested_fourcc)
         self.force_v4l2 = bool(self.get_parameter("force_v4l2").value)
+        self.flip_horizontal = bool(self.get_parameter("flip_horizontal").value)
+        self.flip_vertical = bool(self.get_parameter("flip_vertical").value)
         self.publish_compressed = bool(self.get_parameter("publish_compressed").value)
         self.jpeg_quality = max(30, min(95, int(self.get_parameter("jpeg_quality").value)))
         self.adaptive_jpeg = bool(self.get_parameter("adaptive_jpeg").value)
@@ -414,7 +419,8 @@ class CameraAdapterNode(Node):
         self.get_logger().info(
             f"[{self.robot_name}.camera] adapter publishing on {self.image_topic} "
             f"(source={self.camera_source}, device={self.device_raw}, size={self.width}x{self.height}, "
-            f"fps={self.frame_rate:.1f}, fourcc={self.fourcc})"
+            f"fps={self.frame_rate:.1f}, fourcc={self.fourcc}, "
+            f"flip_h={self.flip_horizontal}, flip_v={self.flip_vertical})"
         )
         if self.publish_compressed:
             self.get_logger().info(
@@ -792,6 +798,11 @@ class CameraAdapterNode(Node):
                 self._open_next_strategy(initial=False)
             return
 
+        frame_bgr = apply_frame_orientation(
+            frame_bgr,
+            flip_horizontal=self.flip_horizontal,
+            flip_vertical=self.flip_vertical,
+        )
         self.fail_reads = 0
         self.last_frame_layout = layout
         self.last_error = ""
@@ -946,6 +957,8 @@ class CameraAdapterNode(Node):
             "active_fourcc": self.active_fourcc,
             "active_strategy": self.active_strategy,
             "device_raw": str(self.device_raw),
+            "flip_horizontal": bool(self.flip_horizontal),
+            "flip_vertical": bool(self.flip_vertical),
             "yuv_decode_mode": self.yuv_decode_mode,
             "bad_color_streak": int(self.bad_color_streak),
             "mean_bgr": [float(self.last_bgr_mean[0]), float(self.last_bgr_mean[1]), float(self.last_bgr_mean[2])],

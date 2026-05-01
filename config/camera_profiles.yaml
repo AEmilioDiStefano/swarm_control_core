@@ -37,6 +37,10 @@ defaults:
   fps: 15
   fourcc: MJPG
   force_v4l2: true
+  flip_horizontal: false
+  flip_vertical: false
+  orientation_device: ''
+  orientation_camera_name: ''
 profiles:
   control_machine:
     source: usb
@@ -48,3 +52,7 @@ profiles:
     fps: 30
     fourcc: MJPG
     force_v4l2: true
+    flip_horizontal: false
+    flip_vertical: false
+    orientation_device: ''
+    orientation_camera_name: ''

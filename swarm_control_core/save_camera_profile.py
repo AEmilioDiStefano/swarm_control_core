@@ -240,6 +240,31 @@ def _pick_device_from_system() -> str:
     return ""
 
 
+def _resolved_device_path(device: str) -> str:
+    value = str(device or "").strip()
+    if not value:
+        return ""
+    try:
+        path = Path(value).expanduser()
+        if path.exists():
+            return str(path.resolve())
+    except Exception:
+        return ""
+    return ""
+
+
+def _camera_devices_match(left: str, right: str) -> bool:
+    left_s = str(left or "").strip()
+    right_s = str(right or "").strip()
+    if not left_s or not right_s:
+        return False
+    if left_s == right_s:
+        return True
+    left_resolved = _resolved_device_path(left_s)
+    right_resolved = _resolved_device_path(right_s)
+    return bool(left_resolved and right_resolved and left_resolved == right_resolved)
+
+
 def _detect_v4l2_mode(device: str) -> Tuple[Optional[int], Optional[int], str, Optional[int]]:
     """
     Query current camera mode via v4l2-ctl.
@@ -307,6 +332,10 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
                 "fps": 15,
                 "fourcc": "MJPG",
                 "force_v4l2": True,
+                "flip_horizontal": False,
+                "flip_vertical": False,
+                "orientation_device": "",
+                "orientation_camera_name": "",
             },
             "profiles": {},
         }
@@ -1068,6 +1097,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--fps", default="")
     parser.add_argument("--fourcc", default="")
     parser.add_argument("--force-v4l2", default="")
+    parser.add_argument("--flip-horizontal", default="")
+    parser.add_argument("--flip-vertical", default="")
     parser.add_argument(
         "--non-interactive",
         action="store_true",
@@ -1246,6 +1277,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     # We only probe v4l2 mode if we ended with a concrete device path.
     # This keeps the script resilient when no camera is attached.
     det_w, det_h, det_fourcc, det_fps = _detect_v4l2_mode(device)
+    existing_orientation_device = str(existing.get("orientation_device", "")).strip()
+    existing_orientation_matches_selected = (
+        not existing_orientation_device
+        or _camera_devices_match(existing_orientation_device, device)
+    )
+    existing_orientation_name = ""
+    existing_flip_horizontal = None
+    existing_flip_vertical = None
+    if existing_orientation_matches_selected:
+        existing_orientation_name = str(existing.get("orientation_camera_name", "")).strip()
+        existing_flip_horizontal = existing.get("flip_horizontal")
+        existing_flip_vertical = existing.get("flip_vertical")
 
     # ---------------------------------------------------------------------
     # Phase 6: Assemble profile parameters with explicit precedence chains.
@@ -1337,6 +1380,24 @@ def main(argv: Optional[list[str]] = None) -> int:
             ]
         )
     force_raw, src_force = _choose_value(force_candidates)
+    flip_h_raw, src_flip_h = _choose_value(
+        [
+            ("arg.flip_horizontal", str(args.flip_horizontal or "").strip()),
+            ("env.CAMERA_FLIP_HORIZONTAL", os.environ.get("CAMERA_FLIP_HORIZONTAL", "").strip()),
+            ("yaml.profiles.<robot>.flip_horizontal", existing_flip_horizontal),
+            ("yaml.defaults.flip_horizontal", defaults.get("flip_horizontal")),
+            ("fallback", False),
+        ]
+    )
+    flip_v_raw, src_flip_v = _choose_value(
+        [
+            ("arg.flip_vertical", str(args.flip_vertical or "").strip()),
+            ("env.CAMERA_FLIP_VERTICAL", os.environ.get("CAMERA_FLIP_VERTICAL", "").strip()),
+            ("yaml.profiles.<robot>.flip_vertical", existing_flip_vertical),
+            ("yaml.defaults.flip_vertical", defaults.get("flip_vertical")),
+            ("fallback", False),
+        ]
+    )
 
     # Normalize numeric/boolean values so YAML output is strongly typed.
     # This is important because launch/adapter code expects ints/bools for
@@ -1360,6 +1421,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     force_v4l2 = _parse_bool(force_raw)
     if force_v4l2 is None:
         force_v4l2 = bool(default_force)
+    flip_horizontal = _parse_bool(flip_h_raw)
+    if flip_horizontal is None:
+        flip_horizontal = False
+    flip_vertical = _parse_bool(flip_v_raw)
+    if flip_vertical is None:
+        flip_vertical = False
+    orientation_device = existing_orientation_device if existing_orientation_matches_selected else ""
+    orientation_camera_name = existing_orientation_name if existing_orientation_matches_selected else ""
+    if flip_horizontal or flip_vertical:
+        orientation_device = orientation_device or device
+        orientation_camera_name = orientation_camera_name or selected_label
+    else:
+        orientation_device = ""
+        orientation_camera_name = ""
 
     if not device:
         print("[ERROR] Could not resolve a camera device path.", file=sys.stderr)
@@ -1382,6 +1457,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         "fps": fps,
         "fourcc": fourcc,
         "force_v4l2": force_v4l2,
+        "flip_horizontal": flip_horizontal,
+        "flip_vertical": flip_vertical,
+        "orientation_device": orientation_device,
+        "orientation_camera_name": orientation_camera_name,
     }
     data["profiles"] = profiles
 
@@ -1402,6 +1481,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     _print_profile_field("fps", fps, src_fps)
     _print_profile_field("fourcc", fourcc, src_fourcc)
     _print_profile_field("force_v4l2", force_v4l2, src_force)
+    _print_profile_field("flip_horizontal", flip_horizontal, src_flip_h)
+    _print_profile_field("flip_vertical", flip_vertical, src_flip_v)
+    if orientation_device:
+        _print_wrapped("  orientation_device: ", orientation_device)
+    if orientation_camera_name:
+        _print_wrapped("  orientation_camera_name: ", orientation_camera_name)
     _print_wrapped("  output: ", profiles_path)
 
     if args.dry_run:
