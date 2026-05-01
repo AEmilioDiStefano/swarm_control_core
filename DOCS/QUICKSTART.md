@@ -500,6 +500,10 @@ ends with:
 [NEXT] Restart the FPV UI so it reloads the trusted robot registry before driving.
 ```
 
+The sync command updates the control machine's runtime trust registry by
+default. It should not dirty the source-tree `config/robot_instances.yaml`
+unless you explicitly pass `--update-source-baseline`.
+
 Then stop and restart [Step 3](#step-3). Only use
 `SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL=1` in a trusted lab when you
 intentionally want to allow control of robots not yet present in
@@ -566,6 +570,18 @@ unset SWARM_CORE_COMPAT_STOP_UFW
 
 If reset script prints `Unknown argument: --machine-role`, your robot/control checkout is stale.
 Run on each machine:
+
+If `git pull --ff-only` is blocked by local changes to
+`config/robot_instances.yaml` after running robot setup, the runtime profile is
+already stored under `~/.config/swarm_control_core/robot_instances.yaml`. Restore
+the generated source-file edit before pulling:
+
+```bash
+cd "$WS/src/swarm_control_core"
+git restore config/robot_instances.yaml
+```
+
+Then rerun the update/build block:
 
 ```bash
 cd "$WS/src/swarm_control_core"

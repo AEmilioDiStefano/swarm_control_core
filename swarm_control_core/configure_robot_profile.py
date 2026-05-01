@@ -314,6 +314,7 @@ def ensure_robot_entry(
     linux_username: str = "",
     hostname: str = "",
     update_existing: bool = False,
+    update_source_baseline: bool = False,
 ) -> tuple[RobotEntry, bool, List[RuntimeSyncResult]]:
     repo_registry = _load_robot_registry(repo_profiles_path)
     repo_robots = repo_registry.get("robots", {}) or {}
@@ -397,9 +398,10 @@ def ensure_robot_entry(
             linux_username=username,
             hostname=detected_host,
         )
-        repo_robots[robot_name] = entry
-        repo_registry["robots"] = repo_robots
-        _append_robot_to_repo_file(repo_profiles_path, robot_name, entry, repo_registry)
+        if update_source_baseline:
+            repo_robots[robot_name] = entry
+            repo_registry["robots"] = repo_robots
+            _append_robot_to_repo_file(repo_profiles_path, robot_name, entry, repo_registry)
         created = True
     else:
         entry = dict(entry)
@@ -449,9 +451,10 @@ def ensure_robot_entry(
                     linux_username=username,
                     hostname=detected_host,
                 )["ssh_target"]
-            repo_robots[robot_name] = entry
-            repo_registry["robots"] = repo_robots
-            _write_yaml(repo_profiles_path, repo_registry)
+            if update_source_baseline:
+                repo_robots[robot_name] = entry
+                repo_registry["robots"] = repo_robots
+                _write_yaml(repo_profiles_path, repo_registry)
 
     sync_results: List[RuntimeSyncResult] = []
     for runtime_path in runtime_profiles_paths:
@@ -567,6 +570,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Apply explicit --control-type/--control-interface values to an existing robot entry.",
     )
     parser.add_argument(
+        "--update-source-baseline",
+        action="store_true",
+        help=(
+            "Also write the source-tree config/robot_instances.yaml baseline. "
+            "Default setup writes runtime config only so git pulls stay clean."
+        ),
+    )
+    parser.add_argument(
         "--skip-camera-profile",
         action="store_true",
         help="Do not launch camera profile discovery if this robot has no camera profile yet.",
@@ -621,6 +632,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             linux_username=str(args.linux_username or "").strip(),
             hostname=str(args.hostname or "").strip(),
             update_existing=bool(args.update_existing),
+            update_source_baseline=bool(args.update_source_baseline),
         )
     except Exception as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
@@ -659,7 +671,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"[ERROR] {exc}", file=sys.stderr)
             return 2
 
-    state_text = "created" if created_robot else "already present"
+    if created_robot and args.update_source_baseline:
+        state_text = "created"
+    elif created_robot:
+        state_text = "not present in source baseline; runtime entry prepared"
+    elif args.update_existing and (args.control_type or args.control_interface) and not args.update_source_baseline:
+        state_text = "already present; runtime override prepared"
+    else:
+        state_text = "already present"
     print(f"[ROBOT PROFILE] robot={robot_name}")
     _print_wrapped("  baseline_state: ", state_text)
     _print_wrapped("  workspace: ", workspace_root)

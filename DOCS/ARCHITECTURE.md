@@ -116,6 +116,10 @@ Design rule for future features:
   reusable hardware profile shared by every robot of that type.
 - `robot_doctor_core` reports source/runtime/install drift, including stale
   `control_interfaces.yaml` files that would hide newly added hardware profiles.
+- Robot setup and control-machine registration are runtime-first by default:
+  they update `~/.config/swarm_control_core` without dirtying the git checkout.
+  Maintainers can opt into source-baseline edits with `--update-source-baseline`
+  when they intentionally want to commit a fleet default.
 - Runtime overrides can still be placed in machine-local config paths when a
   deployment intentionally diverges from the source baseline.
 

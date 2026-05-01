@@ -241,6 +241,7 @@ def _merge_imported_robot_entry(
     runtime_profiles_paths: Sequence[Path],
     robot_name: str,
     entry: RobotEntry,
+    update_source_baseline: bool = False,
 ) -> Tuple[str, List[SyncResult]]:
     repo_registry = _load_robot_registry(repo_profiles_path)
     repo_robots = repo_registry.get("robots", {}) or {}
@@ -255,7 +256,7 @@ def _merge_imported_robot_entry(
     else:
         repo_state = "already_synced"
 
-    if repo_state != "already_synced":
+    if update_source_baseline and repo_state != "already_synced":
         repo_robots[robot_name] = dict(entry)
         repo_registry["robots"] = repo_robots
         if repo_state == "missing_entry":
@@ -378,6 +379,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=[],
         help="Robot source as ssh_target or robot_name=ssh_target. Repeat for multiple robots.",
     )
+    parser.add_argument(
+        "--update-source-baseline",
+        action="store_true",
+        help=(
+            "Also write src/swarm_control_core/config/robot_instances.yaml. "
+            "Default registration writes runtime trust config only so git pulls stay clean."
+        ),
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -461,16 +470,23 @@ def main(argv: Optional[List[str]] = None) -> int:
             runtime_profiles_paths=runtime_profiles_paths,
             robot_name=robot_name,
             entry=entry,
+            update_source_baseline=bool(args.update_source_baseline),
         )
 
-        if repo_state == "missing_entry":
+        if repo_state == "already_synced":
+            print(f"[SYNC] Control-machine baseline entry already matched in {repo_profiles_path}.")
+        elif args.update_source_baseline and repo_state == "missing_entry":
             print(f"[SYNC] Control-machine baseline entry for '{robot_name}' was missing. Importing now.")
             print(f"[SYNC] Control-machine baseline entry imported successfully into {repo_profiles_path}.")
-        elif repo_state == "stale_entry":
+        elif args.update_source_baseline and repo_state == "stale_entry":
             print(f"[SYNC] Control-machine baseline entry for '{robot_name}' was stale. Updating now.")
             print(f"[SYNC] Control-machine baseline entry updated successfully in {repo_profiles_path}.")
         else:
-            print(f"[SYNC] Control-machine baseline entry already matched in {repo_profiles_path}.")
+            print(
+                f"[SYNC] Control-machine baseline entry for '{robot_name}' is {repo_state}; "
+                "leaving source baseline unchanged."
+            )
+            print("[SYNC] Runtime trust registry will be updated for control without dirtying the git checkout.")
 
         for result in runtime_results:
             _print_sync_result(result, robot_name=robot_name, prefix="control-machine runtime robot_instances.yaml")

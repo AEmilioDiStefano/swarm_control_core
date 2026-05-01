@@ -31,6 +31,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         action="store_true",
         help="Do not update an existing robot entry even if explicit type/interface args are provided.",
     )
+    parser.add_argument(
+        "--update-source-baseline",
+        action="store_true",
+        help=(
+            "Also write src/swarm_control_core/config/robot_instances.yaml. "
+            "Default writes runtime config only so robot git checkouts stay clean."
+        ),
+    )
     args = parser.parse_args(argv)
 
     linux_username = ""
@@ -60,6 +68,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ]
     if not args.no_update_existing:
         forwarded.append("--update-existing")
+    if args.update_source_baseline:
+        forwarded.append("--update-source-baseline")
     if args.skip_camera:
         forwarded.append("--skip-camera-profile")
 

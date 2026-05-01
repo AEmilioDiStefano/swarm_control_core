@@ -52,3 +52,59 @@ control_interfaces:
     assert report["camera_profile_state"] == "missing"
     assert report["runtime"][0]["robot_entry"] == "current"
     assert report["runtime"][0]["control_interfaces"] == "stale"
+
+
+def test_robot_doctor_accepts_runtime_only_robot_entry(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "ws"
+    config = workspace / "src" / "swarm_control_core" / "config"
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("SWARM_CORE_CONFIG_DIR", str(runtime))
+
+    _write(
+        config / "robot_instances.yaml",
+        """schema_version: "1.0"
+defaults:
+  control_type: diff_drive
+  control_interface: l298n_diff
+robots: {}
+""",
+    )
+    _write(
+        config / "control_interfaces.yaml",
+        """schema_version: "1.0"
+control_interfaces:
+  dual_l298n_mecanum:
+    docs:
+      wiring: DOCS/GPIO/GPIO_for_mecanum_DUAL_L298N.md
+    gpio: {}
+    params: {}
+""",
+    )
+    _write(config / "control_types.yaml", "schema_version: '1.0'\ncontrol_types: {}\n")
+    _write(
+        runtime / "robot_instances.yaml",
+        """schema_version: "1.0"
+defaults:
+  control_type: diff_drive
+  control_interface: l298n_diff
+robots:
+  robot5:
+    ssh_target: robot5@legion5.local
+    control_type: mecanum_drive
+    control_interface: dual_l298n_mecanum
+""",
+    )
+    _write(runtime / "control_types.yaml", (config / "control_types.yaml").read_text(encoding="utf-8"))
+    _write(runtime / "control_interfaces.yaml", (config / "control_interfaces.yaml").read_text(encoding="utf-8"))
+    _write(runtime / "camera_profiles.yaml", "schema_version: '1.0'\nprofiles: {}\n")
+
+    report = collect_report(workspace_root=workspace, robot_name="robot5")
+
+    assert report["source_entry_state"] == "missing"
+    assert report["runtime_entry_source"] == "runtime"
+    assert report["source_control_interface_state"] == "present"
+    assert report["runtime"][0]["robot_entry"] == "current"
+    assert report["control_machine_sync_specs"] == [
+        "robot5@legion5.local",
+        "robot5=robot5@legion5.local",
+    ]

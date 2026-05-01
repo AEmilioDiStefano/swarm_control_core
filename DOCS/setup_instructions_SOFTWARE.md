@@ -272,6 +272,8 @@ What to do here:
   exists yet
 - copy the printed control-machine registration source, such as
   `robot4=robot4@legion4.local`, for Step 6
+- keep robot setup runtime-local by default; this step should not dirty the
+  robot's git checkout
 
 Expected success output includes:
 
@@ -315,7 +317,8 @@ ros2 run swarm_control_core robot_doctor_core \
 
 Expected success signals:
 
-- `source_entry: present`
+- `robot_entry_source: source_baseline` for pre-programmed robots, or
+  `robot_entry_source: runtime` for robots added locally through the wizard
 - `source_control_interface: present`
 - `robot_entry: current`
 - `control_types.yaml: current`
@@ -344,6 +347,9 @@ after this registration/approval command succeeds.
 
 Run this in the control-machine terminal. Use one `--source` per robot. Replace
 the examples with the exact source strings printed by Step 4 or Step 5.
+This updates the control machine's runtime trust registry by default; it does
+not modify the source-tree `config/robot_instances.yaml` unless you explicitly
+add `--update-source-baseline`.
 
 ### CONTROL MACHINE:
 
@@ -395,7 +401,8 @@ ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot robot5
 
 Expected success signals for each robot:
 
-- `source_entry: present`
+- `source_entry: present` for pre-programmed robots, or
+  `robot_entry_source: runtime` for robots approved from runtime registration
 - `robot_entry: current`
 - the selected `control_interface` matches the robot hardware
 
@@ -672,6 +679,10 @@ ssh robot5@legion5.local hostname
 ```
 
 Return to [Step 6](#setup-step-6).
+
+If you are maintaining a committed fleet baseline and intentionally want the
+registration command to update source control too, rerun the same sync command
+with `--update-source-baseline`. Normal setup should not use that flag.
 
 <a id="setup-ref-7-1"></a>
 ## Fix Step 7.1: Control Machine Does Not Recognize an Approved Robot

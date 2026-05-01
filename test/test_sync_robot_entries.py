@@ -47,7 +47,7 @@ def test_select_robot_entry_prefers_exact_ssh_target_match() -> None:
     assert entry["control_interface"] == "l298n_diff"
 
 
-def test_merge_imported_robot_entry_updates_control_machine_repo_and_runtime(tmp_path: Path) -> None:
+def test_merge_imported_robot_entry_updates_runtime_without_dirtying_repo_by_default(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
     runtime_profiles = tmp_path / "runtime" / "robot_instances.yaml"
@@ -81,12 +81,44 @@ robots:
     assert runtime_results[0]["state"] == "missing_file"
 
     repo_text = repo_profiles.read_text(encoding="utf-8")
-    assert "robot_new:" in repo_text
-    assert "control_interface: dual_tb6612_mecanum" in repo_text
+    assert "robot_new:" not in repo_text
 
     runtime_text = runtime_profiles.read_text(encoding="utf-8")
     assert "robot_new:" in runtime_text
     assert "ssh_target: robot_new@robot-new.local" in runtime_text
+
+
+def test_merge_imported_robot_entry_can_update_source_baseline_when_requested(tmp_path: Path) -> None:
+    workspace = tmp_path / "ws"
+    repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
+    runtime_profiles = tmp_path / "runtime" / "robot_instances.yaml"
+
+    _write(
+        repo_profiles,
+        """schema_version: "1.0"
+defaults:
+  control_type: diff_drive
+  control_interface: l298n_diff
+robots: {}
+""",
+    )
+
+    repo_state, runtime_results = _merge_imported_robot_entry(
+        repo_profiles_path=repo_profiles,
+        runtime_profiles_paths=[runtime_profiles],
+        robot_name="robot_new",
+        entry={
+            "ssh_target": "robot_new@robot-new.local",
+            "control_type": "mecanum_drive",
+            "control_interface": "dual_l298n_mecanum",
+        },
+        update_source_baseline=True,
+    )
+
+    assert repo_state == "missing_entry"
+    assert runtime_results[0]["state"] == "missing_file"
+    assert "robot_new:" in repo_profiles.read_text(encoding="utf-8")
+    assert "robot_new:" in runtime_profiles.read_text(encoding="utf-8")
 
 
 def test_detect_likely_local_robot_source_from_runtime_registry(tmp_path: Path) -> None:

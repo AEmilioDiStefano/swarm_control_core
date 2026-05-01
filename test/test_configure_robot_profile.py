@@ -27,7 +27,7 @@ def test_configure_robot_profile_does_not_claim_quickstart_ready_before_control_
     assert "Register/approve this robot on the control machine" in text
 
 
-def test_ensure_robot_entry_creates_repo_and_runtime_entries(tmp_path: Path) -> None:
+def test_ensure_robot_entry_creates_runtime_entry_without_dirtying_repo_by_default(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
     control_types = workspace / "src" / "swarm_control_core" / "config" / "control_types.yaml"
@@ -98,12 +98,67 @@ control_interfaces:
     assert sync_results[0]["repaired"] is True
 
     repo_text = repo_profiles.read_text(encoding="utf-8")
-    assert "robot_new:" in repo_text
-    assert "control_interface: dual_tb6612_diff" in repo_text
+    assert "robot_new:" not in repo_text
 
     runtime_text = runtime_profiles.read_text(encoding="utf-8")
     assert "robot_new:" in runtime_text
     assert "ssh_target: robot_new@robot-new-pi.local" in runtime_text
+
+
+def test_ensure_robot_entry_can_update_source_baseline_when_requested(tmp_path: Path) -> None:
+    workspace = tmp_path / "ws"
+    repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
+    control_types = workspace / "src" / "swarm_control_core" / "config" / "control_types.yaml"
+    control_interfaces = workspace / "src" / "swarm_control_core" / "config" / "control_interfaces.yaml"
+    runtime_profiles = tmp_path / "runtime" / "robot_instances.yaml"
+
+    _write(
+        repo_profiles,
+        """schema_version: "1.0"
+defaults:
+  control_type: diff_drive
+  control_interface: l298n_diff
+robots: {}
+""",
+    )
+    _write(
+        control_types,
+        """schema_version: "1.0"
+control_types:
+  diff_drive:
+    type: diff_drive
+    params: {}
+""",
+    )
+    _write(
+        control_interfaces,
+        """schema_version: "1.0"
+control_interfaces:
+  dual_tb6612_diff:
+    compatible_control_types:
+      - diff_drive
+    gpio: {}
+    params: {}
+""",
+    )
+
+    ensure_robot_entry(
+        repo_profiles_path=repo_profiles,
+        runtime_profiles_paths=[runtime_profiles],
+        control_types_path=control_types,
+        control_interfaces_path=control_interfaces,
+        robot_name="robot_new",
+        prompt_input=None,
+        control_type="diff_drive",
+        control_interface="dual_tb6612_diff",
+        linux_username="robot_new",
+        hostname="robot-new-pi",
+        update_source_baseline=True,
+    )
+
+    repo_text = repo_profiles.read_text(encoding="utf-8")
+    assert "robot_new:" in repo_text
+    assert "control_interface: dual_tb6612_diff" in repo_text
 
 
 def test_ensure_robot_entry_reports_stale_runtime_entry(tmp_path: Path) -> None:
@@ -177,7 +232,7 @@ robots:
     assert "control_interface: dual_tb6612_diff" in runtime_text
 
 
-def test_ensure_robot_entry_can_update_existing_robot_when_explicit(tmp_path: Path) -> None:
+def test_ensure_robot_entry_can_update_existing_robot_runtime_when_explicit(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
     control_types = workspace / "src" / "swarm_control_core" / "config" / "control_types.yaml"
@@ -235,7 +290,7 @@ control_interfaces:
     assert entry["ssh_target"] == "robot4@legion4.local"
     assert entry["control_interface"] == "dual_l298n_diff"
     assert sync_results[0]["repaired"] is True
-    assert "control_interface: dual_l298n_diff" in repo_profiles.read_text(encoding="utf-8")
+    assert "control_interface: l298n_diff" in repo_profiles.read_text(encoding="utf-8")
     assert "control_interface: dual_l298n_diff" in runtime_profiles.read_text(encoding="utf-8")
 
 

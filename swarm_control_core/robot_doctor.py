@@ -99,7 +99,23 @@ def collect_report(
     source_registry = _load_robot_registry(source_robot_instances) if source_robot_instances.exists() else {"robots": {}}
     source_robots = source_registry.get("robots", {}) or {}
     source_entry = source_robots.get(robot_name, {}) if isinstance(source_robots, dict) else {}
-    control_interface = str(source_entry.get("control_interface", "") if isinstance(source_entry, dict) else "").strip()
+    primary_runtime_entry: Dict[str, Any] = {}
+    runtime_data: List[Dict[str, Any]] = []
+    for runtime_path in runtime_robot_instances:
+        runtime_registry = _load_robot_registry(runtime_path) if runtime_path.exists() else {"robots": {}}
+        runtime_robots = runtime_registry.get("robots", {}) or {}
+        runtime_entry = runtime_robots.get(robot_name, {}) if isinstance(runtime_robots, dict) else {}
+        if isinstance(runtime_entry, dict) and runtime_entry and not primary_runtime_entry:
+            primary_runtime_entry = dict(runtime_entry)
+        runtime_data.append({
+            "path": runtime_path,
+            "entry": runtime_entry if isinstance(runtime_entry, dict) else {},
+        })
+
+    selected_entry = source_entry if isinstance(source_entry, dict) and source_entry else primary_runtime_entry
+    control_interface = str(
+        selected_entry.get("control_interface", "") if isinstance(selected_entry, dict) else ""
+    ).strip()
 
     interfaces_data = _load_yaml_mapping(
         source_control_interfaces,
@@ -115,14 +131,17 @@ def collect_report(
     source_interface_exists = isinstance(source_interfaces, dict) and canonical_control_interface in source_interfaces
 
     runtime_reports = []
-    for runtime_path in runtime_robot_instances:
-        runtime_registry = _load_robot_registry(runtime_path) if runtime_path.exists() else {"robots": {}}
-        runtime_robots = runtime_registry.get("robots", {}) or {}
-        runtime_entry = runtime_robots.get(robot_name, {}) if isinstance(runtime_robots, dict) else {}
+    for item in runtime_data:
+        runtime_path = item["path"]
+        runtime_entry = item["entry"]
         runtime_dir = runtime_path.parent
+        if runtime_entry and selected_entry:
+            entry_state = "current" if dict(runtime_entry) == dict(selected_entry) else "stale"
+        else:
+            entry_state = "missing" if not runtime_entry else "stale"
         runtime_reports.append({
             "robot_instances": str(runtime_path),
-            "robot_entry": "current" if runtime_entry == source_entry and source_entry else ("missing" if not runtime_entry else "stale"),
+            "robot_entry": entry_state,
             "control_types": _file_state(source_control_types, runtime_dir / "control_types.yaml"),
             "control_interfaces": _file_state(source_control_interfaces, runtime_dir / "control_interfaces.yaml"),
         })
@@ -145,6 +164,7 @@ def collect_report(
         "source_robot_instances": str(source_robot_instances),
         "source_entry_state": "present" if source_entry else "missing",
         "source_entry": source_entry if isinstance(source_entry, dict) else {},
+        "runtime_entry_source": "source_baseline" if source_entry else "runtime",
         "selected_control_interface": canonical_control_interface,
         "source_control_interface_state": "present" if source_interface_exists else "missing",
         "wiring_doc": wiring_doc_for_interface(source_control_interfaces, control_interface) if control_interface else "",
@@ -153,7 +173,10 @@ def collect_report(
         "camera_profile_state": _camera_state(camera_profiles_path, robot_name),
         "installed_control_interfaces": str(installed_ci) if installed_ci is not None else "",
         "installed_control_interface_state": installed_state,
-        "control_machine_sync_specs": _suggest_control_machine_sync_specs(robot_name, source_entry if isinstance(source_entry, dict) else {}),
+        "control_machine_sync_specs": _suggest_control_machine_sync_specs(
+            robot_name,
+            selected_entry if isinstance(selected_entry, dict) else {},
+        ),
     }
 
 
@@ -161,6 +184,7 @@ def _print_report(report: Dict[str, Any]) -> None:
     print(f"[ROBOT DOCTOR] robot={report['robot']}")
     print(f"  workspace: {report['workspace']}")
     print(f"  source_entry: {report['source_entry_state']}")
+    print(f"  robot_entry_source: {report['runtime_entry_source']}")
     print(f"  selected_control_interface: {report.get('selected_control_interface') or '<none>'}")
     print(f"  source_control_interface: {report['source_control_interface_state']}")
     if report.get("wiring_doc"):
@@ -232,8 +256,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         _print_report(report)
 
     unhealthy = (
-        report["source_entry_state"] != "present"
-        or report["source_control_interface_state"] != "present"
+        report["source_control_interface_state"] != "present"
         or any(
             item["robot_entry"] != "current"
             or item["control_types"] != "current"
