@@ -2970,15 +2970,17 @@ header{
   color:#ff9c9c;
 }
 main{
+  --fleet-col:clamp(190px,18vw,300px);
+  --control-col:clamp(220px,20vw,300px);
   display:grid;
-  grid-template-columns: 300px minmax(0,1fr) 300px;
+  grid-template-columns:var(--fleet-col) minmax(0,1fr) var(--control-col);
   grid-template-areas:"fleet video controls";
   gap:12px;
   padding:12px;
   min-height:calc(100vh - 56px);
   align-items:start;
 }
-@media (max-width: 1100px){
+@media (max-width: 900px){
   main{
     grid-template-columns:1fr;
     grid-template-areas:
@@ -3005,8 +3007,18 @@ main{
   aspect-ratio:16/10;cursor:pointer;
 }
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb video.thumb-live{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:none;
+  background:#000;
+  z-index:1;
+}
 .thumb.sel{outline:2px solid rgba(57,160,255,.7)}
-.badge{position:absolute;left:8px;top:8px;font-size:12px;padding:4px 8px;border-radius:999px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.18)}
+.badge{position:absolute;left:8px;top:8px;font-size:12px;padding:4px 8px;border-radius:999px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.18);z-index:2}
 .badge2{top:34px}
 .badge-right{left:auto;right:8px}
 .main-wrap{padding:10px;display:grid;grid-template-rows:auto auto auto;gap:10px}
@@ -3032,6 +3044,11 @@ video{
 .meta{
   display:grid;gap:6px;padding:8px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:12px
 }
+.profile-label{
+  font-weight:700;
+  letter-spacing:.3px;
+  margin-bottom:2px;
+}
 .controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .controls{
   grid-template-columns: 1fr;
@@ -3040,16 +3057,21 @@ video{
 .control-stack{
   padding:10px;
   min-height:calc(100vh - 128px);
-  display:grid;
-  grid-template-rows:auto minmax(0,1fr) auto;
-  gap:10px;
-}
-.control-sidebar .controls{
-  align-self:center;
-  justify-items:stretch;
+  display:flex;
+  flex-direction:column;
+  gap:0;
 }
 .control-sidebar .modebar{
   grid-template-columns:repeat(2,minmax(0,1fr));
+  margin-top:auto;
+  margin-bottom:24px;
+}
+.control-sidebar .controls{
+  margin-bottom:24px;
+  justify-items:stretch;
+}
+.control-sidebar .controls + .meta{
+  margin-bottom:auto;
 }
 .control-sidebar .meta{
   align-self:start;
@@ -3101,7 +3123,7 @@ video{
 .health{
   margin-top:2px;
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  grid-template-columns:1fr;
   gap:8px;
 }
 .health-card{
@@ -3205,7 +3227,7 @@ video{
   user-select:none;
   -webkit-user-select:none;
 }
-@media (orientation: landscape) and (max-width: 1180px){
+@media (orientation: landscape) and (max-width: 1180px) and (pointer: coarse){
   html,body{max-width:100%;overflow-x:hidden}
   body{overscroll-behavior-x:none}
   header{padding:6px 8px;gap:8px}
@@ -3270,13 +3292,16 @@ video{
     min-width:0;
     grid-template-columns:repeat(2,minmax(0,1fr));
     gap:6px;
+    margin:0;
   }
   .controls{
     grid-area:drive;
     align-self:start;
     min-width:0;
     justify-items:stretch;
+    margin:0;
   }
+  .control-sidebar .controls + .meta{margin:0}
   .drive-pad{
     width:100%;
     gap:6px;
@@ -3415,6 +3440,7 @@ let localActiveRobotPinned = false;
 const thumbRequestInFlight = new Map();
 const thumbFailureStreak = new Map();
 const thumbBackoffUntilMs = new Map();
+const thumbImageCache = new Map();
 let thumbRoundRobinCursor = 0;
 let thumbRobotsPerTick = 0;
 let thumbDriveSuppressedUntilMs = 0;
@@ -4478,6 +4504,7 @@ function renderThumbRail(){
   const rail = $("thumbRail");
   rail.innerHTML = "";
   const sorted = [...robots].sort((a,b) => a.localeCompare(b));
+  const liveSet = new Set(sorted);
   let primedThumbs = 0;
   for (const robot of sorted){
     const div = document.createElement("div");
@@ -4485,9 +4512,21 @@ function renderThumbRail(){
     div.onclick = () => setActiveRobot(robot, true, "local");
 
     const img = document.createElement("img");
-    img.src = NO_SIGNAL_IMG;
+    const cachedThumb = thumbImageCache.get(robot) || {};
+    img.src = cachedThumb.src || NO_SIGNAL_IMG;
     img.alt = "";
-    img.dataset.lastFrameMs = "0";
+    img.dataset.lastFrameMs = String(cachedThumb.lastFrameMs || 0);
+    div.appendChild(img);
+    if (robot === activeRobot){
+      const live = document.createElement("video");
+      live.className = "thumb-live";
+      live.autoplay = true;
+      live.muted = true;
+      live.playsInline = true;
+      live.dataset.robot = robot;
+      live.setAttribute("playsinline", "");
+      div.appendChild(live);
+    }
     // Prime only a small subset to avoid startup request bursts on large fleets.
     const primeBudget = Math.max(0, Math.floor(Number(thumbRobotsPerTick) || 0));
     if (primeBudget > 0 && robot !== activeRobot && primedThumbs < primeBudget && robotThumbPriority(robot) <= 1){
@@ -4510,11 +4549,16 @@ function renderThumbRail(){
     nameBadge.className = "badge badge-right";
     nameBadge.textContent = robot;
 
-    div.appendChild(img);
     div.appendChild(lockBadge);
     div.appendChild(nameBadge);
     rail.appendChild(div);
   }
+  for (const robot of Array.from(thumbImageCache.keys())){
+    if (!liveSet.has(robot)){
+      thumbImageCache.delete(robot);
+    }
+  }
+  syncActiveThumbVideo();
 }
 
 function updateThumbSelection(){
@@ -4523,6 +4567,29 @@ function updateThumbSelection(){
     const nameBadge = tile.querySelector(".badge-right");
     const robot = (nameBadge && nameBadge.textContent) ? nameBadge.textContent.trim() : "";
     tile.classList.toggle("sel", Boolean(robot) && robot === activeRobot);
+  }
+}
+
+function syncActiveThumbVideo(){
+  const main = $("mainVideo");
+  const stream = main && main.srcObject ? main.srcObject : null;
+  for (const live of document.querySelectorAll("video.thumb-live")){
+    const robot = String(live.dataset.robot || "").trim();
+    if (robot && robot === activeRobot && stream){
+      if (live.srcObject !== stream){
+        try { live.srcObject = stream; } catch(_e) {}
+      }
+      live.style.display = "block";
+      try {
+        const p = live.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      } catch(_e) {}
+    } else {
+      live.style.display = "none";
+      if (live.srcObject){
+        try { live.srcObject = null; } catch(_e) {}
+      }
+    }
   }
 }
 
@@ -4536,8 +4603,10 @@ function refreshThumbImage(imgEl, robot){
   thumbRequestInFlight.set(robot, true);
   const next = new Image();
   next.onload = () => {
+    const loadedAtMs = Date.now();
     imgEl.src = next.src;
-    imgEl.dataset.lastFrameMs = String(Date.now());
+    imgEl.dataset.lastFrameMs = String(loadedAtMs);
+    thumbImageCache.set(robot, { src: next.src, lastFrameMs: loadedAtMs });
     thumbRequestInFlight.delete(robot);
     noteThumbSuccess(robot);
   };
@@ -4560,6 +4629,7 @@ function renderCapabilityMeta(){
   const c = capFor(activeRobot);
   const trustLabel = c.control_allowed ? "trusted/control enabled" : "read-only/untrusted";
   el.innerHTML = `
+    <div class="profile-label">Profiles</div>
     <div><b>Drive Type:</b> ${c.drive_type}</div>
     <div><b>Hardware:</b> ${c.hardware}</div>
     <div><b>Control Profile:</b> ${c.control_profile}</div>
@@ -5030,6 +5100,7 @@ function closePeerConnection(targetPc=null){
     if (v && v.srcObject){
       try { v.srcObject = null; } catch(_e){}
     }
+    syncActiveThumbVideo();
   }
 }
 
@@ -5124,6 +5195,7 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       if (evt.track.kind === "video"){
         $("mainVideo").srcObject = evt.streams[0];
         mainVideoLastFrameAtMs = Date.now();
+        syncActiveThumbVideo();
       }
       webrtcRetryAtMs = 0;
       sendWebrtcTelemetry("track");
@@ -5358,7 +5430,12 @@ function setActiveRobot(robot, announce=true, source="local"){
   if (announce && robot && changed){
     wsSend({ type: "set_active_robot", robot });
   }
-  updateThumbSelection();
+  if (changed){
+    renderThumbRail();
+  } else {
+    updateThumbSelection();
+    syncActiveThumbVideo();
+  }
   renderCapabilityMeta();
   renderDriveControls();
   renderModeControls();
@@ -5370,6 +5447,7 @@ function setActiveRobot(robot, announce=true, source="local"){
       if (v) v.srcObject = null;
       const fb = $("mainJpeg");
       if (fb) fb.style.display = "none";
+      syncActiveThumbVideo();
     } else {
       if (allowsWebrtcMain()){
         setupWebRTC(robot, webrtcSwitchNonce);
@@ -5391,7 +5469,6 @@ function refreshThumbs(){
   if (nowMs < thumbDriveSuppressedUntilMs){
     return;
   }
-  const activeTiles = [];
   const inactiveTiles = [];
   for (const tile of document.querySelectorAll(".thumb")){
     const img = tile.querySelector("img");
@@ -5399,14 +5476,12 @@ function refreshThumbs(){
     const robot = (nameBadge && nameBadge.textContent) ? nameBadge.textContent.trim() : "";
     if (!img || !robot) continue;
     if (robot === activeRobot){
-      activeTiles.push({ img, robot });
+      continue;
     } else {
       inactiveTiles.push({ img, robot });
     }
   }
-  for (const row of activeTiles){
-    refreshThumbImage(row.img, row.robot);
-  }
+  syncActiveThumbVideo();
   if (!inactiveTiles.length){
     thumbRoundRobinCursor = 0;
     return;
