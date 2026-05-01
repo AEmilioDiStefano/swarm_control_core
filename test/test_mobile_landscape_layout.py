@@ -46,7 +46,7 @@ def test_desktop_layout_has_right_control_sidebar_matching_fleet_column():
     assert "margin-top:auto" in text
     assert "margin-bottom:24px" in text
     assert ".control-sidebar .controls + .meta" in text
-    assert '<div class="profile-label">Profiles</div>' in text
+    assert '<div class="profile-label">PROFILES</div>' in text
 
 
 def test_bottom_robot_cards_stack_and_do_not_trigger_touch_layout_on_desktop():
@@ -83,3 +83,31 @@ def test_active_robot_thumbnail_mirrors_main_webrtc_stream_instead_of_refetching
     assert "continue;" in refresh_body
     assert "refreshThumbImage(pool[idx].img, pool[idx].robot);" in refresh_body
     assert "const activeTiles" not in refresh_body
+
+
+def test_thumbnail_scheduler_uses_scalable_preview_policy():
+    text = UI_PATH.read_text(encoding="utf-8")
+    refresh_start = text.index("function refreshThumbs")
+    refresh_end = text.index("function startHeartbeat", refresh_start)
+    refresh_body = text[refresh_start:refresh_end]
+
+    assert "const THUMB_PREVIEW_PRESETS = {" in text
+    assert "scalable_fleet:" in text
+    assert "small_lab_live:" in text
+    assert "operator_focus:" in text
+    assert "single_robot_focus:" in text
+    assert "isThumbTileVisible(tile)" in refresh_body
+    assert "thumbRowBucket(a) - thumbRowBucket(b)" in refresh_body
+    assert "policy.driveBudget" in refresh_body
+    assert "thumbRowStaleMs(row)" in refresh_body
+
+
+def test_stream_switch_uses_handoff_image_until_first_webrtc_frame():
+    text = UI_PATH.read_text(encoding="utf-8")
+
+    assert "function showMainHandoff(robot)" in text
+    assert "function hideMainHandoffAfterFirstFrame(videoEl, expectedRobot=\"\")" in text
+    assert "requestVideoFrameCallback" in text
+    assert "showMainHandoff(robot);" in text
+    assert "closePeerConnection(null, { clearMain: false });" in text
+    assert "hideMainHandoffAfterFirstFrame(main, requestedRobot);" in text

@@ -60,7 +60,7 @@ swarm_core_qs_source_reset_env "$WS" "$machine_role" "$domain_id" "1" "1"
 swarm_core_qs_git_sync "$SC"
 swarm_core_qs_prune_legacy_launch_share "$WS"
 
-rg -n -- '--machine-role|--compat-mode|compat-stop-ufw|ROS_AUTOMATIC_DISCOVERY_RANGE|SWARM_CORE_PROCESS_RESET_DONE|SWARM_CORE_WEBRTC_FPS|SWARM_CORE_THUMB_REFRESH_HZ|SWARM_CORE_IMAGE_SUBSCRIPTION_MODE|SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S|SWARM_CORE_THUMB_ROBOTS_PER_TICK|SWARM_CORE_DRIVE_CMD_RATE_HZ|SWARM_CORE_DRIVE_HOLD_TIMEOUT_S' \
+rg -n -- '--machine-role|--compat-mode|compat-stop-ufw|ROS_AUTOMATIC_DISCOVERY_RANGE|SWARM_CORE_PROCESS_RESET_DONE|SWARM_CORE_WEBRTC_FPS|SWARM_CORE_FLEET_PREVIEW_PRESET|SWARM_CORE_THUMB_REFRESH_HZ|SWARM_CORE_IMAGE_SUBSCRIPTION_MODE|SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S|SWARM_CORE_THUMB_ROBOTS_PER_TICK|SWARM_CORE_DRIVE_CMD_RATE_HZ|SWARM_CORE_DRIVE_HOLD_TIMEOUT_S' \
   "${SC}/scripts/swarm_core_reset_env.sh" \
   "${SC}/scripts/swarm_core_terminate_existing_robot_processes.sh" \
   "${SC}/scripts/swarm_core_run_robot.sh" \

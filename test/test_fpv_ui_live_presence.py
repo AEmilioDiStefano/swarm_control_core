@@ -54,8 +54,18 @@ def test_thumbnail_previews_are_downscaled_and_have_minimal_safety_floor():
     assert "max_w=${THUMB_JPEG_MAX_W}" in refresh_body
     assert "max_h=${THUMB_JPEG_MAX_H}" in refresh_body
     assert "quality=${THUMB_JPEG_QUALITY}" in refresh_body
-    assert "minimalMode = configuredLimit <= 0" in thumbs_body
-    assert "thumbNeedsRefresh(row.img, THUMB_MINIMAL_STALE_MS)" in thumbs_body
+    assert "thumbRobotsPerTick" in thumbs_body
+    assert "limit = configuredLimit <= 0 ? 1 : configuredLimit" in thumbs_body
+    assert "thumbNeedsRefresh(img, staleMs)" in thumbs_body
     assert "_latest_jpeg.pop" not in drop_body
     assert "_img_last_frame_s.pop" not in drop_body
     assert "recent_frame" not in sync_body
+
+
+def test_fleet_preview_preset_is_exposed_to_client_scheduler():
+    text = UI_PATH.read_text(encoding="utf-8")
+
+    assert 'self.declare_parameter("fleet_preview_preset", "scalable_fleet")' in text
+    assert "self.fleet_preview_preset = _normalize_fleet_preview_preset" in text
+    assert '"fleet_preview_preset": str(self.hub.fleet_preview_preset)' in text
+    assert "fleetPreviewPreset = normalizeFleetPreviewPreset" in text

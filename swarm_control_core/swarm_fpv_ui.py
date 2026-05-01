@@ -128,6 +128,25 @@ def _normalize_image_subscription_mode(raw: Any) -> str:
     return "active_only"
 
 
+def _normalize_fleet_preview_preset(raw: Any) -> str:
+    value = str(raw or "").strip().lower().replace("-", "_")
+    aliases = {
+        "focus": "single_robot_focus",
+        "single": "single_robot_focus",
+        "single_robot": "single_robot_focus",
+        "small_lab": "small_lab_live",
+        "lab": "small_lab_live",
+        "live": "small_lab_live",
+        "scalable": "scalable_fleet",
+        "fleet": "scalable_fleet",
+        "operator": "operator_focus",
+    }
+    value = aliases.get(value, value)
+    if value in ("single_robot_focus", "small_lab_live", "scalable_fleet", "operator_focus"):
+        return value
+    return "scalable_fleet"
+
+
 def _no_cache_headers() -> Dict[str, str]:
     return {
         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -393,6 +412,7 @@ class RosFleetHub(Node):
         self.declare_parameter("image_subscription_mode", "active_only")
         self.declare_parameter("image_thumb_interest_ttl_s", 0.75)
         self.declare_parameter("thumb_robots_per_tick", 0)
+        self.declare_parameter("fleet_preview_preset", "scalable_fleet")
         self.declare_parameter("allow_unknown_robot_control", False)
 
         self.webrtc_fps = float(self.get_parameter("webrtc_fps").value)
@@ -417,6 +437,9 @@ class RosFleetHub(Node):
         self.thumb_robots_per_tick = max(
             0,
             int(self.get_parameter("thumb_robots_per_tick").value),
+        )
+        self.fleet_preview_preset = _normalize_fleet_preview_preset(
+            self.get_parameter("fleet_preview_preset").value
         )
         self.allow_unknown_robot_control = str(
             self.get_parameter("allow_unknown_robot_control").value
@@ -492,11 +515,12 @@ class RosFleetHub(Node):
         self.create_timer(0.25, self._sync_image_subscriptions)
         self.create_timer(1.0 / self.drive_cmd_rate_hz, self._drive_publish_tick)
         self.get_logger().info(
-            "[swarm_fpv_ui] image_subscription_mode=%s thumb_interest_ttl_s=%.2f thumb_robots_per_tick=%d"
+            "[swarm_fpv_ui] image_subscription_mode=%s thumb_interest_ttl_s=%.2f thumb_robots_per_tick=%d fleet_preview_preset=%s"
             % (
                 self.image_subscription_mode,
                 float(self.image_thumb_interest_ttl_s),
                 int(self.thumb_robots_per_tick),
+                self.fleet_preview_preset,
             )
         )
         self.get_logger().info(
@@ -2497,6 +2521,7 @@ class BrowserServer:
                 "webrtc": self._webrtc_public(),
                 "thumb_hz": float(self.hub.thumb_refresh_hz),
                 "thumb_robots_per_tick": int(self.hub.thumb_robots_per_tick),
+                "fleet_preview_preset": str(self.hub.fleet_preview_preset),
             }
         )
 
@@ -2802,6 +2827,7 @@ class BrowserServer:
                     "webrtc": self._webrtc_public(),
                     "thumb_hz": float(self.hub.thumb_refresh_hz),
                     "thumb_robots_per_tick": int(self.hub.thumb_robots_per_tick),
+                    "fleet_preview_preset": str(self.hub.fleet_preview_preset),
                 }
             )
         )
@@ -3441,13 +3467,19 @@ const thumbRequestInFlight = new Map();
 const thumbFailureStreak = new Map();
 const thumbBackoffUntilMs = new Map();
 const thumbImageCache = new Map();
+const thumbInteractionAtMs = new Map();
+const robotLastActiveAtMs = new Map();
 let thumbRoundRobinCursor = 0;
-let thumbRobotsPerTick = 0;
+let fleetPreviewPreset = "scalable_fleet";
+let thumbRobotsPerTick = 1;
 let thumbDriveSuppressedUntilMs = 0;
+let thumbPreviewPolicy = null;
 let authConfig = { mode: "off", allow_anonymous_readonly: true, dev_login_enabled: false };
 let pc = null;
 let mainFallbackTimer = null;
 let mainFallbackInFlight = false;
+let mainHandoffActive = false;
+let mainHandoffRobot = "";
 let webrtcAttemptInFlight = false;
 let webrtcRetryAtMs = 0;
 let webrtcSwitchNonce = 0;
@@ -3465,11 +3497,56 @@ const ROBOT_SWITCH_DEBOUNCE_MS = 140;
 const ROBOT_SWITCH_GRACE_MS = 1400;
 const WEBRTC_RETRY_INTERVAL_MS = 1600;
 const WEBRTC_STALE_FRAME_MS = 3200;
-const THUMB_DRIVE_SUPPRESS_MS = 2000;
 const THUMB_JPEG_MAX_W = 240;
 const THUMB_JPEG_MAX_H = 180;
 const THUMB_JPEG_QUALITY = 55;
-const THUMB_MINIMAL_STALE_MS = 8000;
+const THUMB_PREVIEW_PRESETS = {
+  single_robot_focus: {
+    robotsPerTick: 0,
+    visibleStaleMs: 8000,
+    interactiveStaleMs: 3000,
+    recentStaleMs: 5000,
+    offscreenStaleMs: 60000,
+    recentWindowMs: 15000,
+    interactionWindowMs: 8000,
+    driveSuppressMs: 2000,
+    driveBudget: 0,
+  },
+  scalable_fleet: {
+    robotsPerTick: 1,
+    visibleStaleMs: 2500,
+    interactiveStaleMs: 1200,
+    recentStaleMs: 1800,
+    offscreenStaleMs: 60000,
+    recentWindowMs: 20000,
+    interactionWindowMs: 10000,
+    driveSuppressMs: 1200,
+    driveBudget: 1,
+  },
+  operator_focus: {
+    robotsPerTick: 2,
+    visibleStaleMs: 1500,
+    interactiveStaleMs: 800,
+    recentStaleMs: 1200,
+    offscreenStaleMs: 30000,
+    recentWindowMs: 30000,
+    interactionWindowMs: 15000,
+    driveSuppressMs: 700,
+    driveBudget: 1,
+  },
+  small_lab_live: {
+    robotsPerTick: 4,
+    visibleStaleMs: 900,
+    interactiveStaleMs: 500,
+    recentStaleMs: 700,
+    offscreenStaleMs: 12000,
+    recentWindowMs: 45000,
+    interactionWindowMs: 20000,
+    driveSuppressMs: 400,
+    driveBudget: 2,
+  },
+};
+thumbPreviewPolicy = THUMB_PREVIEW_PRESETS.scalable_fleet;
 const driveHoldTimers = new Map();
 const driveHoldCommands = new Map();
 const driveHoldButtonTokens = new Map();
@@ -4158,7 +4235,7 @@ function hookKeyboardDrive(){
       stopAllDriveHolds(true);
       if (isWebrtcMainOnly()){
         const fb = $("mainJpeg");
-        if (fb) fb.style.display = "none";
+        if (fb && !mainHandoffActive) fb.style.display = "none";
       }
     }
   });
@@ -4257,9 +4334,28 @@ function allowsWebrtcMain(){
   return !isJpegMainOnly();
 }
 
+function normalizeFleetPreviewPreset(raw){
+  const value = String(raw || "").trim().toLowerCase().replace(/-/g, "_");
+  const aliases = {
+    focus: "single_robot_focus",
+    single: "single_robot_focus",
+    single_robot: "single_robot_focus",
+    small_lab: "small_lab_live",
+    lab: "small_lab_live",
+    live: "small_lab_live",
+    scalable: "scalable_fleet",
+    fleet: "scalable_fleet",
+    operator: "operator_focus",
+  };
+  const normalized = aliases[value] || value;
+  return THUMB_PREVIEW_PRESETS[normalized] ? normalized : "scalable_fleet";
+}
+
 function applyThumbPolicy(payload){
+  fleetPreviewPreset = normalizeFleetPreviewPreset(payload && payload.fleet_preview_preset);
+  thumbPreviewPolicy = THUMB_PREVIEW_PRESETS[fleetPreviewPreset] || THUMB_PREVIEW_PRESETS.scalable_fleet;
   const n = Math.floor(_toNumber(payload && payload.thumb_robots_per_tick, 0));
-  thumbRobotsPerTick = Math.max(0, n);
+  thumbRobotsPerTick = n > 0 ? n : Math.max(0, Math.floor(Number(thumbPreviewPolicy.robotsPerTick) || 0));
 }
 
 function isRobotLive(robot){
@@ -4320,6 +4416,43 @@ function thumbNeedsRefresh(imgEl, staleMs){
   if (!imgEl) return true;
   const last = Number(imgEl.dataset.lastFrameMs || 0);
   return last <= 0 || (Date.now() - last) >= Math.max(1000, Number(staleMs) || 0);
+}
+
+function markThumbInteraction(robot){
+  const name = String(robot || "").trim();
+  if (!name) return;
+  thumbInteractionAtMs.set(name, Date.now());
+}
+
+function isThumbTileVisible(tile){
+  const rail = $("thumbRail");
+  if (!tile || !rail || typeof tile.getBoundingClientRect !== "function"){
+    return true;
+  }
+  const rect = tile.getBoundingClientRect();
+  const railRect = rail.getBoundingClientRect();
+  const viewTop = Math.max(0, railRect.top);
+  const viewBottom = Math.min(window.innerHeight || document.documentElement.clientHeight || railRect.bottom, railRect.bottom);
+  const viewLeft = Math.max(0, railRect.left);
+  const viewRight = Math.min(window.innerWidth || document.documentElement.clientWidth || railRect.right, railRect.right);
+  return rect.bottom > viewTop && rect.top < viewBottom && rect.right > viewLeft && rect.left < viewRight;
+}
+
+function thumbRowStaleMs(row){
+  const policy = thumbPreviewPolicy || THUMB_PREVIEW_PRESETS.scalable_fleet;
+  if (row.interactive) return policy.interactiveStaleMs;
+  if (row.visible && row.recent) return policy.recentStaleMs;
+  if (row.visible) return policy.visibleStaleMs;
+  if (row.recent) return Math.max(policy.recentStaleMs, policy.visibleStaleMs);
+  return policy.offscreenStaleMs;
+}
+
+function thumbRowBucket(row){
+  if (row.interactive) return 0;
+  if (row.visible && row.recent) return 1;
+  if (row.visible) return 2;
+  if (row.recent) return 3;
+  return 4;
 }
 
 function normalizeRobotChoice(robot, available){
@@ -4509,7 +4642,12 @@ function renderThumbRail(){
   for (const robot of sorted){
     const div = document.createElement("div");
     div.className = "thumb" + (robot === activeRobot ? " sel" : "");
+    div.dataset.robot = robot;
+    div.tabIndex = 0;
     div.onclick = () => setActiveRobot(robot, true, "local");
+    div.onmouseenter = () => markThumbInteraction(robot);
+    div.onfocus = () => markThumbInteraction(robot);
+    div.ontouchstart = () => markThumbInteraction(robot);
 
     const img = document.createElement("img");
     const cachedThumb = thumbImageCache.get(robot) || {};
@@ -4629,7 +4767,7 @@ function renderCapabilityMeta(){
   const c = capFor(activeRobot);
   const trustLabel = c.control_allowed ? "trusted/control enabled" : "read-only/untrusted";
   el.innerHTML = `
-    <div class="profile-label">Profiles</div>
+    <div class="profile-label">PROFILES</div>
     <div><b>Drive Type:</b> ${c.drive_type}</div>
     <div><b>Hardware:</b> ${c.hardware}</div>
     <div><b>Control Profile:</b> ${c.control_profile}</div>
@@ -5085,9 +5223,75 @@ function updateTransportBadge(){
   badge.textContent = text;
 }
 
-function closePeerConnection(targetPc=null){
+function captureMainVideoDataUrl(){
+  const v = $("mainVideo");
+  if (!v || v.readyState < 2 || !v.videoWidth || !v.videoHeight){
+    return "";
+  }
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.min(640, Number(v.videoWidth) || 640);
+    canvas.height = Math.max(1, Math.round(canvas.width * (Number(v.videoHeight) || 360) / (Number(v.videoWidth) || 640)));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+    ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.72);
+  } catch(_e) {
+    return "";
+  }
+}
+
+function showMainHandoff(robot){
+  const fb = $("mainJpeg");
+  if (!fb) return;
+  const target = String(robot || "").trim();
+  const cached = target ? (thumbImageCache.get(target) || {}) : {};
+  const captured = cached.src ? "" : captureMainVideoDataUrl();
+  fb.src = cached.src || captured || fb.src || NO_SIGNAL_IMG;
+  fb.style.display = "block";
+  mainHandoffActive = true;
+  mainHandoffRobot = target;
+}
+
+function hideMainHandoff(expectedRobot=""){
+  if (!mainHandoffActive) return;
+  const expected = String(expectedRobot || "").trim();
+  if (expected && mainHandoffRobot && expected !== mainHandoffRobot){
+    return;
+  }
+  const fb = $("mainJpeg");
+  if (fb && isWebrtcMainOnly()){
+    fb.style.display = "none";
+  }
+  mainHandoffActive = false;
+  mainHandoffRobot = "";
+}
+
+function hideMainHandoffAfterFirstFrame(videoEl, expectedRobot=""){
+  if (!videoEl) {
+    hideMainHandoff(expectedRobot);
+    return;
+  }
+  if (typeof videoEl.requestVideoFrameCallback === "function"){
+    try {
+      videoEl.requestVideoFrameCallback(() => hideMainHandoff(expectedRobot));
+      return;
+    } catch(_e) {}
+  }
+  const done = () => {
+    videoEl.removeEventListener("loadeddata", done);
+    videoEl.removeEventListener("playing", done);
+    hideMainHandoff(expectedRobot);
+  };
+  videoEl.addEventListener("loadeddata", done, { once: true });
+  videoEl.addEventListener("playing", done, { once: true });
+  setTimeout(done, 350);
+}
+
+function closePeerConnection(targetPc=null, opts={}){
   const candidate = targetPc || pc;
   if (!candidate) return;
+  const clearMain = !(opts && opts.clearMain === false);
   try { candidate.ontrack = null; } catch(_e){}
   try { candidate.onconnectionstatechange = null; } catch(_e){}
   try { candidate.oniceconnectionstatechange = null; } catch(_e){}
@@ -5097,7 +5301,7 @@ function closePeerConnection(targetPc=null){
     pc = null;
     mainVideoLastFrameAtMs = 0;
     const v = $("mainVideo");
-    if (v && v.srcObject){
+    if (clearMain && v && v.srcObject){
       try { v.srcObject = null; } catch(_e){}
     }
     syncActiveThumbVideo();
@@ -5121,7 +5325,7 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
     }
     if (isWebrtcMainOnly()){
       const fb = $("mainJpeg");
-      if (fb) fb.style.display = "none";
+      if (fb && !mainHandoffActive) fb.style.display = "none";
     }
     updateTransportBadge();
     return;
@@ -5142,7 +5346,7 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       try { webrtcOfferAbortController.abort(); } catch(_e){}
       webrtcOfferAbortController = null;
     }
-    closePeerConnection();
+    closePeerConnection(null, { clearMain: false });
     const rtcCfg = {};
     if (Array.isArray(webrtcClientConfig.iceServers) && webrtcClientConfig.iceServers.length){
       rtcCfg.iceServers = webrtcClientConfig.iceServers;
@@ -5193,9 +5397,11 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
         return;
       }
       if (evt.track.kind === "video"){
-        $("mainVideo").srcObject = evt.streams[0];
+        const main = $("mainVideo");
+        main.srcObject = evt.streams[0];
         mainVideoLastFrameAtMs = Date.now();
         syncActiveThumbVideo();
+        hideMainHandoffAfterFirstFrame(main, requestedRobot);
       }
       webrtcRetryAtMs = 0;
       sendWebrtcTelemetry("track");
@@ -5239,7 +5445,7 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       sendWebrtcTelemetry("offer_failed");
       if (isWebrtcMainOnly()){
         const fb = $("mainJpeg");
-        if (fb) fb.style.display = "none";
+        if (fb && !mainHandoffActive) fb.style.display = "none";
       } else {
         const fb = $("mainJpeg");
         if (fb) fb.style.display = "block";
@@ -5263,7 +5469,7 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       await attemptPc.setRemoteDescription(ans);
       sendWebrtcTelemetry("remote_description_set");
       const fb = $("mainJpeg");
-      if (fb) fb.style.display = "none";
+      if (fb && !mainHandoffActive) fb.style.display = "none";
       webrtcRetryAtMs = 0;
       renderWebrtcDiagnostics();
       updateTransportBadge();
@@ -5276,7 +5482,7 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
       sendWebrtcTelemetry("answer_failed");
       if (isWebrtcMainOnly()){
         const fb = $("mainJpeg");
-        if (fb) fb.style.display = "none";
+        if (fb && !mainHandoffActive) fb.style.display = "none";
       } else {
         const fb = $("mainJpeg");
         if (fb) fb.style.display = "block";
@@ -5289,7 +5495,7 @@ async function setupWebRTC(robot, switchNonce=webrtcSwitchNonce){
     setStatus(isWebrtcMainOnly() ? "WebRTC retrying" : "WebRTC retrying, JPEG fallback active");
     if (isWebrtcMainOnly()){
       const fb = $("mainJpeg");
-      if (fb) fb.style.display = "none";
+      if (fb && !mainHandoffActive) fb.style.display = "none";
     } else {
       const fb = $("mainJpeg");
       if (fb) fb.style.display = "block";
@@ -5326,7 +5532,11 @@ function setupMainFallbackLoop(){
       (Date.now() - activeRobotSwitchAtMs) < ROBOT_SWITCH_GRACE_MS
     );
     if (inSwitchGrace){
-      fb.style.display = "none";
+      if (mainHandoffActive){
+        fb.style.display = "block";
+      } else {
+        fb.style.display = "none";
+      }
       mainFallbackInFlight = false;
       if (!webrtcAttemptInFlight && Date.now() >= webrtcRetryAtMs){
         setupWebRTC(activeRobot, webrtcSwitchNonce);
@@ -5335,7 +5545,7 @@ function setupMainFallbackLoop(){
       return;
     }
     if (hasWebRtcFrameNow()){
-      fb.style.display = "none";
+      if (!mainHandoffActive) fb.style.display = "none";
       mainFallbackInFlight = false;
       updateTransportBadge();
       return;
@@ -5344,7 +5554,7 @@ function setupMainFallbackLoop(){
       setupWebRTC(activeRobot, webrtcSwitchNonce);
     }
     if (isWebrtcMainOnly()){
-      fb.style.display = "none";
+      if (!mainHandoffActive) fb.style.display = "none";
       mainFallbackInFlight = false;
       updateTransportBadge();
       return;
@@ -5402,6 +5612,12 @@ function setActiveRobot(robot, announce=true, source="local"){
   }
   const changed = robot !== activeRobot;
   if (changed){
+    if (activeRobot){
+      robotLastActiveAtMs.set(activeRobot, Date.now());
+    }
+    if (robot && allowsWebrtcMain()){
+      showMainHandoff(robot);
+    }
     stopAllDriveHolds(true);
     pressedDriveKeys.clear();
     webrtcSwitchNonce += 1;
@@ -5417,6 +5633,10 @@ function setActiveRobot(robot, announce=true, source="local"){
     localActiveRobotPinned = true;
   }
   activeRobot = robot;
+  if (activeRobot){
+    robotLastActiveAtMs.set(activeRobot, Date.now());
+    markThumbInteraction(activeRobot);
+  }
   if (activeRobot && (changed || driveProfileRobot !== activeRobot)){
     configureDriveProfile(activeRobot);
   }
@@ -5447,6 +5667,8 @@ function setActiveRobot(robot, announce=true, source="local"){
       if (v) v.srcObject = null;
       const fb = $("mainJpeg");
       if (fb) fb.style.display = "none";
+      mainHandoffActive = false;
+      mainHandoffRobot = "";
       syncActiveThumbVideo();
     } else {
       if (allowsWebrtcMain()){
@@ -5463,55 +5685,63 @@ function setActiveRobot(robot, announce=true, source="local"){
 function refreshThumbs(){
   if (document.hidden) return;
   const nowMs = Date.now();
+  const policy = thumbPreviewPolicy || THUMB_PREVIEW_PRESETS.scalable_fleet;
   if (isDriveSessionActive()){
-    thumbDriveSuppressedUntilMs = nowMs + THUMB_DRIVE_SUPPRESS_MS;
+    thumbDriveSuppressedUntilMs = nowMs + Math.max(0, Number(policy.driveSuppressMs) || 0);
   }
-  if (nowMs < thumbDriveSuppressedUntilMs){
-    return;
-  }
-  const inactiveTiles = [];
+  const driveLimited = nowMs < thumbDriveSuppressedUntilMs;
+  const rows = [];
   for (const tile of document.querySelectorAll(".thumb")){
     const img = tile.querySelector("img");
-    const nameBadge = tile.querySelector(".badge-right");
-    const robot = (nameBadge && nameBadge.textContent) ? nameBadge.textContent.trim() : "";
+    const robot = String(tile.dataset.robot || "").trim();
     if (!img || !robot) continue;
     if (robot === activeRobot){
       continue;
-    } else {
-      inactiveTiles.push({ img, robot });
     }
+    const visible = isThumbTileVisible(tile);
+    const interactive = (nowMs - Number(thumbInteractionAtMs.get(robot) || 0)) <= Number(policy.interactionWindowMs || 0);
+    const recent = (nowMs - Number(robotLastActiveAtMs.get(robot) || 0)) <= Number(policy.recentWindowMs || 0);
+    const priority = robotThumbPriority(robot);
+    const row = { img, robot, visible, interactive, recent, priority };
+    const staleMs = thumbRowStaleMs(row);
+    if (!thumbNeedsRefresh(img, staleMs)) continue;
+    rows.push(row);
   }
   syncActiveThumbVideo();
-  if (!inactiveTiles.length){
+  if (!rows.length){
     thumbRoundRobinCursor = 0;
     return;
   }
-  const configuredLimit = Math.max(0, Math.floor(Number(thumbRobotsPerTick) || 0));
-  const minimalMode = configuredLimit <= 0;
-  const healthy = [];
-  const unhealthy = [];
-  for (const row of inactiveTiles){
-    if (minimalMode && !thumbNeedsRefresh(row.img, THUMB_MINIMAL_STALE_MS)) continue;
-    if (robotThumbPriority(row.robot) <= 1){
-      healthy.push(row);
-    } else {
-      unhealthy.push(row);
-    }
-  }
-  const pool = healthy.concat(unhealthy);
+  rows.sort((a, b) => {
+    const bucketDelta = thumbRowBucket(a) - thumbRowBucket(b);
+    if (bucketDelta) return bucketDelta;
+    const priorityDelta = a.priority - b.priority;
+    if (priorityDelta) return priorityDelta;
+    const aLast = Number(a.img.dataset.lastFrameMs || 0);
+    const bLast = Number(b.img.dataset.lastFrameMs || 0);
+    if (aLast !== bLast) return aLast - bLast;
+    return a.robot.localeCompare(b.robot);
+  });
+  const pool = rows;
   const total = pool.length;
   if (!total){
     thumbRoundRobinCursor = 0;
     return;
   }
-  const limit = minimalMode ? 1 : configuredLimit;
-  const start = ((thumbRoundRobinCursor % total) + total) % total;
+  const configuredLimit = Math.max(0, Math.floor(Number(thumbRobotsPerTick) || 0));
+  let limit = configuredLimit <= 0 ? 1 : configuredLimit;
+  if (driveLimited){
+    limit = Math.min(limit, Math.max(0, Math.floor(Number(policy.driveBudget) || 0)));
+  }
+  if (limit <= 0){
+    return;
+  }
   const count = Math.min(limit, total);
   for (let i = 0; i < count; i += 1){
-    const idx = (start + i) % total;
+    const idx = i;
     refreshThumbImage(pool[idx].img, pool[idx].robot);
   }
-  thumbRoundRobinCursor = (start + count) % total;
+  thumbRoundRobinCursor = (thumbRoundRobinCursor + count) % total;
 }
 
 function startHeartbeat(){

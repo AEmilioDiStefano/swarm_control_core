@@ -42,8 +42,63 @@ def _default_allow_unknown_robot_control() -> str:
     return "true" if raw in ("1", "true", "yes", "on") else "false"
 
 
+def _normalize_fleet_preview_preset(raw: str) -> str:
+    value = str(raw or "").strip().lower().replace("-", "_")
+    aliases = {
+        "focus": "single_robot_focus",
+        "single": "single_robot_focus",
+        "single_robot": "single_robot_focus",
+        "small_lab": "small_lab_live",
+        "lab": "small_lab_live",
+        "live": "small_lab_live",
+        "scalable": "scalable_fleet",
+        "fleet": "scalable_fleet",
+        "operator": "operator_focus",
+    }
+    value = aliases.get(value, value)
+    if value in ("single_robot_focus", "small_lab_live", "scalable_fleet", "operator_focus"):
+        return value
+    return "scalable_fleet"
+
+
+def _default_fleet_preview_preset() -> str:
+    return _normalize_fleet_preview_preset(os.environ.get("SWARM_CORE_FLEET_PREVIEW_PRESET", "scalable_fleet"))
+
+
+def _preview_preset_defaults() -> dict:
+    preset = _default_fleet_preview_preset()
+    return {
+        "single_robot_focus": {
+            "thumb_refresh_hz": "0.5",
+            "image_subscription_mode": "active_only",
+            "image_thumb_interest_ttl_s": "0.75",
+            "thumb_robots_per_tick": "0",
+        },
+        "scalable_fleet": {
+            "thumb_refresh_hz": "1.0",
+            "image_subscription_mode": "active_only",
+            "image_thumb_interest_ttl_s": "2.5",
+            "thumb_robots_per_tick": "1",
+        },
+        "operator_focus": {
+            "thumb_refresh_hz": "1.5",
+            "image_subscription_mode": "active_only",
+            "image_thumb_interest_ttl_s": "3.0",
+            "thumb_robots_per_tick": "2",
+        },
+        "small_lab_live": {
+            "thumb_refresh_hz": "2.0",
+            "image_subscription_mode": "active_only",
+            "image_thumb_interest_ttl_s": "4.0",
+            "thumb_robots_per_tick": "4",
+        },
+    }[preset]
+
+
 def _default_thumb_refresh_hz() -> str:
-    raw = str(os.environ.get("SWARM_CORE_THUMB_REFRESH_HZ", "0.5")).strip()
+    raw = str(
+        os.environ.get("SWARM_CORE_THUMB_REFRESH_HZ", _preview_preset_defaults()["thumb_refresh_hz"])
+    ).strip()
     if not raw:
         return "0.5"
     try:
@@ -53,14 +108,21 @@ def _default_thumb_refresh_hz() -> str:
 
 
 def _default_image_subscription_mode() -> str:
-    raw = str(os.environ.get("SWARM_CORE_IMAGE_SUBSCRIPTION_MODE", "active_only")).strip().lower()
+    raw = str(
+        os.environ.get("SWARM_CORE_IMAGE_SUBSCRIPTION_MODE", _preview_preset_defaults()["image_subscription_mode"])
+    ).strip().lower()
     if raw in ("all", "all_robots", "full"):
         return "all"
     return "active_only"
 
 
 def _default_image_thumb_interest_ttl_s() -> str:
-    raw = str(os.environ.get("SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S", "0.75")).strip()
+    raw = str(
+        os.environ.get(
+            "SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S",
+            _preview_preset_defaults()["image_thumb_interest_ttl_s"],
+        )
+    ).strip()
     if not raw:
         return "0.75"
     try:
@@ -70,7 +132,9 @@ def _default_image_thumb_interest_ttl_s() -> str:
 
 
 def _default_thumb_robots_per_tick() -> str:
-    raw = str(os.environ.get("SWARM_CORE_THUMB_ROBOTS_PER_TICK", "0")).strip()
+    raw = str(
+        os.environ.get("SWARM_CORE_THUMB_ROBOTS_PER_TICK", _preview_preset_defaults()["thumb_robots_per_tick"])
+    ).strip()
     if not raw:
         return "0"
     try:
@@ -124,6 +188,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("image_subscription_mode", default_value=_default_image_subscription_mode()),
         DeclareLaunchArgument("image_thumb_interest_ttl_s", default_value=_default_image_thumb_interest_ttl_s()),
         DeclareLaunchArgument("thumb_robots_per_tick", default_value=_default_thumb_robots_per_tick()),
+        DeclareLaunchArgument("fleet_preview_preset", default_value=_default_fleet_preview_preset()),
         DeclareLaunchArgument("drive_cmd_rate_hz", default_value=_default_drive_cmd_rate_hz()),
         DeclareLaunchArgument("drive_hold_timeout_s", default_value=_default_drive_hold_timeout_s()),
         DeclareLaunchArgument(
@@ -163,6 +228,7 @@ def generate_launch_description() -> LaunchDescription:
                     value_type=int,
                 )
             },
+            {"fleet_preview_preset": LaunchConfiguration("fleet_preview_preset")},
             {"drive_cmd_rate_hz": ParameterValue(LaunchConfiguration("drive_cmd_rate_hz"), value_type=float)},
             {"drive_hold_timeout_s": ParameterValue(LaunchConfiguration("drive_hold_timeout_s"), value_type=float)},
             {"profiles_path": LaunchConfiguration("profiles_path")},
