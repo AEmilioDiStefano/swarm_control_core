@@ -47,7 +47,7 @@ Go to [Alternative Step A.1](#ref-a-1), then return to [Step 0](#step-0).
 <a id="step-0"></a>
 ## Step 0: Workspace Bootstrap + Dependency Readiness
 
-### Run on control machine:
+### CONTROL MACHINE:
 
 ```bash
 swarm_core_bootstrap_terminal() {
@@ -69,7 +69,7 @@ fi
 unset -f swarm_core_bootstrap_terminal
 ```
 
-### Run in each dedicated robot SSH terminal (one per robot):
+### ROBOT(S):
 
 ```bash
 swarm_core_bootstrap_terminal() {
@@ -109,13 +109,13 @@ Proceed to Step 1.
 <a id="step-1"></a>
 ## Step 1: Sync/Build/Source Gate (All Machines)
 
-### Run on control machine:
+### CONTROL MACHINE:
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step1.sh" --machine-role control
 ```
 
-### Run in each dedicated robot SSH terminal:
+### ROBOT(S):
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step1.sh" --machine-role robot
@@ -140,7 +140,7 @@ Proceed to Step 2.
 <a id="step-2"></a>
 ## Step 2: Start Robot Bringup (Dedicated Robot SSH Terminals)
 
-### Run in each dedicated robot SSH terminal:
+### ROBOT(S):
 
 ```bash
 export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
@@ -202,7 +202,7 @@ Proceed to Step 3.
 Prerequisite (required):
 - Do not start Step 3 until every robot terminal has completed Step 2 and each robot bringup is running.
 
-### Run on control machine:
+### CONTROL MACHINE:
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step3.sh"
@@ -245,7 +245,7 @@ Proceed to Step 4.
 <a id="step-4"></a>
 ## Step 4: Fleet Readiness Check (Control Machine)
 
-Run on control machine:
+### CONTROL MACHINE:
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step4.sh"
@@ -344,7 +344,7 @@ Then return to [Step 1](#step-1).
 <a id="ref-2-1"></a>
 ## Fix Step 2.1: Robot nodes/camera fail to start
 
-Run on affected robot:
+### ROBOT (affected):
 
 ```bash
 set +u
@@ -492,7 +492,7 @@ Then return to [Step 2](#step-2).
 <a id="ref-3-1"></a>
 ## Fix Step 3.1: UI does not load or bind
 
-Run on control machine:
+### CONTROL MACHINE:
 
 ```bash
 "$WS/src/swarm_control_core/scripts/swarm_core_free_ui_port.sh" --port 8080
@@ -514,7 +514,9 @@ Then return to [Step 3](#step-3).
 
 If the UI logs `trusted_robots=<none>` or says a robot such as `robot4` is
 unknown/read-only, the control machine does not have that robot in its trusted
-runtime registry. Run on the control machine:
+runtime registry.  
+
+### CONTROL MACHINE:
 
 ```bash
 cd "$WS"
@@ -644,7 +646,7 @@ Then return to [Step 4](#step-4).
 <a id="ref-5-1"></a>
 ## Fix Step 5.1: Terminal control cannot discover robots
 
-Run on control machine:
+### CONTROL MACHINE:
 
 ```bash
 set +u

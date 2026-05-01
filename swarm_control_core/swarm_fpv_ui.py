@@ -470,6 +470,7 @@ class RosFleetHub(Node):
         self._hb_last_seen_s: Dict[str, float] = {}
         self._robot_meta: Dict[str, Dict[str, str]] = {}
         self._topic_seen_s: Dict[str, float] = {}
+        self._active_topic_robots: Set[str] = set()
         self._robot_last_visible_s: Dict[str, float] = {}
 
         self._cmd_pubs: Dict[str, Any] = {}
@@ -481,8 +482,6 @@ class RosFleetHub(Node):
         self._drive_pub_hz_ema: Dict[str, float] = {}
 
         self._known_robots: Set[str] = set()
-        self._discovery_stale_hold_s: float = 120.0
-        self._discovery_last_nonempty_s: float = 0.0
         self._discovery_scan_error_streak: int = 0
         self._robot_presence_timeout_s: float = 5.0
         self._robot_presence_bootstrap_grace_s: float = 3.0
@@ -608,17 +607,16 @@ class RosFleetHub(Node):
 
         t_now = now_s()
         for robot in robots:
-            self._topic_seen_s[robot] = t_now
-            self._robot_last_visible_s[robot] = t_now
+            if robot not in self._active_topic_robots:
+                self._topic_seen_s[robot] = t_now
+                self._robot_last_visible_s[robot] = t_now
+        if scan_ok:
+            self._active_topic_robots = set(robots)
         if robots:
             self._known_robots.update(robots)
-            self._discovery_last_nonempty_s = t_now
         elif not scan_ok:
             robots = set(self._known_robots)
-        elif self._known_robots and (t_now - self._discovery_last_nonempty_s) < self._discovery_stale_hold_s:
-            robots = set(self._known_robots)
         else:
-            self._known_robots = set()
             robots = set()
 
         # Keep recently alive robots through brief DDS/topic graph churn so the
@@ -656,15 +654,9 @@ class RosFleetHub(Node):
 
         visible: Set[str] = set()
         for robot in candidates:
-            last_visible = max(
-                float(self._robot_last_visible_s.get(robot, 0.0)),
-                float(self._hb_last_seen_s.get(robot, 0.0)),
-                float(self._img_last_frame_s.get(robot, 0.0)),
-                float(self._topic_seen_s.get(robot, 0.0)),
-            )
-            if last_visible > 0.0 and (t_now - last_visible) <= self._discovery_stale_hold_s:
+            if self._robot_recently_alive(robot, t_now):
                 visible.add(robot)
-            elif robot in self._robot_last_visible_s:
+            else:
                 self._robot_last_visible_s.pop(robot, None)
         return visible
 
@@ -822,13 +814,13 @@ class RosFleetHub(Node):
         self._img_topic_for_robot.pop(robot, None)
         self._img_source_for_robot.pop(robot, None)
         self._img_last_probe_s.pop(robot, None)
+        # Keep the last compressed frame and thumbnail variants as a lightweight
+        # visual cache. Dropping the ROS subscription should stop background
+        # camera ingress without making fleet tiles flash black between sparse
+        # preview refreshes.
         self._latest_img_msg.pop(robot, None)
-        self._latest_jpeg.pop(robot, None)
         self._latest_rgb_cache.pop(robot, None)
         self._latest_rgb_cache_stamp.pop(robot, None)
-        self._jpeg_variant_cache.pop(robot, None)
-        self._jpeg_variant_cache_stamp.pop(robot, None)
-        self._img_last_frame_s.pop(robot, None)
         self._img_prev_frame_s.pop(robot, None)
         self._img_fps_ema.pop(robot, None)
         self._img_last_encoding.pop(robot, None)
@@ -837,18 +829,11 @@ class RosFleetHub(Node):
     def _sync_image_subscriptions(self) -> None:
         desired = self._desired_image_subscription_robots()
         current = set(self._img_subs.keys())
-        live_robots = self.list_robots()
         for robot in sorted(desired - current):
             self.ensure_image_subscription(robot)
         t_now = now_s()
         for robot in sorted(current - desired):
-            # Keep existing subscriptions alive through temporary discovery
-            # jitter to avoid no-signal flapping in multi-robot sessions.
             if self.image_subscription_mode != "all":
-                last = float(self._img_last_frame_s.get(robot, 0.0))
-                recent_frame = (t_now - last) <= 8.0 if last > 0.0 else False
-                if robot in live_robots and recent_frame:
-                    continue
                 if float(self._img_interest_until_s.get(robot, 0.0)) >= t_now:
                     continue
             self._drop_image_subscription(robot)
@@ -2986,15 +2971,26 @@ header{
 }
 main{
   display:grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 300px minmax(0,1fr) 300px;
+  grid-template-areas:"fleet video controls";
   gap:12px;
   padding:12px;
   min-height:calc(100vh - 56px);
+  align-items:start;
 }
 @media (max-width: 1100px){
-  main{grid-template-columns:1fr}
+  main{
+    grid-template-columns:1fr;
+    grid-template-areas:
+      "fleet"
+      "video"
+      "controls";
+  }
 }
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.fleet-panel{grid-area:fleet}
+.video-panel{grid-area:video}
+.control-sidebar{grid-area:controls;max-height:calc(100vh - 80px);overflow-y:auto}
 .hdr{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
 .label{font-weight:600}
 .small{font-size:12px;color:var(--muted)}
@@ -3013,7 +3009,7 @@ main{
 .badge{position:absolute;left:8px;top:8px;font-size:12px;padding:4px 8px;border-radius:999px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.18)}
 .badge2{top:34px}
 .badge-right{left:auto;right:8px}
-.main-wrap{padding:10px;display:grid;grid-template-rows:auto auto 1fr auto;gap:10px}
+.main-wrap{padding:10px;display:grid;grid-template-rows:auto auto auto;gap:10px}
 .hero{
   background:#000;border:1px solid var(--line);border-radius:12px;overflow:hidden;
   width:100%;aspect-ratio:16/9;display:grid;place-items:center;position:relative;
@@ -3040,6 +3036,35 @@ video{
 .controls{
   grid-template-columns: 1fr;
   justify-items:center;
+}
+.control-stack{
+  padding:10px;
+  min-height:calc(100vh - 128px);
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr) auto;
+  gap:10px;
+}
+.control-sidebar .controls{
+  align-self:center;
+  justify-items:stretch;
+}
+.control-sidebar .modebar{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.control-sidebar .meta{
+  align-self:start;
+}
+.control-sidebar .btn{
+  min-width:0;
+  min-height:42px;
+  padding:8px 5px;
+  font-size:11px;
+  line-height:1.05;
+  display:grid;
+  place-items:center;
+  text-align:center;
+  white-space:normal;
+  overflow-wrap:anywhere;
 }
 .drive-pad{
   display:grid;
@@ -3180,6 +3205,128 @@ video{
   user-select:none;
   -webkit-user-select:none;
 }
+@media (orientation: landscape) and (max-width: 1180px){
+  html,body{max-width:100%;overflow-x:hidden}
+  body{overscroll-behavior-x:none}
+  header{padding:6px 8px;gap:8px}
+  .title{font-size:13px;white-space:nowrap}
+  .status{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .transport-badge{font-size:10px;padding:3px 7px;white-space:nowrap}
+  main{
+    --touch-side:clamp(116px,20vw,184px);
+    grid-template-columns:var(--touch-side) minmax(0,1fr) var(--touch-side);
+    grid-template-rows:min-content 1fr auto auto auto;
+    grid-template-areas:
+      "fleet video modes"
+      "fleet video drive"
+      "details details details"
+      "webrtc webrtc webrtc"
+      "health health health";
+    gap:8px;
+    padding:8px;
+    min-height:auto;
+    overflow-x:hidden;
+    align-items:start;
+  }
+  .fleet-panel{grid-area:fleet;min-width:0;max-height:calc(100svh - 54px)}
+  .video-panel{
+    display:contents;
+    background:transparent;
+    border:0;
+    overflow:visible;
+  }
+  .video-panel > .hdr{display:none}
+  .control-sidebar{
+    display:contents;
+    background:transparent;
+    border:0;
+    overflow:visible;
+  }
+  .control-sidebar > .hdr{display:none}
+  .main-wrap{display:contents}
+  .control-stack{display:contents}
+  .thumb-rail{
+    max-height:calc(100svh - 104px);
+    padding:6px;
+    gap:6px;
+  }
+  .hdr{padding:7px 8px}
+  aside .label{font-size:12px}
+  aside .small{display:none}
+  .thumb{border-radius:8px;aspect-ratio:4/3}
+  .badge{left:4px;top:4px;font-size:9px;padding:2px 5px}
+  .badge-right{left:auto;right:4px}
+  .hero{
+    grid-area:video;
+    align-self:center;
+    justify-self:center;
+    min-width:0;
+    max-height:calc(100svh - 54px);
+    border-radius:12px;
+  }
+  .modebar{
+    grid-area:modes;
+    align-self:start;
+    min-width:0;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:6px;
+  }
+  .controls{
+    grid-area:drive;
+    align-self:start;
+    min-width:0;
+    justify-items:stretch;
+  }
+  .drive-pad{
+    width:100%;
+    gap:6px;
+  }
+  .drive-pad.no-strafe,
+  .drive-pad.with-strafe{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+  .btn{
+    min-width:0;
+    min-height:44px;
+    padding:7px 4px;
+    border-radius:11px;
+    font-size:10px;
+    line-height:1.05;
+    display:grid;
+    place-items:center;
+    text-align:center;
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
+  .modebar .btn{
+    min-height:34px;
+    padding:5px 3px;
+    font-size:10px;
+  }
+  .meta{
+    grid-area:details;
+    min-width:0;
+  }
+  .webrtc-diag{
+    grid-area:webrtc;
+    min-width:0;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  }
+  .health{
+    grid-area:health;
+    min-width:0;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  }
+}
+@media (orientation: landscape) and (max-width: 760px){
+  main{--touch-side:clamp(108px,19vw,142px);gap:6px;padding:6px}
+  .fleet-panel{max-height:calc(100svh - 46px)}
+  .thumb-rail{max-height:calc(100svh - 86px);padding:5px;gap:5px}
+  .hero{max-height:calc(100svh - 46px)}
+  .btn{min-height:40px;font-size:9px;padding:6px 3px}
+  .modebar .btn{min-height:31px;font-size:9px}
+  .drive-pad,.modebar{gap:5px}
+}
 """
 
 _INDEX_HTML = r"""
@@ -3204,7 +3351,7 @@ _INDEX_HTML = r"""
   <div class="transport-badge offline" id="transportBadge">No stream</div>
 </header>
 <main>
-  <aside class="panel">
+  <aside class="panel fleet-panel">
     <div class="hdr">
       <div>
         <div class="label">Fleet Cameras</div>
@@ -3213,7 +3360,7 @@ _INDEX_HTML = r"""
     </div>
     <div class="thumb-rail" id="thumbRail"></div>
   </aside>
-  <section class="panel">
+  <section class="panel video-panel">
     <div class="hdr">
       <div>
         <div class="label" id="activeTitle">No Robot Selected</div>
@@ -3225,13 +3372,23 @@ _INDEX_HTML = r"""
         <video id="mainVideo" autoplay playsinline muted></video>
         <img id="mainJpeg" class="main-fallback" alt="FPV JPEG fallback" style="display:none"/>
       </div>
-      <div class="controls" id="driveControls"></div>
-      <div class="meta" id="capMeta"></div>
-      <div class="modebar" id="modeControls"></div>
       <div class="webrtc-diag" id="webrtcDiagPanel"></div>
       <div class="health" id="healthPanel"></div>
     </div>
   </section>
+  <aside class="panel control-sidebar">
+    <div class="hdr">
+      <div>
+        <div class="label">Controls</div>
+        <div class="small">Playbooks and drive pad</div>
+      </div>
+    </div>
+    <div class="control-stack">
+      <div class="modebar" id="modeControls"></div>
+      <div class="controls" id="driveControls"></div>
+      <div class="meta" id="capMeta"></div>
+    </div>
+  </aside>
 </main>
 <script src="{app_href}"></script>
 </body>
@@ -3283,6 +3440,10 @@ const ROBOT_SWITCH_GRACE_MS = 1400;
 const WEBRTC_RETRY_INTERVAL_MS = 1600;
 const WEBRTC_STALE_FRAME_MS = 3200;
 const THUMB_DRIVE_SUPPRESS_MS = 2000;
+const THUMB_JPEG_MAX_W = 240;
+const THUMB_JPEG_MAX_H = 180;
+const THUMB_JPEG_QUALITY = 55;
+const THUMB_MINIMAL_STALE_MS = 8000;
 const driveHoldTimers = new Map();
 const driveHoldCommands = new Map();
 const driveHoldButtonTokens = new Map();
@@ -4129,6 +4290,12 @@ function canAttemptThumb(robot, force=false){
   return Date.now() >= untilMs;
 }
 
+function thumbNeedsRefresh(imgEl, staleMs){
+  if (!imgEl) return true;
+  const last = Number(imgEl.dataset.lastFrameMs || 0);
+  return last <= 0 || (Date.now() - last) >= Math.max(1000, Number(staleMs) || 0);
+}
+
 function normalizeRobotChoice(robot, available){
   const name = String(robot || "").trim();
   if (!name) return null;
@@ -4150,8 +4317,6 @@ function reconcileActiveRobotChoice(preferredRobot, available, currentRobot=null
   if (chosen) return chosen;
   const current = normalizeRobotChoice(currentRobot, available);
   if (current) return current;
-  const pinned = String(currentRobot || "").trim();
-  if (pinned) return pinned;
   const liveSorted = Array.isArray(liveRobots)
     ? [...liveRobots].filter((robot) => Array.isArray(available) && available.includes(robot)).sort((a, b) => a.localeCompare(b))
     : [];
@@ -4381,7 +4546,9 @@ function refreshThumbImage(imgEl, robot){
     noteThumbFailure(robot);
     if (!imgEl.src) imgEl.src = NO_SIGNAL_IMG;
   };
-  next.src = withAuthPath(`/api/jpeg?robot=${encodeURIComponent(robot)}&t=${Date.now()}`);
+  next.src = withAuthPath(
+    `/api/jpeg?robot=${encodeURIComponent(robot)}&max_w=${THUMB_JPEG_MAX_W}&max_h=${THUMB_JPEG_MAX_H}&quality=${THUMB_JPEG_QUALITY}&t=${Date.now()}`
+  );
 }
 
 function renderCapabilityMeta(){
@@ -5224,29 +5391,32 @@ function refreshThumbs(){
   if (nowMs < thumbDriveSuppressedUntilMs){
     return;
   }
-  const tiles = [];
+  const activeTiles = [];
+  const inactiveTiles = [];
   for (const tile of document.querySelectorAll(".thumb")){
     const img = tile.querySelector("img");
     const nameBadge = tile.querySelector(".badge-right");
     const robot = (nameBadge && nameBadge.textContent) ? nameBadge.textContent.trim() : "";
     if (!img || !robot) continue;
-    if (robot === activeRobot) continue;
-    tiles.push({ img, robot });
+    if (robot === activeRobot){
+      activeTiles.push({ img, robot });
+    } else {
+      inactiveTiles.push({ img, robot });
+    }
   }
-  if (!tiles.length){
+  for (const row of activeTiles){
+    refreshThumbImage(row.img, row.robot);
+  }
+  if (!inactiveTiles.length){
     thumbRoundRobinCursor = 0;
     return;
   }
   const configuredLimit = Math.max(0, Math.floor(Number(thumbRobotsPerTick) || 0));
-  if (configuredLimit <= 0){
-    // Zero means "no passive thumbnail probing". This keeps background camera
-    // subscriptions completely off unless the operator explicitly selects a robot.
-    thumbRoundRobinCursor = 0;
-    return;
-  }
+  const minimalMode = configuredLimit <= 0;
   const healthy = [];
   const unhealthy = [];
-  for (const row of tiles){
+  for (const row of inactiveTiles){
+    if (minimalMode && !thumbNeedsRefresh(row.img, THUMB_MINIMAL_STALE_MS)) continue;
     if (robotThumbPriority(row.robot) <= 1){
       healthy.push(row);
     } else {
@@ -5254,8 +5424,12 @@ function refreshThumbs(){
     }
   }
   const pool = healthy.concat(unhealthy);
-  const limit = configuredLimit;
   const total = pool.length;
+  if (!total){
+    thumbRoundRobinCursor = 0;
+    return;
+  }
+  const limit = minimalMode ? 1 : configuredLimit;
   const start = ((thumbRoundRobinCursor % total) + total) % total;
   const count = Math.min(limit, total);
   for (let i = 0; i < count; i += 1){
@@ -5395,6 +5569,7 @@ async function main(){
 
   const thumbHz = Math.max(0.1, _toNumber(s.thumb_hz, 0.5));
   setInterval(refreshThumbs, Math.floor(1000 / thumbHz));
+  setTimeout(refreshThumbs, 0);
   setInterval(async () => {
     if (stateRefreshInFlight) return;
     stateRefreshInFlight = true;
