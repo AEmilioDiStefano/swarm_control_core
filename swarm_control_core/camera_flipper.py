@@ -237,6 +237,7 @@ def _save_orientation_update(
     horizontal_action: FlipAction,
     vertical_action: FlipAction,
     dry_run: bool,
+    show_menu_tip: bool = False,
 ) -> Dict[str, Any]:
     updated = update_orientation_profile(
         profile,
@@ -270,6 +271,8 @@ def _save_orientation_update(
     _write_yaml(profiles_path, data)
     print("[OK] camera orientation saved.")
     print("[NEXT] Restart robot bringup so FPV reloads the camera profile.")
+    if show_menu_tip:
+        print("[TIP] Run camera_flipper_core without --set to open the interactive menu.")
     return updated
 
 
@@ -417,6 +420,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 horizontal_action=horizontal_action,
                 vertical_action=vertical_action,
                 dry_run=args.dry_run,
+                show_menu_tip=False,
             )
             if args.dry_run:
                 return 0
@@ -436,6 +440,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         horizontal_action=horizontal_action,
         vertical_action=vertical_action,
         dry_run=args.dry_run,
+        show_menu_tip=True,
     )
     return 0
 
