@@ -15,6 +15,9 @@ This runbook is split into two parts:
 1. **Quickstart Path** at the top.
 2. **Alternative/Debug/Fix** at the bottom.
 
+For the guide-authoring standard, see
+[`DRP_guide_format.md`](./DRP_guide_format.md).
+
 Operator model for this quickstart (required):
 - Run everything from the control machine.
 - Keep one dedicated terminal per robot SSH session open for the full run.
@@ -35,26 +38,9 @@ Workspace selection below is handled by the Step 0 terminal-bootstrap helper.
 After that, use `WS` for the workspace root and `SC` for
 `"$WS/src/swarm_control_core"`.
 
-## Mode Handoff Checklist (core <-> pro)
+### IF switching between `swarm_control_core` and `swarm_control_pro`
 
-Use this when both `swarm_control_core` and `swarm_control_pro` exist on the same robots.
-
-From pro persistent mode to core session mode:
-- Run this core quickstart normally (Step 2 robot prep + Step 3 UI).
-- Core compat prep stops conflicting services/processes and applies runtime-only masks as needed.
-- No reboot is required to enter core session mode.
-
-From core session mode back to pro persistent mode:
-- Run pro quickstart Step 2 (`service-sync`) from the control machine.
-- Pro service-sync now clears core runtime masks automatically and restores pro persistent service ownership in the same boot.
-- Reboot is still acceptable (optional) if you want a full clean restart of robot state before returning to pro.
-
-Quick sanity checks on a robot:
-
-```bash
-sudo systemctl is-enabled swarm-robot.service || true
-sudo systemctl is-active swarm-robot.service || true
-```
+Go to [Alternative Step A.1](#ref-a-1), then return to [Step 0](#step-0).
 
 # Quickstart Path:
 
@@ -175,30 +161,6 @@ Behavior of the step-2 wrapper:
 - runs the interactive camera-profile save
 - launches robot bringup and stays attached to it
 
-Optional:
-- if you already trust the saved camera profile and want to skip the interactive camera menu:
-  `"$SC/scripts/swarm_core_quickstart_step2.sh" --skip-camera-profile`
-- if this is a new robot with a known hardware profile, preselect it:
-  `"$SC/scripts/swarm_core_quickstart_step2.sh" --control-type diff_drive --control-interface dual_l298n_diff`
-- for a mecanum robot using two L298N boards, preselect:
-  `"$SC/scripts/swarm_core_quickstart_step2.sh" --control-type mecanum_drive --control-interface dual_l298n_mecanum`
-- for a new hardware profile, add/validate it first with
-  [control_interface_profiles.md](./control_interface_profiles.md)
-- if wheels move but directions/order are wrong, keep Step 2 running and run
-  the live `cmd_vel` wheel test from a second robot SSH terminal:
-  `"$SC/scripts/swarm_core_wheel_test.sh" --robot "$ROBOT_NAME" --mode cmd_vel`
-
-Runtime config seeding behavior:
-- `swarm_core_run_robot.sh` seeds missing runtime config files from
-  `src/swarm_control_core/config` into `~/.config/swarm_control_core/`.
-- Existing runtime files are kept by default, including
-  `robot_instances.yaml`, `control_types.yaml`, `control_interfaces.yaml`,
-  and `camera_profiles.yaml`.
-- Step 2 and `add_robot_core` refresh reusable core profile files while
-  preserving `camera_profiles.yaml`.
-- To diagnose stale source/runtime profile state manually, run:
-  `"$WS/src/swarm_control_core/scripts/swarm_core_robot_doctor.sh" --robot "$ROBOT_NAME"`
-
 ### Verify success
 
 Expected robot-side nodes include:
@@ -211,34 +173,21 @@ Expected robot-side nodes include:
 
 Go to [Fix Step 2.1](#ref-2-1), then return to [Step 2](#step-2).
 
+### IF you want to skip the camera menu or preselect a hardware profile
+
+Go to [Alternative Step 2.2](#ref-2-2), then return to [Step 2](#step-2).
+
 ### IF wheels move but direction/order is wrong
 
-Go to [Fix Step 2.2](#ref-2-2), then return to [Step 2](#step-2).
+Go to [Fix Step 2.3](#ref-2-3), then return to [Step 2](#step-2).
+
+### IF one camera is dark or teleop/video feels laggy
+
+Go to [Fix Step 2.4](#ref-2-4), then return to [Step 2](#step-2).
 
 For multi-robot sessions:
 - keep each robot SSH terminal running.
 - proceed to Step 3 after each robot terminal shows all bringup nodes started and camera first-frame logs.
-
-If one robot feed is much darker than others (while transport/control are healthy), validate camera controls on that robot:
-
-```bash
-v4l2-ctl --device /dev/v4l/by-id/<your-camera> --list-ctrls
-```
-
-This is typically per-camera exposure/gain behavior, not DDS/WebRTC transport behavior.
-
-If teleop/video feels laggy while motors are receiving frequent commands:
-- reduce cmd_vel audit overhead for this session:
-
-```bash
-export SWARM_CORE_AUDIT_CMD_VEL_MIN_PERIOD_S=2.0
-```
-
-Reboot behavior note:
-- Compatibility prep uses runtime-only masks for proprietary services.
-- Reboot clears those masks automatically and returns service startup policy to proprietary defaults.
-- If compat mode stopped `ufw.service` at runtime, reboot (or `sudo systemctl start ufw.service`)
-  restores the saved firewall policy.
 
 Proceed to Step 3.
 
@@ -261,34 +210,11 @@ Terminal usage requirement:
 Operator tip:
 - Keep only one active UI tab/window connected to avoid unnecessary duplicate WebRTC/control sessions.
 
-For maximum active-robot latency reduction in single-robot focus mode (at the cost of much slower fleet-tile updates and slower robot switching):
-
-- the default Step 3 script already uses this single-robot-focus profile
-
-Switch behavior (expected):
-
-- Active robot switch triggers WebRTC main-stream handoff.
-- Keep `SWARM_CORE_THUMB_ROBOTS_PER_TICK=1` for balanced fleet tile updates with passive side-tile probing.
-- Use `SWARM_CORE_THUMB_ROBOTS_PER_TICK=0` only when you care about one active robot and minimal background load.
-
-Balanced fleet profile:
-
-```bash
-"$SC/scripts/swarm_core_quickstart_step3.sh" --balanced-fleet
-```
-
-If rapid back-and-forth switching still feels sticky in `active_only` mode, use this switch-heavy profile:
-
-```bash
-"$SC/scripts/swarm_core_quickstart_step3.sh" --switch-heavy
-```
-
 Open in browser:
 - `http://127.0.0.1:8080`
 
 Video path:
 - Main stream uses strict WebRTC-only transport by default.
-- To keep all robot camera streams subscribed continuously (higher load), set `SWARM_CORE_IMAGE_SUBSCRIPTION_MODE=all`.
 - Fleet thumbnails stay in side tiles and do not take over the main pane.
 
 Robot trust model:
@@ -296,19 +222,18 @@ Robot trust model:
   control machine has that robot in its local `robot_instances.yaml`.
 - Unknown robots are shown read-only for video/diagnostics, but drive and
   autonomy commands are blocked by default.
-- If the UI reports an unknown/read-only robot such as `robot4`, run
-  `ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"` on the
-  control machine, then restart Step 3.
-
-Optional private LAN bind:
-
-```bash
-"$SC/scripts/swarm_core_quickstart_step3.sh" --allow-lan-bind
-```
 
 ### IF UI does not load or bind
 
 Go to [Fix Step 3.1](#ref-3-1), then return to [Step 3](#step-3).
+
+### IF robots are visible but read-only/untrusted
+
+Go to [Fix Step 3.2](#ref-3-2), then return to [Step 3](#step-3).
+
+### IF you need balanced fleet, switch-heavy, all-stream, or LAN-bind mode
+
+Go to [Alternative Step 3.3](#ref-3-3), then return to [Step 3](#step-3).
 
 Proceed to Step 4.
 
@@ -334,7 +259,7 @@ Go to [Fix Step 4.1](#ref-4-1), then return to [Step 4](#step-4).
 Proceed to Step 5.
 
 <a id="step-5"></a>
-## Step 5: Optional Terminal Control (Control Machine)
+## Step 5: Terminal Control Smoke Test (Control Machine)
 
 Terminal teleop:
 
@@ -349,6 +274,37 @@ Go to [Fix Step 5.1](#ref-5-1), then return to [Step 5](#step-5).
 Quickstart complete.
 
 # Alternative/Debug/Fix
+
+<a id="ref-a-1"></a>
+## Alternative Step A.1: Mode Handoff Checklist (core <-> pro)
+
+Use this when both `swarm_control_core` and `swarm_control_pro` exist on the
+same robots.
+
+From pro persistent mode to core session mode:
+
+- run this core quickstart normally, starting with Step 2 robot prep and Step 3
+  UI
+- core compat prep stops conflicting services/processes and applies
+  runtime-only masks as needed
+- no reboot is required to enter core session mode
+
+From core session mode back to pro persistent mode:
+
+- run pro quickstart Step 2 (`service-sync`) from the control machine
+- pro service-sync clears core runtime masks and restores pro persistent
+  service ownership in the same boot
+- reboot is still acceptable if you want a full clean restart of robot state
+  before returning to pro
+
+Quick sanity checks on a robot:
+
+```bash
+sudo systemctl is-enabled swarm-robot.service || true
+sudo systemctl is-active swarm-robot.service || true
+```
+
+Then return to [Step 0](#step-0).
 
 <a id="ref-0-1"></a>
 ## Fix Step 0.1: Dependency install/check fails
@@ -401,7 +357,51 @@ ros2 run swarm_control_core save_camera_profile_core --robot "$ROBOT_NAME"
 Then return to [Step 2](#step-2).
 
 <a id="ref-2-2"></a>
-## Fix Step 2.2: Wheel Direction or Wheel Order Is Wrong
+## Alternative Step 2.2: Skip Camera Menu or Preselect Hardware
+
+If you already trust the saved camera profile and want to skip the interactive
+camera menu, run Step 2 like this:
+
+```bash
+"$SC/scripts/swarm_core_quickstart_step2.sh" --skip-camera-profile
+```
+
+If this is a new robot with a known hardware profile, preselect it. Example for
+a differential dual-L298N robot:
+
+```bash
+"$SC/scripts/swarm_core_quickstart_step2.sh" \
+  --control-type diff_drive \
+  --control-interface dual_l298n_diff
+```
+
+For a mecanum robot using two L298N boards:
+
+```bash
+"$SC/scripts/swarm_core_quickstart_step2.sh" \
+  --control-type mecanum_drive \
+  --control-interface dual_l298n_mecanum
+```
+
+For a new hardware profile, add/validate it first with
+[control_interface_profiles.md](./control_interface_profiles.md).
+
+Runtime config seeding behavior:
+
+- `swarm_core_run_robot.sh` seeds missing runtime config files from
+  `src/swarm_control_core/config` into `~/.config/swarm_control_core/`.
+- Existing runtime files are kept by default, including
+  `robot_instances.yaml`, `control_types.yaml`, `control_interfaces.yaml`,
+  and `camera_profiles.yaml`.
+- Step 2 and `add_robot_core` refresh reusable core profile files while
+  preserving `camera_profiles.yaml`.
+- To diagnose stale source/runtime profile state manually, run
+  `"$WS/src/swarm_control_core/scripts/swarm_core_robot_doctor.sh" --robot "$ROBOT_NAME"`.
+
+Then return to [Step 2](#step-2).
+
+<a id="ref-2-3"></a>
+## Fix Step 2.3: Wheel Direction or Wheel Order Is Wrong
 
 For a robot that already has bringup running, open a second SSH terminal to that
 same robot and run:
@@ -424,6 +424,33 @@ swap wheel channel mappings and press `S` to save.
 Saved profile changes are consumed on the next robot bringup. Stop the affected
 Step 2 terminal with `Ctrl-C`, then return to [Step 2](#step-2).
 
+<a id="ref-2-4"></a>
+## Fix Step 2.4: Dark Camera or Laggy Video/Control
+
+If one robot feed is much darker than others while transport/control are
+healthy, validate camera controls on that robot:
+
+```bash
+v4l2-ctl --device /dev/v4l/by-id/<your-camera> --list-ctrls
+```
+
+This is typically per-camera exposure/gain behavior, not DDS/WebRTC transport
+behavior.
+
+If teleop/video feels laggy while motors are receiving frequent commands,
+reduce cmd_vel audit overhead for this session:
+
+```bash
+export SWARM_CORE_AUDIT_CMD_VEL_MIN_PERIOD_S=2.0
+```
+
+Compatibility prep uses runtime-only masks for proprietary services. Reboot
+clears those masks automatically and returns service startup policy to
+proprietary defaults. If compat mode stopped `ufw.service` at runtime, reboot
+or run `sudo systemctl start ufw.service` to restore the saved firewall policy.
+
+Then return to [Step 2](#step-2).
+
 <a id="ref-3-1"></a>
 ## Fix Step 3.1: UI does not load or bind
 
@@ -440,6 +467,73 @@ If LAN access is needed, set:
 ```bash
 export SWARM_CORE_ALLOW_LAN_BIND=1
 export SWARM_CORE_BIND_HOST=0.0.0.0
+```
+
+Then return to [Step 3](#step-3).
+
+<a id="ref-3-2"></a>
+## Fix Step 3.2: Robots Are Visible but Read-Only/Untrusted
+
+If the UI logs `trusted_robots=<none>` or says a robot such as `robot4` is
+unknown/read-only, the control machine does not have that robot in its trusted
+runtime registry. Run on the control machine:
+
+```bash
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS" \
+  --source robot4=robot4@legion4.local \
+  --source robot5=robot5@legion5.local
+```
+
+Replace the example sources with the exact source strings printed by
+`add_robot_core` or `robot_doctor_core` on each robot. Expected success output
+ends with:
+
+```text
+[OK] Control-machine robot registration/approval complete.
+[OK] Registered/approved robots are ready for QUICKSTART handoff.
+[NEXT] Restart the FPV UI so it reloads the trusted robot registry before driving.
+```
+
+Then stop and restart [Step 3](#step-3). Only use
+`SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL=1` in a trusted lab when you
+intentionally want to allow control of robots not yet present in
+`robot_instances.yaml`.
+
+Then return to [Step 3](#step-3).
+
+<a id="ref-3-3"></a>
+## Alternative Step 3.3: Fleet, Switching, Streaming, or LAN Bind Modes
+
+Balanced fleet profile:
+
+```bash
+"$SC/scripts/swarm_core_quickstart_step3.sh" --balanced-fleet
+```
+
+If rapid back-and-forth switching still feels sticky in `active_only` mode, use
+the switch-heavy profile:
+
+```bash
+"$SC/scripts/swarm_core_quickstart_step3.sh" --switch-heavy
+```
+
+To keep all robot camera streams subscribed continuously, at higher load:
+
+```bash
+export SWARM_CORE_IMAGE_SUBSCRIPTION_MODE=all
+"$SC/scripts/swarm_core_quickstart_step3.sh"
+```
+
+For private-LAN browser access:
+
+```bash
+"$SC/scripts/swarm_core_quickstart_step3.sh" --allow-lan-bind
 ```
 
 Then return to [Step 3](#step-3).
@@ -461,22 +555,8 @@ If robot terminals show heartbeat publishing but control still has no heartbeat 
 DDS traffic is being blocked (commonly by ufw state carried from proprietary setup).
 Keep compat defaults and rerun [Step 2](#step-2) on robots + [Step 3](#step-3) on control.
 
-If the UI sees a robot but logs it as unknown/read-only, the control machine is
-missing that robot's trusted registry entry. Run on the control machine:
-
-```bash
-cd "$WS"
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
-ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
-```
-
-Then stop and restart [Step 3](#step-3). Only use
-`SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL=1` in a trusted lab when you intentionally
-want to allow control of robots not yet present in `robot_instances.yaml`.
+If the UI sees a robot but logs it as unknown/read-only, go to
+[Fix Step 3.2](#ref-3-2), then return to [Step 4](#step-4).
 
 If you previously forced firewall preservation, remove that override:
 

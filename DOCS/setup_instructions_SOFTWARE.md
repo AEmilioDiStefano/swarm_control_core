@@ -2,8 +2,18 @@
 
 This guide is the full software setup path for a control machine plus one or
 more freshly imaged Ubuntu 24.04 robot machines. A robot is not considered
-ready for the live local/LAN bringup in [QUICKSTART.md](./QUICKSTART.md) until
-it has been registered/approved on the control machine and verified below.
+ready for live FPV/control until it has a local robot profile, has been
+registered/approved on the control machine, and has passed the verification
+steps below.
+
+This guide follows the DRP guide format:
+
+1. **Direct Run Path**: the normal setup path, in order.
+2. **Alternative/Debug/Fix Reference**: all conditional branches live at the
+   bottom and are referenced from the run path with `### IF...` callouts.
+
+For the guide-authoring standard, see
+[`DRP_guide_format.md`](./DRP_guide_format.md).
 
 When you finish this guide:
 
@@ -50,16 +60,21 @@ Suggested labels:
 
 ## How This Guide Works
 
-- every command block below is safe to rerun
+- every command block in the Direct Run Path is safe to rerun
 - Step 1 is the same on the control machine and in every robot SSH terminal
 - the guide defaults to `~/ros2_ws_dev`; if you intentionally want a different
   workspace, export `SWARM_CORE_WORKSPACE_ROOT=/path/to/your_ws` before Step 1
-- if you close and reopen a terminal later, rerun Step 1 in the new shell
+- if a step fails or your situation differs from the normal path, follow the
+  nearest `### IF...` callout to the reference section, then return to the step
+  that sent you there
 
-## 0. SSH into your Raspberry Pi(s)
+# Direct Run Path
+
+<a id="setup-step-0"></a>
+## Step 0: SSH Into Each Robot
 
 SSH into each robot from the control machine and keep one dedicated terminal
-open per robot:
+open per robot.
 
 ### CONTROL MACHINE:
 
@@ -67,7 +82,12 @@ open per robot:
 ssh <robot_user>@<robot_host>.local
 ```
 
-## 1. Universal Workspace Bootstrap
+### IF SSH fails or hostname resolution fails
+
+Go to [Fix Step 0.1](#setup-ref-0-1), then return to [Step 0](#setup-step-0).
+
+<a id="setup-step-1"></a>
+## Step 1: Universal Workspace Bootstrap
 
 Run this once in the control-machine terminal and once in each dedicated robot
 SSH terminal. Run the same block again any time you open a fresh shell or
@@ -80,8 +100,6 @@ This block:
 - otherwise installs `git` if needed, creates `~/ros2_ws_dev/src`, and clones
   `swarm_control_core`
 - runs the idempotent setup bootstrap helper
-- tells you whether bootstrap was already complete or which missing pieces it
-  created
 - exports `WS`, `WS_DEV`, `SC`, and `SWARM_CORE_WORKSPACE_ROOT`
 
 ### CONTROL MACHINE:
@@ -149,9 +167,14 @@ Expected result:
 - the helper prints either `Bootstrap already complete...` or a short list of
   the changes it just applied
 
-## 2. Prepare the Control Machine
+### IF bootstrap cannot find the helper, clone, or export `WS`/`SC`
 
-Run this in the control-machine terminal after Step 1:
+Go to [Fix Step 1.1](#setup-ref-1-1), then return to [Step 1](#setup-step-1).
+
+<a id="setup-step-2"></a>
+## Step 2: Prepare the Control Machine
+
+Run this in the control-machine terminal after Step 1.
 
 ### CONTROL MACHINE:
 
@@ -168,31 +191,20 @@ source "$SC/scripts/swarm_core_reset_env.sh" \
   --domain-id "$SWARM_CORE_ROS_DOMAIN_ID"
 ```
 
-What this does:
-
-- installs dependencies, including ROS 2 Jazzy if needed
-- seeds runtime config into `~/.config/swarm_control_core/`
-- builds `swarm_control_core`
-- prepares the current terminal for the later quickstart UI flow
-
 Expected success signals:
 
 - dependency output ends with `All dependencies are installed and up to date.`
 - bootstrap summary shows `BUILD_STATUS = completed`
 - the shell still has `WS` and `SC` exported
 
-## 3. Prepare Each Robot
+### IF dependency installation, build, or source setup fails
 
-In each robot SSH terminal:
+Go to [Fix Step 2.1](#setup-ref-2-1), then return to [Step 2](#setup-step-2).
 
-1. run Step 1
-2. run the robot bootstrap block below
-3. if the bootstrap says GPIO access is not active in the current session,
-   open a new SSH session to that robot and rerun Step 1 there
-4. in the robot terminal you plan to keep open for quickstart, run the reset
-   block below
+<a id="setup-step-3"></a>
+## Step 3: Prepare Each Robot
 
-Robot bootstrap block:
+Run this in each robot SSH terminal after Step 1.
 
 ### ROBOT(S):
 
@@ -203,7 +215,7 @@ Robot bootstrap block:
   --domain-id "$SWARM_CORE_ROS_DOMAIN_ID"
 ```
 
-Robot reset block:
+Then prepare the active robot shell that you will keep open for quickstart.
 
 ### ROBOT(S):
 
@@ -218,26 +230,22 @@ export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
 export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
 ```
 
-Optional quick confirmation in the active robot terminal:
-
-### ROBOT(S):
-
-```bash
-if [[ -e /dev/gpiomem && -r /dev/gpiomem && -w /dev/gpiomem ]]; then
-  echo "[OK] GPIO access is active in this SSH session."
-else
-  echo "[INFO] GPIO access is not active in this SSH session yet."
-  echo "[INFO] Open a new SSH session to this robot, rerun Step 1 there, then rerun the reset block above."
-fi
-```
-
 At this point the robot terminal has the shell/workspace environment expected
 by the later quickstart, but the robot has not been added or approved for
 control yet.
 
-## 4. Add or Update the Robot's Local Profile
+### IF GPIO access is not active in the current SSH session
 
-Run this in each prepared robot SSH terminal:
+Go to [Fix Step 3.1](#setup-ref-3-1), then return to [Step 3](#setup-step-3).
+
+### IF dependency installation, build, or robot preparation fails
+
+Go to [Fix Step 3.2](#setup-ref-3-2), then return to [Step 3](#setup-step-3).
+
+<a id="setup-step-4"></a>
+## Step 4: Add or Update the Robot's Local Profile
+
+Run this in each prepared robot SSH terminal.
 
 ### ROBOT(S):
 
@@ -262,120 +270,31 @@ What to do here:
   already in the canonical `robot_instances.yaml`
 - choose the camera entry that robot should use if no generated camera profile
   exists yet
-- confirm generated camera data lands in
-  `~/.config/swarm_control_core/camera_profiles.yaml`
+- copy the printed control-machine registration source, such as
+  `robot4=robot4@legion4.local`, for Step 6
 
-If you want the runtime robot name to be something other than the Linux
-username, export `SWARM_CORE_ROBOT_NAME=<name>` before running the command
-above, and keep using that same value later in the quickstart robot terminal.
-`ROBOT_NAME` is a convenience alias for manual diagnostic commands in the
-current shell.
-
-If you already know the selected hardware profile, pass it explicitly. Example
-for the four-channel dual-L298N robot4 profile:
-
-### ROBOT(S):
-
-```bash
-ros2 run swarm_control_core add_robot_core \
-  --workspace "$WS" \
-  --name "$ROBOT_NAME" \
-  --control-type diff_drive \
-  --control-interface dual_l298n_diff
-```
-
-For a mecanum robot using two L298N boards, use:
-
-### ROBOT(S):
-
-```bash
-ros2 run swarm_control_core add_robot_core \
-  --workspace "$WS" \
-  --name "$ROBOT_NAME" \
-  --control-type mecanum_drive \
-  --control-interface dual_l298n_mecanum
-```
-
-For new hardware profiles that are not already listed, use the metadata-driven
-process in [`control_interface_profiles.md`](./control_interface_profiles.md)
-before running `add_robot_core`.
-
-This command treats `robot_instances.yaml` as the canonical source of robot
-identity on the robot, syncs that robot's runtime `robot_instances.yaml`,
-refreshes runtime `control_types.yaml` and `control_interfaces.yaml`, preserves
-generated camera profiles, and prints the selected wiring document when
-available.
-
-This is a local robot-profile step only. The robot is not approved for FPV UI
-drive/autonomy control until Step 5.1 registers it on the control machine.
-
-Security note:
-
-- A robot can be visible on the ROS network before the control machine has
-  registered and approved its trusted registry entry.
-- The FPV UI shows those unknown robots read-only for diagnostics/video, but it
-  blocks drive/autonomy commands until Step 5.1 registers the robot on the
-  control machine.
-
-If the camera chooser warns about probing behavior and you intentionally want
-auto-fallback behavior, enable it in that shell with:
-
-### ROBOT(S):
-
-```bash
-export SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK=1
-```
-
-### 4.1 Optional Wheel Direction Test
-
-Run this after Step 4 when the robot uses GPIO motor control and before the
-live quickstart bringup. This test drives the GPIO hardware directly, so keep
-the robot on blocks, wheels/tracks clear, and do not run robot bringup at the
-same time.
-
-### ROBOT(S):
-
-```bash
-"$SC/scripts/swarm_core_wheel_test.sh" --robot "$ROBOT_NAME"
-```
-
-The terminal app accepts movement keys and prints the expected wheel directions.
-Example for the forward command:
+Expected success output includes:
 
 ```text
-Command:
-FORWARD
-
-Expected:
-FL = FORWARD
-BL = FORWARD
-FR = FORWARD
-BR = FORWARD
+[OK] Local robot profile is prepared on this robot.
+[NEXT] Register/approve this robot on the control machine with sync_robot_entries_core before expecting FPV UI drive/autonomy control.
 ```
 
-Movement keys match terminal teleop and the Swarm Control UI:
+This is a local robot-profile step only. The robot is not approved for FPV UI
+drive/autonomy control until Step 6 registers it on the control machine.
 
-- `8/2`: forward/backward
-- `4/6`: rotate left/right, or strafe left/right when strafe mode is enabled
-- `7/9/1/3`: arc diagonals in normal mode, strafe diagonals in strafe mode
-- arrow keys: same movement behavior as `8/2/4/6`
-- `0`: toggle strafe mode for mecanum/omni robots
-- `space`, `s`, or `5`: stop
+### IF you need a non-default robot name, known hardware profile, or new hardware profile
 
-Calibration keys:
+Go to [Alternative Step 4.1](#setup-ref-4-1), then return to [Step 4](#setup-step-4).
 
-- `v`: choose FL/BL/FR/BR and toggle wheel inversion when a wheel spins backward
-- `c`: swap two wheel channel mappings when the wrong wheel moves
-- `P`: print pending GPIO overrides
-- `S`: save pending GPIO overrides into `robot_instances.yaml`
+### IF camera probing needs manual fallback
 
-Saved overrides are robot-specific. They are useful for wiring differences on
-one physical robot without changing the reusable hardware profile for every
-robot of that type.
+Go to [Fix Step 4.2](#setup-ref-4-2), then return to [Step 4](#setup-step-4).
 
-## 5. Local Robot Readiness Check
+<a id="setup-step-5"></a>
+## Step 5: Check Local Robot Readiness
 
-Run this in each prepared robot SSH terminal after Step 4:
+Run this in each prepared robot SSH terminal after Step 4.
 
 ### ROBOT(S):
 
@@ -394,17 +313,312 @@ ros2 run swarm_control_core robot_doctor_core \
   --robot "$ROBOT_NAME"
 ```
 
-What this command does:
+Expected success signals:
 
-- verifies the canonical source robot entry exists
-- verifies the selected `control_interface` exists in source profiles
-- checks runtime `robot_instances.yaml`
-- checks runtime `control_types.yaml` and `control_interfaces.yaml` for stale
-  copies
-- reports whether a generated camera profile exists
-- prints control-machine registration/approval hints
+- `source_entry: present`
+- `source_control_interface: present`
+- `robot_entry: current`
+- `control_types.yaml: current`
+- `control_interfaces.yaml: current`
+- a `control_machine_sync` block that lists the source strings for Step 6
 
-If the doctor reports stale runtime core profiles, repair them with:
+### IF the doctor reports stale runtime profiles or missing entries
+
+Go to [Fix Step 5.1](#setup-ref-5-1), then return to [Step 5](#setup-step-5).
+
+### IF you want to test wheel direction/order before live quickstart
+
+Go to [Optional: Wheel Direction Test](#setup-ref-optional-wheel-test), then
+return to [Step 5](#setup-step-5).
+
+<a id="setup-step-6"></a>
+## Step 6: Register and Approve Robots on the Control Machine
+
+This step is required. It is the trust gate that allows the FPV UI to control
+new robots. Do not start the FPV UI until this step succeeds.
+
+Do not expect the robot SSH terminals to print the final Quickstart-ready
+message. The robot terminals only prove that each robot has a valid local
+profile. The final readiness message appears in the control-machine terminal
+after this registration/approval command succeeds.
+
+Run this in the control-machine terminal. Use one `--source` per robot. Replace
+the examples with the exact source strings printed by Step 4 or Step 5.
+
+### CONTROL MACHINE:
+
+```bash
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS" \
+  --source robot4=robot4@legion4.local \
+  --source robot5=robot5@legion5.local
+```
+
+Expected success output ends with:
+
+```text
+[OK] Control-machine robot registration/approval complete.
+[OK] Registered/approved robots are ready for QUICKSTART handoff.
+[NEXT] Restart the FPV UI so it reloads the trusted robot registry before driving.
+```
+
+Only after this step should a new robot be considered added/approved for
+control-machine FPV UI control.
+
+### IF you prefer interactive entry or the sync command fails
+
+Go to [Fix Step 6.1](#setup-ref-6-1), then return to [Step 6](#setup-step-6).
+
+<a id="setup-step-7"></a>
+## Step 7: Verify Control-Machine Recognition
+
+Run this in the control-machine terminal. Replace the example robot names with
+the robots you just registered.
+
+### CONTROL MACHINE:
+
+```bash
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot robot4
+ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot robot5
+```
+
+Expected success signals for each robot:
+
+- `source_entry: present`
+- `robot_entry: current`
+- the selected `control_interface` matches the robot hardware
+
+### IF either robot is missing, stale, or still read-only in the UI later
+
+Go to [Fix Step 7.1](#setup-ref-7-1), then return to [Step 7](#setup-step-7).
+
+<a id="setup-step-8"></a>
+## Step 8: Final Quick Verification
+
+Run this in each prepared robot SSH terminal.
+
+### ROBOT(S):
+
+```bash
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+test -f "$HOME/.config/swarm_control_core/robot_instances.yaml" && echo "[OK] runtime profiles seeded"
+test -f "$HOME/.config/swarm_control_core/camera_profiles.yaml" && echo "[OK] camera profiles file present"
+ros2 pkg executables swarm_control_core | rg "_core$"
+```
+
+Run this in the control-machine terminal.
+
+### CONTROL MACHINE:
+
+```bash
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+ros2 pkg executables swarm_control_core | rg "_core$"
+```
+
+After Step 6 registration/approval and Step 7 verification succeed, the
+machines are ready for the live local FPV/control flow in
+[QUICKSTART.md](./QUICKSTART.md).
+
+Recommended handoff:
+
+- if you keep these prepared terminals open, continue with
+  [QUICKSTART.md](./QUICKSTART.md) starting at Step 2 for the robot terminals,
+  then Step 3 on the control machine
+- if you open fresh terminals later, rerun Step 1 of this guide or Step 0 of
+  [QUICKSTART.md](./QUICKSTART.md) so the new shells get the same workspace
+  bootstrap and reset flow
+
+### IF the verification commands fail
+
+Go to [Fix Step 8.1](#setup-ref-8-1), then return to [Step 8](#setup-step-8).
+
+### IF you want robot service mode after manual setup succeeds
+
+Go to [Optional: Robot Service Mode](#setup-ref-optional-service-mode).
+
+# Alternative/Debug/Fix Reference
+
+<a id="setup-ref-0-1"></a>
+## Fix Step 0.1: SSH or Hostname Resolution Fails
+
+Run this on the control machine to confirm the robot hostname or IP is reachable.
+
+### CONTROL MACHINE:
+
+```bash
+ping -c 2 <robot_host>.local || true
+ssh <robot_user>@<robot_ip_or_hostname>
+```
+
+If `.local` does not resolve, use the robot IP address for SSH and for Step 6
+sources, for example `robot4=robot4@192.168.1.44`.
+
+Return to [Step 0](#setup-step-0).
+
+<a id="setup-ref-1-1"></a>
+## Fix Step 1.1: Workspace Bootstrap Fails
+
+Run this in the affected terminal.
+
+### CONTROL MACHINE:
+
+```bash
+command -v git || sudo apt-get install -y git
+mkdir -p "$HOME/ros2_ws_dev/src"
+cd "$HOME/ros2_ws_dev/src"
+test -d swarm_control_core/.git || git clone https://github.com/AEmilioDiStefano/swarm_control_core.git
+cd "$HOME/ros2_ws_dev"
+export WS="$HOME/ros2_ws_dev"
+export SC="$WS/src/swarm_control_core"
+```
+
+### ROBOT(S):
+
+```bash
+command -v git || sudo apt-get install -y git
+mkdir -p "$HOME/ros2_ws_dev/src"
+cd "$HOME/ros2_ws_dev/src"
+test -d swarm_control_core/.git || git clone https://github.com/AEmilioDiStefano/swarm_control_core.git
+cd "$HOME/ros2_ws_dev"
+export WS="$HOME/ros2_ws_dev"
+export SC="$WS/src/swarm_control_core"
+```
+
+Return to [Step 1](#setup-step-1).
+
+<a id="setup-ref-2-1"></a>
+## Fix Step 2.1: Control Bootstrap or Build Fails
+
+Run this in the control-machine terminal.
+
+### CONTROL MACHINE:
+
+```bash
+sudo apt-get update
+"$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role control
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+colcon build --base-paths "$WS/src/swarm_control_core" --packages-select swarm_control_core --event-handlers console_direct+
+source "$WS/install/setup.bash"
+set -u || true
+```
+
+Return to [Step 2](#setup-step-2).
+
+<a id="setup-ref-3-1"></a>
+## Fix Step 3.1: GPIO Access Is Not Active
+
+Open a new SSH session to that robot, rerun Step 1 there, then rerun the Step 3
+reset block. Confirm access in the active robot terminal.
+
+### ROBOT(S):
+
+```bash
+if [[ -e /dev/gpiomem && -r /dev/gpiomem && -w /dev/gpiomem ]]; then
+  echo "[OK] GPIO access is active in this SSH session."
+else
+  echo "[INFO] GPIO access is not active in this SSH session yet."
+  echo "[INFO] Open a new SSH session to this robot and rerun Step 1 + Step 3."
+fi
+```
+
+Return to [Step 3](#setup-step-3).
+
+<a id="setup-ref-3-2"></a>
+## Fix Step 3.2: Robot Bootstrap or Build Fails
+
+Run this in the affected robot SSH terminal.
+
+### ROBOT(S):
+
+```bash
+sudo apt-get update
+"$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role robot
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+colcon build --base-paths "$WS/src/swarm_control_core" --packages-select swarm_control_core --event-handlers console_direct+
+source "$WS/install/setup.bash"
+set -u || true
+```
+
+Return to [Step 3](#setup-step-3).
+
+<a id="setup-ref-4-1"></a>
+## Alternative Step 4.1: Non-Default Names or Known Hardware Profiles
+
+If you want the runtime robot name to be something other than the Linux
+username, export `SWARM_CORE_ROBOT_NAME=<name>` before running Step 4, and keep
+using that same value later in quickstart robot terminals.
+
+For the four-channel dual-L298N robot4 profile, run this on the robot.
+
+### ROBOT(S):
+
+```bash
+ros2 run swarm_control_core add_robot_core \
+  --workspace "$WS" \
+  --name "$ROBOT_NAME" \
+  --control-type diff_drive \
+  --control-interface dual_l298n_diff
+```
+
+For a mecanum robot using two L298N boards, run this on the robot.
+
+### ROBOT(S):
+
+```bash
+ros2 run swarm_control_core add_robot_core \
+  --workspace "$WS" \
+  --name "$ROBOT_NAME" \
+  --control-type mecanum_drive \
+  --control-interface dual_l298n_mecanum
+```
+
+For new hardware profiles that are not already listed, use the metadata-driven
+process in [`control_interface_profiles.md`](./control_interface_profiles.md)
+before running `add_robot_core`.
+
+Return to [Step 4](#setup-step-4).
+
+<a id="setup-ref-4-2"></a>
+## Fix Step 4.2: Camera Probing Needs Manual Fallback
+
+If the camera chooser warns about probing behavior and you intentionally want
+auto-fallback behavior, enable it in that robot shell.
+
+### ROBOT(S):
+
+```bash
+export SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK=1
+```
+
+Return to [Step 4](#setup-step-4).
+
+<a id="setup-ref-5-1"></a>
+## Fix Step 5.1: Robot Doctor Reports Stale Runtime Profiles
+
+Repair the local robot runtime profile files.
 
 ### ROBOT(S):
 
@@ -415,11 +629,12 @@ ros2 run swarm_control_core robot_doctor_core \
   --repair
 ```
 
-### 5.1 Register and Approve New Robots on the Control Machine
+Return to [Step 5](#setup-step-5).
 
-After Step 5 has been completed on every robot, register and approve each new
-robot from the control-machine terminal. This is the trust gate that allows the
-FPV UI to control the robot.
+<a id="setup-ref-6-1"></a>
+## Fix Step 6.1: Registration/Approval Sync Fails
+
+Interactive form:
 
 ### CONTROL MACHINE:
 
@@ -443,72 +658,59 @@ Accepted source forms:
 
 Examples:
 
-- `robot1@legion1.local`
 - `robot4=robot4@legion4.local`
 - `robot5=robot5@legion5.local`
 
-Non-interactive form for known robots:
+If SSH fails, verify that the control machine can SSH into each robot using the
+same target string.
 
 ### CONTROL MACHINE:
 
 ```bash
-ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS" \
-  --source robot4=robot4@legion4.local \
-  --source robot5=robot5@legion5.local
+ssh robot4@legion4.local hostname
+ssh robot5@legion5.local hostname
 ```
 
-What this approval command does:
+Return to [Step 6](#setup-step-6).
 
-- prompts for the robot sources that should be synced back to the control
-  machine
-- SSHes into each robot
-- pulls that robot's active runtime `robot_instances.yaml`
-- selects the matching robot entry automatically in the common case
-- merges the pulled entry into the control-machine workspace baseline
-  `robot_instances.yaml`
-- repairs the control-machine runtime `robot_instances.yaml` if it was missing
-  or stale
+<a id="setup-ref-7-1"></a>
+## Fix Step 7.1: Control Machine Does Not Recognize an Approved Robot
 
-Use the `robot_name=ssh_target` form if you intentionally set
-`SWARM_CORE_ROBOT_NAME` to something different from the robot's Linux username.
-
-Security behavior:
-
-- Newly discovered robots are allowed to publish camera/video and diagnostics.
-- Drive and autonomy commands are blocked until this registration step approves
-  the robot into the control-machine `robot_instances.yaml`.
-- After approving new robots, restart the local FPV UI so it reloads the trusted
-  robot registry.
-- Do not use `SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL=1` except for short,
-  trusted-lab debugging sessions.
-
-Only after this step should a new robot be considered added/approved for
-control-machine FPV UI control. Step 5 on each robot prints the exact source
-strings that this step can accept.
-
-## 6. Quick Verification Before the Live Session
-
-First verify each approved robot from the control-machine terminal. Replace the
-example robot names with the robots you just registered:
+Inspect the control-machine runtime registry.
 
 ### CONTROL MACHINE:
 
 ```bash
-cd "$WS"
+python3 - <<'PY'
+from pathlib import Path
+import yaml
+path = Path.home() / ".config/swarm_control_core/robot_instances.yaml"
+print(path)
+data = yaml.safe_load(path.read_text()) if path.exists() else {}
+print(sorted((data or {}).get("robots", {}).keys()))
+PY
+```
+
+If the robot is missing, rerun Step 6 with explicit `robot_name=ssh_target`
+sources. If the robot is present but the UI still says read-only, restart the
+FPV UI so it reloads the trusted registry.
+
+Return to [Step 7](#setup-step-7).
+
+<a id="setup-ref-8-1"></a>
+## Fix Step 8.1: Final Verification Commands Fail
+
+Check that the workspace overlay is sourced and executables are visible.
+
+### CONTROL MACHINE:
+
+```bash
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
-
-ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot robot4
-ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot robot5
+ros2 pkg executables swarm_control_core | rg "_core$"
 ```
-
-The doctor should report `source_entry: present` and `robot_entry: current` for
-the control-machine runtime `robot_instances.yaml`. If either robot is missing
-or stale here, rerun Step 5.1 before opening the FPV UI.
-
-Then run this in each prepared robot SSH terminal:
 
 ### ROBOT(S):
 
@@ -517,45 +719,48 @@ set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
-
-test -f "$HOME/.config/swarm_control_core/robot_instances.yaml" && echo "[OK] runtime profiles seeded"
-test -f "$HOME/.config/swarm_control_core/camera_profiles.yaml" && echo "[OK] camera profiles file present"
 ros2 pkg executables swarm_control_core | rg "_core$"
 ```
 
-Run this in the control-machine terminal:
+Return to [Step 8](#setup-step-8).
 
-### CONTROL MACHINE:
+<a id="setup-ref-optional-wheel-test"></a>
+## Optional: Wheel Direction Test
+
+Run this after Step 4 when the robot uses GPIO motor control and before the
+live quickstart bringup. This test drives the GPIO hardware directly, so keep
+the robot on blocks, wheels/tracks clear, and do not run robot bringup at the
+same time.
+
+### ROBOT(S):
 
 ```bash
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
-ros2 pkg executables swarm_control_core | rg "_core$"
+"$SC/scripts/swarm_core_wheel_test.sh" --robot "$ROBOT_NAME"
 ```
 
-## 7. Handoff to QUICKSTART
+The terminal app accepts movement keys and prints the expected wheel directions.
+Movement keys match terminal teleop and the Swarm Control UI:
 
-After Step 5.1 registration/approval and Step 6 verification succeed, the
-machines are ready for the live local FPV/control flow in
-[QUICKSTART.md](./QUICKSTART.md).
+- `8/2`: forward/backward
+- `4/6`: rotate left/right, or strafe left/right when strafe mode is enabled
+- `7/9/1/3`: arc diagonals in normal mode, strafe diagonals in strafe mode
+- arrow keys: same movement behavior as `8/2/4/6`
+- `0`: toggle strafe mode for mecanum/omni robots
+- `space`, `s`, or `5`: stop
 
-Recommended handoff:
+Calibration keys:
 
-- if you keep these prepared terminals open, continue with
-  [QUICKSTART.md](./QUICKSTART.md) starting at Step 2 for the robot terminals,
-  then Step 3 on the control machine
-- if you open fresh terminals later, rerun Step 1 of this guide or Step 0 of
-  [QUICKSTART.md](./QUICKSTART.md) so the new shells get the same workspace
-  bootstrap and reset flow
+- `v`: choose FL/BL/FR/BR and toggle wheel inversion when a wheel spins backward
+- `c`: swap two wheel channel mappings when the wrong wheel moves
+- `P`: print pending GPIO overrides
+- `S`: save pending GPIO overrides into `robot_instances.yaml`
 
-## 8. Optional Robot Service Mode
+<a id="setup-ref-optional-service-mode"></a>
+## Optional: Robot Service Mode
 
 Manual quickstart bringup is the recommended first run, but if you want a robot
 service installed after the fresh setup succeeds, run this in that robot SSH
-terminal:
+terminal.
 
 ### ROBOT(S):
 
@@ -568,37 +773,6 @@ terminal:
 ```
 
 If you want the service enabled immediately, add `--enable-service-now`.
-
-## 9. Troubleshooting Quick Checks
-
-Robot-side quick checks:
-
-### ROBOT(S):
-
-```bash
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
-ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-${USER:-$(id -un)}}"
-ros2 node list
-ros2 topic list | rg "/${ROBOT_NAME}/(cmd_vel|heartbeat|camera)"
-ros2 run swarm_control_core save_camera_profile_core --robot "$ROBOT_NAME"
-```
-
-Control-side quick checks:
-
-### CONTROL MACHINE:
-
-```bash
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
-ros2 topic list | rg "/.*/(heartbeat|camera/image_raw|cmd_vel)"
-```
 
 For the full live-session startup and expanded fix paths, use:
 

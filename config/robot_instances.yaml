@@ -126,3 +126,8 @@ robots:
     ssh_target: robot_omni@legion-omni.local
     control_type: mecanum_drive
     control_interface: dual_tb6612_mecanum
+
+  robot5:
+    ssh_target: robot5@legion5.local
+    control_type: mecanum_drive
+    control_interface: dual_tb6612_mecanum
