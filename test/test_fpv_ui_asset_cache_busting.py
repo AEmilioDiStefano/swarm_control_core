@@ -37,6 +37,20 @@ def test_core_ui_assets_can_be_overridden_without_losing_fallback(tmp_path):
     assert asset_text("app.js", "fallback", env=env) == "fallback"
 
 
+def test_core_ui_dev_login_uses_mobile_safe_form_inputs():
+    text = UI_PATH.read_text(encoding="utf-8")
+
+    assert 'id="loginUsername"' in text
+    assert 'autocomplete="username"' in text
+    assert 'autocapitalize="none"' in text
+    assert 'autocorrect="off"' in text
+    assert 'spellcheck="false"' in text
+    assert 'id="loginPassword"' in text
+    assert 'autocomplete="current-password"' in text
+    assert "showDevLoginDialog" in text
+    assert "window.prompt(\"FPV login" not in text
+
+
 def test_core_ui_supports_server_injected_default_main_stream():
     text = UI_PATH.read_text(encoding="utf-8")
 

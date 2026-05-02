@@ -3122,6 +3122,84 @@ header{
   background:rgba(0,0,0,.34);
   border-color:rgba(255,255,255,.28);
 }
+.login-overlay{
+  position:fixed;
+  inset:0;
+  z-index:1200;
+  display:grid;
+  place-items:center;
+  padding:18px;
+  background:rgba(0,0,0,.62);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+}
+.login-overlay[hidden]{
+  display:none;
+}
+.login-card{
+  width:min(420px,100%);
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:18px;
+  background:rgba(17,26,36,.96);
+  box-shadow:0 24px 80px rgba(0,0,0,.46);
+  padding:18px;
+}
+.login-card h2{
+  margin:0 0 4px;
+  font-size:21px;
+}
+.login-card p{
+  margin:0 0 14px;
+  color:var(--muted);
+  font-size:13px;
+}
+.login-field{
+  display:grid;
+  gap:6px;
+  margin-top:12px;
+}
+.login-field label{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+.login-field input{
+  width:100%;
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:12px;
+  background:rgba(5,10,16,.78);
+  color:var(--text);
+  font-size:16px;
+  padding:12px 13px;
+  outline:none;
+}
+.login-field input:focus{
+  border-color:rgba(57,160,255,.75);
+  box-shadow:0 0 0 3px rgba(57,160,255,.18);
+}
+.login-actions{
+  display:flex;
+  gap:10px;
+  justify-content:flex-end;
+  margin-top:16px;
+}
+.login-actions button{
+  min-height:44px;
+  border-radius:12px;
+  padding:0 16px;
+  border:1px solid rgba(255,255,255,.16);
+  background:#0e1620;
+  color:var(--text);
+  font-weight:800;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+.login-actions button[type="submit"]{
+  border-color:#1676c2;
+  background:#0f4e81;
+}
 body.immersive-ui-active header{
   display:none;
 }
@@ -3680,6 +3758,45 @@ _INDEX_HTML = r"""
 </head>
 <body>
 <button id="fullscreenToggle" class="fullscreen-toggle" type="button" aria-label="Enter fullscreen" title="Enter fullscreen"></button>
+<div id="loginOverlay" class="login-overlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle" hidden>
+  <form id="loginForm" class="login-card">
+    <h2 id="loginTitle">Swarm Login</h2>
+    <p id="loginHelp">Enter your operator username and password.</p>
+    <div class="login-field">
+      <label for="loginUsername">Username</label>
+      <input
+        id="loginUsername"
+        name="username"
+        type="text"
+        autocomplete="username"
+        autocapitalize="none"
+        autocorrect="off"
+        spellcheck="false"
+        inputmode="text"
+        enterkeyhint="next"
+        required
+      />
+    </div>
+    <div class="login-field">
+      <label for="loginPassword">Password</label>
+      <input
+        id="loginPassword"
+        name="password"
+        type="password"
+        autocomplete="current-password"
+        autocapitalize="none"
+        autocorrect="off"
+        spellcheck="false"
+        enterkeyhint="go"
+        required
+      />
+    </div>
+    <div class="login-actions">
+      <button id="loginCancel" type="button">Cancel</button>
+      <button type="submit">Log In</button>
+    </div>
+  </form>
+</div>
 <header>
   <div class="title">Swarm FPV Control</div>
   <div class="status" id="status">Connecting...</div>
@@ -4987,6 +5104,58 @@ async function loginDev(username, password){
   return payload;
 }
 
+function showDevLoginDialog(attempt){
+  return new Promise((resolve) => {
+    const overlay = $("loginOverlay");
+    const form = $("loginForm");
+    const userInput = $("loginUsername");
+    const passInput = $("loginPassword");
+    const cancel = $("loginCancel");
+    const help = $("loginHelp");
+    if (!overlay || !form || !userInput || !passInput || !cancel){
+      resolve(null);
+      return;
+    }
+
+    if (help){
+      help.textContent = attempt > 1
+        ? `Login failed. Try again (${attempt}/3).`
+        : "Enter your operator username and password.";
+    }
+    if (!userInput.value){
+      userInput.value = "operator";
+    }
+    passInput.value = "";
+    overlay.hidden = false;
+
+    const cleanup = (result) => {
+      form.removeEventListener("submit", onSubmit);
+      cancel.removeEventListener("click", onCancel);
+      overlay.hidden = true;
+      resolve(result);
+    };
+    const onSubmit = (evt) => {
+      evt.preventDefault();
+      cleanup({
+        username: String(userInput.value || ""),
+        password: String(passInput.value || ""),
+      });
+    };
+    const onCancel = () => cleanup(null);
+
+    form.addEventListener("submit", onSubmit);
+    cancel.addEventListener("click", onCancel);
+    window.setTimeout(() => {
+      try{
+        userInput.focus({ preventScroll: true });
+      }catch(_err){
+        userInput.focus();
+      }
+      userInput.select();
+    }, 0);
+  });
+}
+
 async function ensureDevLoginIfRequired(){
   if (accessToken) return true;
   if (authConfig.mode !== "dev") return true;
@@ -4997,12 +5166,10 @@ async function ensureDevLoginIfRequired(){
   }
 
   for (let attempt = 1; attempt <= 3; attempt++){
-    const username = window.prompt("FPV login username", "operator");
-    if (username === null) return false;
-    const password = window.prompt("FPV login password", "");
-    if (password === null) return false;
+    const credentials = await showDevLoginDialog(attempt);
+    if (!credentials) return false;
     try{
-      const out = await loginDev(String(username), String(password));
+      const out = await loginDev(String(credentials.username), String(credentials.password));
       const token = String(out.access_token || "").trim();
       if (!token){
         setStatus("Login failed: missing access token.");
