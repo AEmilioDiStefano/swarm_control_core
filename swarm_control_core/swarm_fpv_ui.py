@@ -413,6 +413,8 @@ class RosFleetHub(Node):
         self.declare_parameter("image_thumb_interest_ttl_s", 0.75)
         self.declare_parameter("thumb_robots_per_tick", 0)
         self.declare_parameter("fleet_preview_preset", "scalable_fleet")
+        self.declare_parameter("robot_presence_timeout_s", 5.0)
+        self.declare_parameter("robot_presence_bootstrap_grace_s", 3.0)
         self.declare_parameter("allow_unknown_robot_control", False)
 
         self.webrtc_fps = float(self.get_parameter("webrtc_fps").value)
@@ -440,6 +442,14 @@ class RosFleetHub(Node):
         )
         self.fleet_preview_preset = _normalize_fleet_preview_preset(
             self.get_parameter("fleet_preview_preset").value
+        )
+        self._robot_presence_timeout_s = max(
+            2.0,
+            float(self.get_parameter("robot_presence_timeout_s").value),
+        )
+        self._robot_presence_bootstrap_grace_s = max(
+            1.0,
+            float(self.get_parameter("robot_presence_bootstrap_grace_s").value),
         )
         self.allow_unknown_robot_control = str(
             self.get_parameter("allow_unknown_robot_control").value
@@ -506,8 +516,6 @@ class RosFleetHub(Node):
 
         self._known_robots: Set[str] = set()
         self._discovery_scan_error_streak: int = 0
-        self._robot_presence_timeout_s: float = 5.0
-        self._robot_presence_bootstrap_grace_s: float = 3.0
         self._robot_live_state: Dict[str, bool] = {}
         self.create_timer(1.0, self._refresh_discovery)
         # Fast interest-sync keeps active robot switching snappy and allows
@@ -521,6 +529,13 @@ class RosFleetHub(Node):
                 float(self.image_thumb_interest_ttl_s),
                 int(self.thumb_robots_per_tick),
                 self.fleet_preview_preset,
+            )
+        )
+        self.get_logger().info(
+            "[swarm_fpv_ui] robot_presence_timeout_s=%.2f robot_presence_bootstrap_grace_s=%.2f"
+            % (
+                float(self._robot_presence_timeout_s),
+                float(self._robot_presence_bootstrap_grace_s),
             )
         )
         self.get_logger().info(
@@ -2338,32 +2353,32 @@ class BrowserServer:
                 default_main_stream = trycloudflare_main_stream
                 default_jpeg_poll_ms = str(
                     _bounded_int(
-                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_POLL_MS", "80"),
-                        fallback=80,
+                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_POLL_MS", "160"),
+                        fallback=160,
                         minimum=40,
                         maximum=500,
                     )
                 )
                 default_jpeg_max_w = str(
                     _bounded_int(
-                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_MAX_W", "512"),
-                        fallback=512,
+                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_MAX_W", "424"),
+                        fallback=424,
                         minimum=0,
                         maximum=1920,
                     )
                 )
                 default_jpeg_max_h = str(
                     _bounded_int(
-                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_MAX_H", "384"),
-                        fallback=384,
+                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_MAX_H", "318"),
+                        fallback=318,
                         minimum=0,
                         maximum=1080,
                     )
                 )
                 default_jpeg_quality = str(
                     _bounded_int(
-                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_QUALITY", "60"),
-                        fallback=60,
+                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_QUALITY", "45"),
+                        fallback=45,
                         minimum=30,
                         maximum=95,
                     )

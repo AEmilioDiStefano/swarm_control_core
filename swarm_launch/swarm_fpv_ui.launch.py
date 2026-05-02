@@ -163,6 +163,26 @@ def _default_drive_hold_timeout_s() -> str:
         return "0.35"
 
 
+def _default_robot_presence_timeout_s() -> str:
+    raw = str(os.environ.get("SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S", "5.0")).strip()
+    if not raw:
+        return "5.0"
+    try:
+        return str(max(2.0, float(raw)))
+    except ValueError:
+        return "5.0"
+
+
+def _default_robot_presence_bootstrap_grace_s() -> str:
+    raw = str(os.environ.get("SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S", "3.0")).strip()
+    if not raw:
+        return "3.0"
+    try:
+        return str(max(1.0, float(raw)))
+    except ValueError:
+        return "3.0"
+
+
 def _default_profiles_path() -> str:
     for key in ("PROFILES_PATH", "SWARM_CORE_PROFILES_PATH"):
         raw = str(os.environ.get(key, "")).strip()
@@ -191,6 +211,11 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("fleet_preview_preset", default_value=_default_fleet_preview_preset()),
         DeclareLaunchArgument("drive_cmd_rate_hz", default_value=_default_drive_cmd_rate_hz()),
         DeclareLaunchArgument("drive_hold_timeout_s", default_value=_default_drive_hold_timeout_s()),
+        DeclareLaunchArgument("robot_presence_timeout_s", default_value=_default_robot_presence_timeout_s()),
+        DeclareLaunchArgument(
+            "robot_presence_bootstrap_grace_s",
+            default_value=_default_robot_presence_bootstrap_grace_s(),
+        ),
         DeclareLaunchArgument(
             "profiles_path",
             default_value=_default_profiles_path(),
@@ -231,6 +256,18 @@ def generate_launch_description() -> LaunchDescription:
             {"fleet_preview_preset": LaunchConfiguration("fleet_preview_preset")},
             {"drive_cmd_rate_hz": ParameterValue(LaunchConfiguration("drive_cmd_rate_hz"), value_type=float)},
             {"drive_hold_timeout_s": ParameterValue(LaunchConfiguration("drive_hold_timeout_s"), value_type=float)},
+            {
+                "robot_presence_timeout_s": ParameterValue(
+                    LaunchConfiguration("robot_presence_timeout_s"),
+                    value_type=float,
+                )
+            },
+            {
+                "robot_presence_bootstrap_grace_s": ParameterValue(
+                    LaunchConfiguration("robot_presence_bootstrap_grace_s"),
+                    value_type=float,
+                )
+            },
             {"profiles_path": LaunchConfiguration("profiles_path")},
         ],
     )

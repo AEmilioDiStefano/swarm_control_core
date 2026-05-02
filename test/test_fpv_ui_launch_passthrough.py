@@ -23,3 +23,13 @@ def test_launch_file_passes_fleet_preview_preset_and_scalable_defaults():
     assert '"scalable_fleet": {' in text
     assert '"thumb_robots_per_tick": "1"' in text
     assert '"image_thumb_interest_ttl_s": "2.5"' in text
+
+
+def test_launch_file_passes_robot_presence_timing_arguments():
+    text = LAUNCH_PATH.read_text(encoding="utf-8")
+
+    assert 'DeclareLaunchArgument("robot_presence_timeout_s", default_value=_default_robot_presence_timeout_s())' in text
+    assert '"robot_presence_timeout_s": ParameterValue(' in text
+    assert '"robot_presence_bootstrap_grace_s": ParameterValue(' in text
+    assert 'SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S' in text
+    assert 'SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S' in text

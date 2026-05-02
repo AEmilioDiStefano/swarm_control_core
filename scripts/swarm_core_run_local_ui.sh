@@ -244,6 +244,8 @@ case "${SWARM_CORE_FLEET_PREVIEW_PRESET,,}" in
 esac
 export SWARM_CORE_DRIVE_CMD_RATE_HZ="${SWARM_CORE_DRIVE_CMD_RATE_HZ:-20.0}"
 export SWARM_CORE_DRIVE_HOLD_TIMEOUT_S="${SWARM_CORE_DRIVE_HOLD_TIMEOUT_S:-0.35}"
+export SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S="${SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S:-5.0}"
+export SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S="${SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S:-3.0}"
 if ! [[ "${SWARM_CORE_THUMB_ROBOTS_PER_TICK}" =~ ^-?[0-9]+$ ]]; then
   log "Invalid SWARM_CORE_THUMB_ROBOTS_PER_TICK='${SWARM_CORE_THUMB_ROBOTS_PER_TICK}', forcing 0."
   export SWARM_CORE_THUMB_ROBOTS_PER_TICK="0"
@@ -273,6 +275,8 @@ log "image_thumb_interest_ttl_s=${SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S}"
 log "thumb_robots_per_tick=${SWARM_CORE_THUMB_ROBOTS_PER_TICK}"
 log "drive_cmd_rate_hz=${SWARM_CORE_DRIVE_CMD_RATE_HZ}"
 log "drive_hold_timeout_s=${SWARM_CORE_DRIVE_HOLD_TIMEOUT_S}"
+log "robot_presence_timeout_s=${SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S}"
+log "robot_presence_bootstrap_grace_s=${SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S}"
 log "allow_unknown_robot_control=${SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL}"
 log "profiles_path=${PROFILES_PATH:-<default>}"
 log "control_types_path=${CONTROL_TYPES_PATH:-<default>}"
@@ -332,6 +336,8 @@ if command -v setsid >/dev/null 2>&1; then
     thumb_robots_per_tick:="$SWARM_CORE_THUMB_ROBOTS_PER_TICK" \
     drive_cmd_rate_hz:="$SWARM_CORE_DRIVE_CMD_RATE_HZ" \
     drive_hold_timeout_s:="$SWARM_CORE_DRIVE_HOLD_TIMEOUT_S" \
+    robot_presence_timeout_s:="$SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S" \
+    robot_presence_bootstrap_grace_s:="$SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S" \
     profiles_path:="${PROFILES_PATH:-}" &
 else
   ros2 launch swarm_control_core swarm_fpv_ui.launch.py \
@@ -348,6 +354,8 @@ else
     thumb_robots_per_tick:="$SWARM_CORE_THUMB_ROBOTS_PER_TICK" \
     drive_cmd_rate_hz:="$SWARM_CORE_DRIVE_CMD_RATE_HZ" \
     drive_hold_timeout_s:="$SWARM_CORE_DRIVE_HOLD_TIMEOUT_S" \
+    robot_presence_timeout_s:="$SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S" \
+    robot_presence_bootstrap_grace_s:="$SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S" \
     profiles_path:="${PROFILES_PATH:-}" &
 fi
 ui_pid="$!"
