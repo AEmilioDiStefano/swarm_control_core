@@ -1806,9 +1806,16 @@ class RosVideoTrack(VideoStreamTrack):  # type: ignore[misc]
         self.period = 1.0 / max(1.0, float(fps))
         self._last_sent = 0.0
 
+    def _mark_stream_interest(self) -> None:
+        self.hub.mark_image_interest(
+            self.robot,
+            ttl_s=max(3.0, float(self.hub.image_thumb_interest_ttl_s)),
+        )
+
     async def recv(self):
         frame = None
         while frame is None:
+            self._mark_stream_interest()
             frame = self.hub.latest_rgb(self.robot, max_age_s=max(1.0, 4.0 * self.period))
             if frame is None:
                 await asyncio.sleep(min(self.period, 0.2))
@@ -3129,6 +3136,11 @@ video{
   white-space:normal;
   overflow-wrap:anywhere;
 }
+.btn.drive-btn{
+  white-space:pre-line;
+  overflow-wrap:normal;
+  word-break:normal;
+}
 .drive-pad{
   display:grid;
   gap:8px;
@@ -3335,6 +3347,7 @@ video{
     gap:6px;
     margin:0;
   }
+  .control-sidebar .modebar{margin:0}
   .controls{
     grid-area:drive;
     align-self:start;
@@ -3342,6 +3355,7 @@ video{
     justify-items:stretch;
     margin:0;
   }
+  .control-sidebar .controls{margin:0}
   .control-sidebar .controls + .meta{margin:0}
   .drive-pad{
     width:100%;
@@ -3392,6 +3406,126 @@ video{
   .btn{min-height:40px;font-size:9px;padding:6px 3px}
   .modebar .btn{min-height:31px;font-size:9px}
   .drive-pad,.modebar{gap:5px}
+}
+@media (orientation: portrait) and (max-width: 760px) and (pointer: coarse){
+  html,body{max-width:100%;overflow-x:hidden}
+  body{overscroll-behavior-x:none}
+  header{position:sticky;top:0;z-index:20;padding:7px 8px;gap:8px}
+  .title{font-size:13px;white-space:nowrap}
+  .status{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .transport-badge{font-size:10px;padding:3px 7px;white-space:nowrap}
+  main{
+    grid-template-columns:1fr;
+    grid-template-areas:
+      "video"
+      "controls"
+      "modes"
+      "fleet"
+      "details"
+      "webrtc"
+      "health";
+    gap:8px;
+    padding:8px;
+    min-height:auto;
+    overflow-x:hidden;
+  }
+  .video-panel,
+  .control-sidebar{
+    display:contents;
+    background:transparent;
+    border:0;
+    overflow:visible;
+  }
+  .video-panel > .hdr,
+  .control-sidebar > .hdr{display:none}
+  .main-wrap,
+  .control-stack{display:contents}
+  .hero{
+    grid-area:video;
+    min-width:0;
+    max-height:38svh;
+    border-radius:12px;
+  }
+  .modebar{
+    grid-area:modes;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    margin:0;
+  }
+  .control-sidebar .modebar{margin:0}
+  .controls{
+    grid-area:controls;
+    margin:0;
+    min-width:0;
+    justify-items:stretch;
+  }
+  .control-sidebar .controls{margin:0}
+  .control-sidebar .controls + .meta{margin:0}
+  .drive-pad{
+    width:100%;
+    gap:8px;
+  }
+  .drive-pad.no-strafe,
+  .drive-pad.with-strafe{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+  .btn{
+    min-width:0;
+    min-height:50px;
+    padding:8px 5px;
+    border-radius:12px;
+    font-size:11px;
+    line-height:1.05;
+    display:grid;
+    place-items:center;
+    text-align:center;
+  }
+  .drive-pad .btn{min-height:56px}
+  .modebar .btn{min-height:44px}
+  .meta{
+    grid-area:details;
+    min-width:0;
+  }
+  .fleet-panel{
+    grid-area:fleet;
+    max-height:none;
+    min-width:0;
+  }
+  .thumb-rail{
+    max-height:none;
+    overflow:visible;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    padding:8px;
+    gap:8px;
+  }
+  .fleet-panel.fleet-scrollable .thumb-rail{
+    grid-auto-flow:column;
+    grid-auto-columns:clamp(210px,72vw,330px);
+    grid-template-columns:none;
+    overflow-x:auto;
+    overflow-y:hidden;
+    overscroll-behavior-x:contain;
+    overscroll-behavior-y:auto;
+    scroll-snap-type:x proximity;
+    touch-action:pan-x;
+    -webkit-overflow-scrolling:touch;
+  }
+  .fleet-panel.fleet-scrollable .thumb{
+    scroll-snap-align:start;
+  }
+  .thumb{border-radius:10px;aspect-ratio:4/3}
+  .badge{left:5px;top:5px;font-size:10px;padding:2px 6px}
+  .badge-right{left:auto;right:5px}
+  .webrtc-diag{
+    grid-area:webrtc;
+    min-width:0;
+    grid-template-columns:1fr;
+  }
+  .health{
+    grid-area:health;
+    min-width:0;
+    grid-template-columns:1fr;
+  }
 }
 """
 
@@ -3585,6 +3719,7 @@ let driveWheelSeparation = 0.18;
 const driveButtonsByToken = new Map();
 const activeDriveButtonTokens = new Set();
 let activeDriveHoldTag = "";
+let driveButtonLabelRefreshQueued = false;
 
 const NO_SIGNAL_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
   "<svg xmlns='http://www.w3.org/2000/svg' width='640' height='360'>"
@@ -4652,6 +4787,10 @@ function renderThumbRail(){
   const rail = $("thumbRail");
   rail.innerHTML = "";
   const sorted = [...robots].sort((a,b) => a.localeCompare(b));
+  const fleetPanel = rail.closest(".fleet-panel");
+  if (fleetPanel){
+    fleetPanel.classList.toggle("fleet-scrollable", sorted.length > 2);
+  }
   const liveSet = new Set(sorted);
   let primedThumbs = 0;
   for (const robot of sorted){
@@ -4827,9 +4966,16 @@ function renderDriveControls(){
   let btnSeq = 0;
   const mkBtn = (txt, onDown, onUp, cls="", parent=pad, opts={}) => {
     const b = document.createElement("button");
-    b.className = "btn " + cls;
+    b.className = "btn drive-btn " + cls;
     b.type = "button";
+    const compactTxt = String(opts.compactText || "").trim();
+    b.dataset.fullLabel = txt;
+    if (compactTxt){
+      b.dataset.compactLabel = compactTxt;
+    }
     b.textContent = txt;
+    b.title = txt;
+    b.setAttribute("aria-label", txt);
     b.setAttribute("draggable", "false");
     b.oncontextmenu = (e) => { e.preventDefault(); };
     b.ondragstart = (e) => { e.preventDefault(); };
@@ -4892,18 +5038,20 @@ function renderDriveControls(){
   };
   const leftMidLabel = (c.can_strafe && strafeMode) ? "STRAFE LEFT" : "ROTATE LEFT";
   const rightMidLabel = (c.can_strafe && strafeMode) ? "STRAFE RIGHT" : "ROTATE RIGHT";
+  const leftMidCompact = (c.can_strafe && strafeMode) ? "STRF\nLEFT" : "ROT\nLEFT";
+  const rightMidCompact = (c.can_strafe && strafeMode) ? "STRF\nRIGH" : "ROT\nRIGH";
 
-  mkBtn("LEFT-FORWARD", () => sendToken("7"), stopFn, "", pad, { token: "7" });
-  mkBtn("FORWARD", () => sendToken("8"), stopFn, "primary", pad, { token: "8" });
-  mkBtn("RIGHT-FORWARD", () => sendToken("9"), stopFn, "", pad, { token: "9" });
+  mkBtn("LEFT-FORWARD", () => sendToken("7"), stopFn, "", pad, { token: "7", compactText: "LEFT\nFORW" });
+  mkBtn("FORWARD", () => sendToken("8"), stopFn, "primary", pad, { token: "8", compactText: "FORW" });
+  mkBtn("RIGHT-FORWARD", () => sendToken("9"), stopFn, "", pad, { token: "9", compactText: "RIGH\nFORW" });
 
-  mkBtn(leftMidLabel, () => sendToken("arrow_left"), stopFn, "", pad, { token: "arrow_left" });
+  mkBtn(leftMidLabel, () => sendToken("arrow_left"), stopFn, "", pad, { token: "arrow_left", compactText: leftMidCompact });
   mkBtn("STOP", stopFn, stopFn, "danger", pad, { continuous: false, token: "stop" });
-  mkBtn(rightMidLabel, () => sendToken("arrow_right"), stopFn, "", pad, { token: "arrow_right" });
+  mkBtn(rightMidLabel, () => sendToken("arrow_right"), stopFn, "", pad, { token: "arrow_right", compactText: rightMidCompact });
 
-  mkBtn("LEFT-BACKWARD", () => sendToken("1"), stopFn, "", pad, { token: "1" });
-  mkBtn("BACKWARD", () => sendToken("2"), stopFn, "primary", pad, { token: "2" });
-  mkBtn("RIGHT-BACKWARD", () => sendToken("3"), stopFn, "", pad, { token: "3" });
+  mkBtn("LEFT-BACKWARD", () => sendToken("1"), stopFn, "", pad, { token: "1", compactText: "LEFT\nBACK" });
+  mkBtn("BACKWARD", () => sendToken("2"), stopFn, "primary", pad, { token: "2", compactText: "BACK" });
+  mkBtn("RIGHT-BACKWARD", () => sendToken("3"), stopFn, "", pad, { token: "3", compactText: "RIGH\nBACK" });
 
   if (c.can_strafe){
     const auxMode = document.createElement("div");
@@ -4916,7 +5064,12 @@ function renderDriveControls(){
       () => {},
       strafeMode ? "primary active" : "primary",
       auxMode,
-      { continuous: false, token: "toggle_strafe", gridColumn: "1 / -1" },
+      {
+        continuous: false,
+        token: "toggle_strafe",
+        gridColumn: "1 / -1",
+        compactText: strafeMode ? "NORMAL\nMODE" : "STRAFE\nMODE",
+      },
     );
   }
   if (c.can_vertical){
@@ -4928,6 +5081,41 @@ function renderDriveControls(){
     mkBtn("STOP Z", stopFn, stopFn, "danger", aux, { continuous: false, token: "stop_z" });
     mkBtn("Descend", () => drive(0,0,0,-Math.abs(driveLinearSpeed)), stopFn, "", aux, { token: "descend" });
   }
+  scheduleDriveButtonLabelRefresh();
+}
+
+function shouldUseCompactDriveLabel(button){
+  const compact = String(button.dataset.compactLabel || "");
+  if (!compact) return false;
+  const rect = button.getBoundingClientRect();
+  const width = Number(rect.width || 0);
+  if (width > 0 && width < 84) return true;
+  const full = String(button.dataset.fullLabel || "");
+  const coarseNarrow = window.matchMedia
+    && window.matchMedia("(pointer: coarse) and (max-width: 430px)").matches;
+  return Boolean(coarseNarrow && width > 0 && width < 108 && full.length > 8);
+}
+
+function applyDriveButtonLabels(){
+  for (const button of document.querySelectorAll(".drive-btn[data-full-label]")){
+    const full = String(button.dataset.fullLabel || "");
+    const compact = String(button.dataset.compactLabel || "");
+    const label = shouldUseCompactDriveLabel(button) ? compact : full;
+    if (label && button.textContent !== label){
+      button.textContent = label;
+    }
+    button.title = full;
+    button.setAttribute("aria-label", full);
+  }
+}
+
+function scheduleDriveButtonLabelRefresh(){
+  if (driveButtonLabelRefreshQueued) return;
+  driveButtonLabelRefreshQueued = true;
+  window.requestAnimationFrame(() => {
+    driveButtonLabelRefreshQueued = false;
+    applyDriveButtonLabels();
+  });
 }
 
 function sendAutonomyMode(mode){
@@ -5812,6 +6000,8 @@ async function main(){
   renderHealthPanel();
   setActiveRobot(bootstrapRobot, false, "bootstrap");
   hookKeyboardDrive();
+  window.addEventListener("resize", scheduleDriveButtonLabelRefresh, { passive: true });
+  window.addEventListener("orientationchange", scheduleDriveButtonLabelRefresh, { passive: true });
 
   const wsParams = new URLSearchParams();
   wsParams.set("client_id", clientId);
@@ -5820,7 +6010,12 @@ async function main(){
   }
   const wsProto = (window.location.protocol === "https:") ? "wss" : "ws";
   ws = new WebSocket(`${wsProto}://${window.location.host}/ws?${wsParams.toString()}`);
-  ws.onopen = () => setStatus("Connected");
+  ws.onopen = () => {
+    setStatus("Connected");
+    if (activeRobot){
+      wsSend({ type: "set_active_robot", robot: activeRobot });
+    }
+  };
   ws.onerror = () => setStatus("Websocket error");
   ws.onclose = () => setStatus("Disconnected");
   ws.onmessage = (evt) => {
