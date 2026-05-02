@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from swarm_control_core.ui_assets import asset_text
+
 
 CORE_ROOT = Path(__file__).resolve().parents[1]
 UI_PATH = CORE_ROOT / "swarm_control_core" / "swarm_fpv_ui.py"
@@ -22,6 +24,17 @@ def test_core_ui_asset_version_constants_are_defined_after_asset_strings():
 
     assert text.index("_STYLE_CSS = r") < text.index("_STYLE_ASSET_VERSION = ")
     assert text.index("_APP_JS = r") < text.index("_APP_ASSET_VERSION = ")
+
+
+def test_core_ui_assets_can_be_overridden_without_losing_fallback(tmp_path):
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    (asset_dir / "style.css").write_text("body { color: red; }\n", encoding="utf-8")
+
+    env = {"SWARM_CORE_FPV_ASSET_DIR": str(asset_dir)}
+
+    assert asset_text("style.css", "fallback", env=env) == "body { color: red; }\n"
+    assert asset_text("app.js", "fallback", env=env) == "fallback"
 
 
 def test_core_ui_supports_server_injected_default_main_stream():

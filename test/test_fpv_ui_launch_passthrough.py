@@ -33,3 +33,14 @@ def test_launch_file_passes_robot_presence_timing_arguments():
     assert '"robot_presence_bootstrap_grace_s": ParameterValue(' in text
     assert 'SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S' in text
     assert 'SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S' in text
+
+
+def test_launch_file_passes_gateway_route_arguments():
+    text = LAUNCH_PATH.read_text(encoding="utf-8")
+
+    assert 'DeclareLaunchArgument("gateway_id", default_value=_default_gateway_id())' in text
+    assert 'DeclareLaunchArgument("gateway_route_type", default_value=_default_gateway_route_type())' in text
+    assert '{"gateway_id": LaunchConfiguration("gateway_id")}' in text
+    assert '{"gateway_route_type": LaunchConfiguration("gateway_route_type")}' in text
+    assert 'SWARM_CORE_GATEWAY_ID' in text
+    assert 'SWARM_CORE_HUB_URL' in text

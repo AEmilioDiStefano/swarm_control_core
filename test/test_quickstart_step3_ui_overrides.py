@@ -14,6 +14,8 @@ def test_step3_preserves_cloudflare_ui_override_vars_across_reset():
     assert 'SWARM_CORE_DEV_USERS_JSON' in text
     assert 'SWARM_CORE_WEBRTC_MAIN_ONLY' in text
     assert 'SWARM_CORE_FLEET_PREVIEW_PRESET' in text
+    assert 'SWARM_CORE_GATEWAY_ID' in text
+    assert 'SWARM_CORE_HUB_URL' in text
     assert 'declare -A preserved_env=()' in text
     assert 'export "$name=${preserved_env[$name]}"' in text
 

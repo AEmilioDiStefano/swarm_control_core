@@ -246,6 +246,13 @@ export SWARM_CORE_DRIVE_CMD_RATE_HZ="${SWARM_CORE_DRIVE_CMD_RATE_HZ:-20.0}"
 export SWARM_CORE_DRIVE_HOLD_TIMEOUT_S="${SWARM_CORE_DRIVE_HOLD_TIMEOUT_S:-0.35}"
 export SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S="${SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S:-5.0}"
 export SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S="${SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S:-3.0}"
+gateway_host_default="$(hostname -s 2>/dev/null || hostname 2>/dev/null || printf 'local-gateway')"
+export SWARM_CORE_GATEWAY_ID="${SWARM_CORE_GATEWAY_ID:-$gateway_host_default}"
+export SWARM_CORE_GATEWAY_NAME="${SWARM_CORE_GATEWAY_NAME:-$SWARM_CORE_GATEWAY_ID}"
+export SWARM_CORE_GATEWAY_ROLE="${SWARM_CORE_GATEWAY_ROLE:-local_gateway}"
+export SWARM_CORE_GATEWAY_ROUTE_TYPE="${SWARM_CORE_GATEWAY_ROUTE_TYPE:-local_gateway}"
+export SWARM_CORE_HUB_URL="${SWARM_CORE_HUB_URL:-}"
+export SWARM_CORE_SITE_ID="${SWARM_CORE_SITE_ID:-}"
 if ! [[ "${SWARM_CORE_THUMB_ROBOTS_PER_TICK}" =~ ^-?[0-9]+$ ]]; then
   log "Invalid SWARM_CORE_THUMB_ROBOTS_PER_TICK='${SWARM_CORE_THUMB_ROBOTS_PER_TICK}', forcing 0."
   export SWARM_CORE_THUMB_ROBOTS_PER_TICK="0"
@@ -277,6 +284,11 @@ log "drive_cmd_rate_hz=${SWARM_CORE_DRIVE_CMD_RATE_HZ}"
 log "drive_hold_timeout_s=${SWARM_CORE_DRIVE_HOLD_TIMEOUT_S}"
 log "robot_presence_timeout_s=${SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S}"
 log "robot_presence_bootstrap_grace_s=${SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S}"
+log "gateway_id=${SWARM_CORE_GATEWAY_ID}"
+log "gateway_name=${SWARM_CORE_GATEWAY_NAME}"
+log "gateway_role=${SWARM_CORE_GATEWAY_ROLE}"
+log "gateway_route_type=${SWARM_CORE_GATEWAY_ROUTE_TYPE}"
+log "hub_url=${SWARM_CORE_HUB_URL:-<none>}"
 log "allow_unknown_robot_control=${SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL}"
 log "profiles_path=${PROFILES_PATH:-<default>}"
 log "control_types_path=${CONTROL_TYPES_PATH:-<default>}"
@@ -338,6 +350,12 @@ if command -v setsid >/dev/null 2>&1; then
     drive_hold_timeout_s:="$SWARM_CORE_DRIVE_HOLD_TIMEOUT_S" \
     robot_presence_timeout_s:="$SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S" \
     robot_presence_bootstrap_grace_s:="$SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S" \
+    gateway_id:="$SWARM_CORE_GATEWAY_ID" \
+    gateway_name:="$SWARM_CORE_GATEWAY_NAME" \
+    gateway_role:="$SWARM_CORE_GATEWAY_ROLE" \
+    gateway_route_type:="$SWARM_CORE_GATEWAY_ROUTE_TYPE" \
+    hub_url:="$SWARM_CORE_HUB_URL" \
+    gateway_site_id:="$SWARM_CORE_SITE_ID" \
     profiles_path:="${PROFILES_PATH:-}" &
 else
   ros2 launch swarm_control_core swarm_fpv_ui.launch.py \
@@ -356,6 +374,12 @@ else
     drive_hold_timeout_s:="$SWARM_CORE_DRIVE_HOLD_TIMEOUT_S" \
     robot_presence_timeout_s:="$SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S" \
     robot_presence_bootstrap_grace_s:="$SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S" \
+    gateway_id:="$SWARM_CORE_GATEWAY_ID" \
+    gateway_name:="$SWARM_CORE_GATEWAY_NAME" \
+    gateway_role:="$SWARM_CORE_GATEWAY_ROLE" \
+    gateway_route_type:="$SWARM_CORE_GATEWAY_ROUTE_TYPE" \
+    hub_url:="$SWARM_CORE_HUB_URL" \
+    gateway_site_id:="$SWARM_CORE_SITE_ID" \
     profiles_path:="${PROFILES_PATH:-}" &
 fi
 ui_pid="$!"

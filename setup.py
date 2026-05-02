@@ -42,6 +42,8 @@ setup(
             "validate_profiles_core = swarm_control_core.profile_validation:main",
             "robot_doctor_core = swarm_control_core.robot_doctor:main",
             "sync_robot_entries_core = swarm_control_core.sync_robot_entries:main",
+            "swarmctl = swarm_control_core.swarmctl:main",
+            "swarmctl_core = swarm_control_core.swarmctl:main",
             "wheel_test_core = swarm_control_core.wheel_test:main",
             "swarm_fpv_ui_core = swarm_control_core.swarm_fpv_ui:main",
             "motor_driver_node_core = swarm_control_core.motor_driver_node:main",

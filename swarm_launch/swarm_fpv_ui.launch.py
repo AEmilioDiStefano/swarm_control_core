@@ -192,6 +192,34 @@ def _default_profiles_path() -> str:
     return candidate if os.path.exists(candidate) else ""
 
 
+def _host_default() -> str:
+    return str(getattr(os.uname(), "nodename", "") or "local-gateway").strip() or "local-gateway"
+
+
+def _default_gateway_id() -> str:
+    return str(os.environ.get("SWARM_CORE_GATEWAY_ID", _host_default())).strip() or _host_default()
+
+
+def _default_gateway_name() -> str:
+    return str(os.environ.get("SWARM_CORE_GATEWAY_NAME", _default_gateway_id())).strip() or _default_gateway_id()
+
+
+def _default_gateway_role() -> str:
+    return str(os.environ.get("SWARM_CORE_GATEWAY_ROLE", "local_gateway")).strip() or "local_gateway"
+
+
+def _default_gateway_route_type() -> str:
+    return str(os.environ.get("SWARM_CORE_GATEWAY_ROUTE_TYPE", "local_gateway")).strip() or "local_gateway"
+
+
+def _default_hub_url() -> str:
+    return str(os.environ.get("SWARM_CORE_HUB_URL", "")).strip()
+
+
+def _default_gateway_site_id() -> str:
+    return str(os.environ.get("SWARM_CORE_SITE_ID", "")).strip()
+
+
 def generate_launch_description() -> LaunchDescription:
     args = [
         DeclareLaunchArgument(
@@ -221,6 +249,12 @@ def generate_launch_description() -> LaunchDescription:
             default_value=_default_profiles_path(),
             description="Path to robot_instances.yaml (or legacy robot_profiles.yaml). Set explicitly or via PROFILES_PATH.",
         ),
+        DeclareLaunchArgument("gateway_id", default_value=_default_gateway_id()),
+        DeclareLaunchArgument("gateway_name", default_value=_default_gateway_name()),
+        DeclareLaunchArgument("gateway_role", default_value=_default_gateway_role()),
+        DeclareLaunchArgument("gateway_route_type", default_value=_default_gateway_route_type()),
+        DeclareLaunchArgument("hub_url", default_value=_default_hub_url()),
+        DeclareLaunchArgument("gateway_site_id", default_value=_default_gateway_site_id()),
     ]
 
     node = Node(
@@ -269,6 +303,12 @@ def generate_launch_description() -> LaunchDescription:
                 )
             },
             {"profiles_path": LaunchConfiguration("profiles_path")},
+            {"gateway_id": LaunchConfiguration("gateway_id")},
+            {"gateway_name": LaunchConfiguration("gateway_name")},
+            {"gateway_role": LaunchConfiguration("gateway_role")},
+            {"gateway_route_type": LaunchConfiguration("gateway_route_type")},
+            {"hub_url": LaunchConfiguration("hub_url")},
+            {"gateway_site_id": LaunchConfiguration("gateway_site_id")},
         ],
     )
 

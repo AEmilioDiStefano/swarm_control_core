@@ -27,7 +27,7 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 _MISSING_REQUIRED_DEPS: List[Tuple[str, str, str]] = []
 
@@ -84,8 +84,10 @@ from .fpv_auth_models import (
     SWARM_SCOPE_READ,
 )
 from .fpv_auth_service import build_auth_service
+from .gateway_routes import build_gateway_public, build_local_gateway_routes, gateway_identity_from_env
 from .path_defaults import MissingConfigError, detect_workspace_root
 from .runtime_env import ensure_ros_domain_id
+from .ui_assets import asset_text
 
 _MISSING_WEBRTC_DEPS: List[Tuple[str, str, str]] = []
 
@@ -416,6 +418,12 @@ class RosFleetHub(Node):
         self.declare_parameter("robot_presence_timeout_s", 5.0)
         self.declare_parameter("robot_presence_bootstrap_grace_s", 3.0)
         self.declare_parameter("allow_unknown_robot_control", False)
+        self.declare_parameter("gateway_id", "")
+        self.declare_parameter("gateway_name", "")
+        self.declare_parameter("gateway_role", "")
+        self.declare_parameter("gateway_route_type", "")
+        self.declare_parameter("hub_url", "")
+        self.declare_parameter("gateway_site_id", "")
 
         self.webrtc_fps = float(self.get_parameter("webrtc_fps").value)
         self.webrtc_main_only = str(self.get_parameter("webrtc_main_only").value).strip().lower() in (
@@ -454,6 +462,16 @@ class RosFleetHub(Node):
         self.allow_unknown_robot_control = str(
             self.get_parameter("allow_unknown_robot_control").value
         ).strip().lower() in ("1", "true", "yes", "on")
+        gateway_defaults = gateway_identity_from_env(prefixes=("SWARM_CORE",))
+        self.gateway_info = build_gateway_public(
+            gateway_id=str(self.get_parameter("gateway_id").value).strip() or gateway_defaults["id"],
+            gateway_name=str(self.get_parameter("gateway_name").value).strip() or gateway_defaults["name"],
+            gateway_role=str(self.get_parameter("gateway_role").value).strip() or gateway_defaults["role"],
+            route_type=str(self.get_parameter("gateway_route_type").value).strip()
+            or gateway_defaults["route_type"],
+            hub_url=str(self.get_parameter("hub_url").value).strip() or gateway_defaults["hub_url"],
+            site_id=str(self.get_parameter("gateway_site_id").value).strip() or gateway_defaults["site_id"],
+        )
         profiles_path = str(self.get_parameter("profiles_path").value).strip() or None
 
         self._profile_registry = None
@@ -545,6 +563,16 @@ class RosFleetHub(Node):
                 "true" if self.allow_unknown_robot_control else "false",
             )
         )
+        self.get_logger().info(
+            "[swarm_fpv_ui] gateway id=%s name=%s role=%s route=%s hub=%s"
+            % (
+                self.gateway_info.get("id", ""),
+                self.gateway_info.get("name", ""),
+                self.gateway_info.get("role", ""),
+                self.gateway_info.get("route_type", ""),
+                self.gateway_info.get("hub_url", "") or "<none>",
+            )
+        )
 
     def _load_trusted_robots(self) -> Set[str]:
         registry = self._profile_registry if isinstance(self._profile_registry, dict) else {}
@@ -561,6 +589,20 @@ class RosFleetHub(Node):
         if not robot:
             return False
         return self.is_trusted_robot(robot) or bool(self.allow_unknown_robot_control)
+
+    def gateway_public(self) -> Dict[str, Any]:
+        return dict(self.gateway_info)
+
+    def robot_routes_snapshot(self, robots: Iterable[str]) -> Dict[str, Dict[str, Any]]:
+        robot_list = [str(robot or "").strip() for robot in robots if str(robot or "").strip()]
+        control_allowed = {robot for robot in robot_list if self.robot_control_allowed(robot)}
+        return build_local_gateway_routes(
+            robots=robot_list,
+            live_robots=self.list_robots(),
+            gateway=self.gateway_public(),
+            trusted_robots=self._trusted_robots,
+            control_allowed_robots=control_allowed,
+        )
 
     def _robot_trust_public(self, robot: str) -> Dict[str, Any]:
         trusted = self.is_trusted_robot(robot)
@@ -2393,6 +2435,7 @@ class BrowserServer:
         html = _INDEX_HTML.format(
             style_href=f"/style.css?v={_STYLE_ASSET_VERSION}",
             app_href=f"/app.js?v={_APP_ASSET_VERSION}",
+            manifest_href="/manifest.webmanifest",
             default_main_stream=default_main_stream,
             default_jpeg_poll_ms=default_jpeg_poll_ms,
             default_jpeg_max_w=default_jpeg_max_w,
@@ -2402,10 +2445,25 @@ class BrowserServer:
         return web.Response(text=html, content_type="text/html", headers=_no_cache_headers())
 
     async def handle_style(self, _req: web.Request):
-        return web.Response(text=_STYLE_CSS, content_type="text/css", headers=_no_cache_headers())
+        return web.Response(
+            text=asset_text("style.css", _STYLE_CSS),
+            content_type="text/css",
+            headers=_no_cache_headers(),
+        )
 
     async def handle_js(self, _req: web.Request):
-        return web.Response(text=_APP_JS, content_type="application/javascript", headers=_no_cache_headers())
+        return web.Response(
+            text=asset_text("app.js", _APP_JS),
+            content_type="application/javascript",
+            headers=_no_cache_headers(),
+        )
+
+    async def handle_manifest(self, _req: web.Request):
+        return web.Response(
+            text=_MANIFEST_JSON,
+            content_type="application/manifest+json",
+            headers=_no_cache_headers(),
+        )
 
     async def handle_auth_config(self, _req: web.Request):
         return web.json_response(
@@ -2512,12 +2570,14 @@ class BrowserServer:
         robots = sorted(self.hub.visible_robots())
         live_robots = sorted(self.hub.list_robots())
         active_robot = self._public_active_robot(robots)
+        robot_routes = self.hub.robot_routes_snapshot(robots)
         contract = fleet_contract_manifest()
         return web.json_response(
             {
                 "api": api_schema_info(),
                 "fleet_contract": contract,
                 "site_id": self.site_id,
+                "gateway": self.hub.gateway_public(),
                 "auth": {
                     "mode": self.auth_config.mode,
                     "allow_anonymous_readonly": bool(self.auth_config.allow_readonly_anonymous),
@@ -2529,6 +2589,7 @@ class BrowserServer:
                 "active_robot": active_robot,
                 "locks": self._locks_public(),
                 "lock_meta": self._locks_meta_public(),
+                "robot_routes": robot_routes,
                 "robot_caps": {r: self.hub.robot_capabilities(r) for r in robots},
                 "robot_health": {r: self.hub.camera_health(r) for r in robots},
                 "drive_telemetry": self.hub.drive_telemetry_snapshot(),
@@ -2560,6 +2621,7 @@ class BrowserServer:
         robots = sorted(self.hub.visible_robots())
         live_robots = sorted(self.hub.list_robots())
         active_robot = self._public_active_robot(robots)
+        robot_routes = self.hub.robot_routes_snapshot(robots)
 
         robot_registry = []
         robot_state = []
@@ -2668,8 +2730,12 @@ class BrowserServer:
                 "api": api_schema_info(),
                 "fleet_contract": fleet_contract_manifest(),
                 "site_id": self.site_id,
+                "gateway": self.hub.gateway_public(),
                 "principal": self._principal_public(principal),
                 "robots": robots,
+                "live_robots": live_robots,
+                "active_robot": active_robot,
+                "robot_routes": robot_routes,
                 "robot_registry": robot_registry,
                 "robot_state": robot_state,
                 "robot_health": robot_health,
@@ -2826,6 +2892,7 @@ class BrowserServer:
         robots = sorted(self.hub.visible_robots())
         live_robots = sorted(self.hub.list_robots())
         active_robot = self._public_active_robot(robots)
+        robot_routes = self.hub.robot_routes_snapshot(robots)
         await ws.send_str(
             json.dumps(
                 {
@@ -2834,11 +2901,13 @@ class BrowserServer:
                     "principal": self._principal_public(principal),
                     "api": api_schema_info(),
                     "site_id": self.site_id,
+                    "gateway": self.hub.gateway_public(),
                     "robots": robots,
                     "live_robots": live_robots,
                     "active_robot": active_robot,
                     "locks": self._locks_public(),
                     "lock_meta": self._locks_meta_public(),
+                    "robot_routes": robot_routes,
                     "robot_caps": {r: self.hub.robot_capabilities(r) for r in robots},
                     "robot_health": {r: self.hub.camera_health(r) for r in robots},
                     "drive_telemetry": self.hub.drive_telemetry_snapshot(),
@@ -3016,6 +3085,51 @@ header{
   background:rgba(255,87,87,.14);
   border-color:rgba(255,87,87,.45);
   color:#ff9c9c;
+}
+.fullscreen-toggle{
+  position:fixed;
+  top:calc(env(safe-area-inset-top, 0px) + 10px);
+  right:calc(env(safe-area-inset-right, 0px) + 10px);
+  z-index:1000;
+  width:42px;
+  height:42px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.22);
+  background:rgba(5,10,16,.42);
+  color:rgba(219,231,245,.92);
+  display:grid;
+  place-items:center;
+  opacity:.72;
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  box-shadow:0 8px 24px rgba(0,0,0,.22);
+  cursor:pointer;
+  touch-action:manipulation;
+}
+.fullscreen-toggle:hover,
+.fullscreen-toggle:focus-visible{
+  opacity:1;
+  outline:none;
+  border-color:rgba(57,160,255,.65);
+}
+.fullscreen-toggle svg{
+  width:22px;
+  height:22px;
+  display:block;
+  pointer-events:none;
+}
+.fullscreen-toggle.is-active{
+  background:rgba(0,0,0,.34);
+  border-color:rgba(255,255,255,.28);
+}
+body.immersive-ui-active header{
+  display:none;
+}
+body.immersive-ui-active main{
+  min-height:100svh;
+}
+body:not(.immersive-ui-active) header{
+  padding-right:68px;
 }
 main{
   --fleet-col:clamp(190px,18vw,300px);
@@ -3284,6 +3398,14 @@ video{
   html,body{max-width:100%;overflow-x:hidden}
   body{overscroll-behavior-x:none}
   header{padding:6px 8px;gap:8px}
+  body:not(.immersive-ui-active) header{padding-right:58px}
+  .fullscreen-toggle{
+    top:calc(env(safe-area-inset-top, 0px) + 6px);
+    right:calc(env(safe-area-inset-right, 0px) + 6px);
+    width:36px;
+    height:36px;
+  }
+  .fullscreen-toggle svg{width:19px;height:19px}
   .title{font-size:13px;white-space:nowrap}
   .status{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .transport-badge{font-size:10px;padding:3px 7px;white-space:nowrap}
@@ -3411,6 +3533,14 @@ video{
   html,body{max-width:100%;overflow-x:hidden}
   body{overscroll-behavior-x:none}
   header{position:sticky;top:0;z-index:20;padding:7px 8px;gap:8px}
+  body:not(.immersive-ui-active) header{padding-right:58px}
+  .fullscreen-toggle{
+    top:calc(env(safe-area-inset-top, 0px) + 7px);
+    right:calc(env(safe-area-inset-right, 0px) + 7px);
+    width:38px;
+    height:38px;
+  }
+  .fullscreen-toggle svg{width:20px;height:20px}
   .title{font-size:13px;white-space:nowrap}
   .status{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .transport-badge{font-size:10px;padding:3px 7px;white-space:nowrap}
@@ -3535,15 +3665,21 @@ _INDEX_HTML = r"""
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="theme-color" content="#0a0f16"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="swarm-fpv-default-main-stream" content="{default_main_stream}"/>
   <meta name="swarm-fpv-jpeg-poll-ms" content="{default_jpeg_poll_ms}"/>
   <meta name="swarm-fpv-jpeg-max-w" content="{default_jpeg_max_w}"/>
   <meta name="swarm-fpv-jpeg-max-h" content="{default_jpeg_max_h}"/>
   <meta name="swarm-fpv-jpeg-quality" content="{default_jpeg_quality}"/>
   <title>Swarm FPV UI</title>
+  <link rel="manifest" href="{manifest_href}"/>
   <link rel="stylesheet" href="{style_href}"/>
 </head>
 <body>
+<button id="fullscreenToggle" class="fullscreen-toggle" type="button" aria-label="Enter fullscreen" title="Enter fullscreen"></button>
 <header>
   <div class="title">Swarm FPV Control</div>
   <div class="status" id="status">Connecting...</div>
@@ -3595,12 +3731,29 @@ _INDEX_HTML = r"""
 </html>
 """
 
+_MANIFEST_JSON = json.dumps(
+    {
+        "name": "Swarm FPV Control",
+        "short_name": "Swarm FPV",
+        "start_url": "/",
+        "scope": "/",
+        "display": "fullscreen",
+        "background_color": "#0a0f16",
+        "theme_color": "#0a0f16",
+        "orientation": "any",
+        "icons": [],
+    },
+    separators=(",", ":"),
+)
+
 _APP_JS = r"""
 let ws = null;
 let clientId = "c_" + Math.floor(Math.random() * 1e9);
 let robots = [];
 let liveRobots = [];
 let robotCaps = {};
+let robotRoutes = {};
+let gatewayInfo = {};
 let robotHealth = {};
 let driveTelemetry = {};
 let locks = {};
@@ -3730,6 +3883,8 @@ const NO_SIGNAL_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
 
 const $ = (id) => document.getElementById(id);
 const setStatus = (s) => { $("status").textContent = s; };
+const FULLSCREEN_EYE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.6"/></svg>`;
+const FULLSCREEN_EXIT_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 const urlParams = new URLSearchParams(window.location.search);
 const defaultMainStreamMeta = document.querySelector('meta[name="swarm-fpv-default-main-stream"]');
 const jpegPollMsMeta = document.querySelector('meta[name="swarm-fpv-jpeg-poll-ms"]');
@@ -3761,6 +3916,120 @@ const jpegMainPollMs = Math.max(40, _toInt(defaultJpegPollMs, 120));
 const jpegMainMaxW = Math.max(0, _toInt(defaultJpegMaxW, 0));
 const jpegMainMaxH = Math.max(0, _toInt(defaultJpegMaxH, 0));
 const jpegMainQuality = Math.max(0, _toInt(defaultJpegQuality, 0));
+
+function fullscreenElement(){
+  return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement || null;
+}
+
+function isStandaloneDisplay(){
+  return Boolean(
+    (window.matchMedia && (
+      window.matchMedia("(display-mode: fullscreen)").matches
+      || window.matchMedia("(display-mode: standalone)").matches
+    ))
+    || window.navigator.standalone
+  );
+}
+
+function requestFullscreenElement(el){
+  if (!el) return Promise.reject(new Error("missing fullscreen element"));
+  const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if (!fn) return Promise.reject(new Error("fullscreen unsupported"));
+  const out = fn.call(el);
+  return out && typeof out.then === "function" ? out : Promise.resolve(out);
+}
+
+function exitFullscreenDocument(){
+  const fn = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+  if (!fn) return Promise.resolve();
+  const out = fn.call(document);
+  return out && typeof out.then === "function" ? out : Promise.resolve(out);
+}
+
+function fullscreenUiActive(){
+  return Boolean(fullscreenElement() || document.body.classList.contains("immersive-ui-active"));
+}
+
+function updateFullscreenToggle(){
+  const btn = $("fullscreenToggle");
+  if (!btn) return;
+  if (!fullscreenElement() && !isStandaloneDisplay() && !document.body.classList.contains("immersive-ui-fallback")){
+    document.body.classList.remove("immersive-ui-active");
+  }
+  const active = fullscreenUiActive();
+  btn.classList.toggle("is-active", active);
+  btn.innerHTML = active ? FULLSCREEN_EXIT_ICON : FULLSCREEN_EYE_ICON;
+  btn.setAttribute("aria-label", active ? "Exit fullscreen" : "Enter fullscreen");
+  btn.title = active ? "Exit fullscreen" : "Enter fullscreen";
+}
+
+async function enterFullscreenUi(auto=false){
+  try{
+    await requestFullscreenElement(document.documentElement);
+    document.body.classList.remove("immersive-ui-fallback");
+    document.body.classList.add("immersive-ui-active");
+  }catch(err){
+    if (isStandaloneDisplay()){
+      document.body.classList.add("immersive-ui-fallback");
+      document.body.classList.add("immersive-ui-active");
+    }else if (!auto){
+      document.body.classList.add("immersive-ui-fallback");
+      document.body.classList.add("immersive-ui-active");
+      setStatus("Immersive UI enabled. Browser fullscreen may require a supported mobile browser or installed web app.");
+    }
+  }finally{
+    updateFullscreenToggle();
+  }
+}
+
+async function exitFullscreenUi(){
+  try{
+    if (fullscreenElement()){
+      await exitFullscreenDocument();
+    }
+  }catch(_err){
+  }finally{
+    document.body.classList.remove("immersive-ui-fallback");
+    document.body.classList.remove("immersive-ui-active");
+    updateFullscreenToggle();
+  }
+}
+
+function syncStandaloneImmersiveUi(){
+  if (isStandaloneDisplay()){
+    document.body.classList.add("immersive-ui-fallback");
+    document.body.classList.add("immersive-ui-active");
+  }
+}
+
+function setupFullscreenControls(){
+  const btn = $("fullscreenToggle");
+  if (!btn) return;
+  btn.onclick = () => {
+    if (fullscreenUiActive()){
+      exitFullscreenUi();
+    }else{
+      enterFullscreenUi(false);
+    }
+  };
+  document.addEventListener("fullscreenchange", updateFullscreenToggle);
+  document.addEventListener("webkitfullscreenchange", updateFullscreenToggle);
+  document.addEventListener("msfullscreenchange", updateFullscreenToggle);
+  if (window.matchMedia){
+    for (const query of ["(display-mode: fullscreen)", "(display-mode: standalone)"]){
+      const mql = window.matchMedia(query);
+      if (mql && typeof mql.addEventListener === "function"){
+        mql.addEventListener("change", () => {
+          syncStandaloneImmersiveUi();
+          updateFullscreenToggle();
+        });
+      }
+    }
+  }
+  syncStandaloneImmersiveUi();
+  updateFullscreenToggle();
+  window.setTimeout(() => enterFullscreenUi(true), 250);
+}
 let accessToken = String(
   urlParams.get("access_token")
   || urlParams.get("token")
@@ -4776,6 +5045,26 @@ function capFor(robot){
   };
 }
 
+function routeFor(robot){
+  const route = robotRoutes[robot] || {};
+  const gatewayName = route.gateway_name || gatewayInfo.name || gatewayInfo.id || "local gateway";
+  return {
+    route_type: route.route_type || gatewayInfo.route_type || "local_gateway",
+    route_status: route.route_status || "unknown",
+    gateway_name: gatewayName,
+    gateway_id: route.gateway_id || gatewayInfo.id || "",
+    gateway_role: route.gateway_role || gatewayInfo.role || "local_gateway",
+    direct_agent: Boolean(route.direct_agent),
+    control_plane: route.control_plane || "local_ros2_dds",
+    data_plane: route.data_plane || "local_ros2_dds"
+  };
+}
+
+function routeLabel(routeType){
+  const value = String(routeType || "").replaceAll("_", " ").trim();
+  return value ? value : "local gateway";
+}
+
 function canControlRobot(robot){
   const name = String(robot || "").trim();
   if (!name) return false;
@@ -4919,6 +5208,7 @@ function renderCapabilityMeta(){
     return;
   }
   const c = capFor(activeRobot);
+  const route = routeFor(activeRobot);
   const trustLabel = c.control_allowed ? "trusted/control enabled" : "read-only/untrusted";
   el.innerHTML = `
     <div class="profile-label">PROFILES</div>
@@ -4926,6 +5216,8 @@ function renderCapabilityMeta(){
     <div><b>Hardware:</b> ${c.hardware}</div>
     <div><b>Control Profile:</b> ${c.control_profile}</div>
     <div><b>Trust:</b> ${trustLabel}</div>
+    <div><b>Route:</b> ${routeLabel(route.route_type)} / ${route.route_status}</div>
+    <div><b>Gateway:</b> ${route.gateway_name}</div>
     <div><b>Drive Mode:</b> ${strafeMode ? "STRAFE" : "NORMAL"}</div>
     <div><b>Speed:</b> linear=${driveLinearSpeed.toFixed(2)} angular=${driveAngularSpeed.toFixed(2)}</div>
   `;
@@ -5955,6 +6247,7 @@ function startHeartbeat(){
 }
 
 async function main(){
+  setupFullscreenControls();
   setStatus("Loading...");
   try{
     const cfg = await fetchAuthConfig();
@@ -5980,6 +6273,8 @@ async function main(){
   }
   robots = s.robots || [];
   liveRobots = s.live_robots || liveRobots;
+  gatewayInfo = s.gateway || gatewayInfo || {};
+  robotRoutes = s.robot_routes || robotRoutes || {};
   robotsSig = [...robots].sort().join("|");
   locks = s.locks || {};
   locksSig = lockSignature(locks);
@@ -6024,6 +6319,8 @@ async function main(){
     if (d.type === "hello"){
       const newRobots = d.robots || robots;
       liveRobots = d.live_robots || liveRobots;
+      gatewayInfo = d.gateway || gatewayInfo || {};
+      robotRoutes = d.robot_routes || robotRoutes || {};
       const newSig = [...newRobots].sort().join("|");
       robots = newRobots;
       locks = d.locks || locks;
@@ -6092,6 +6389,8 @@ async function main(){
       const st = await fetchState();
       const newRobots = st.robots || robots;
       liveRobots = st.live_robots || liveRobots;
+      gatewayInfo = st.gateway || gatewayInfo || {};
+      robotRoutes = st.robot_routes || robotRoutes || {};
       const newSig = [...newRobots].sort().join("|");
       robots = newRobots;
       robotCaps = st.robot_caps || robotCaps;
@@ -6386,6 +6685,7 @@ async def _run_server():
             web.get("/", server.handle_index),
             web.get("/style.css", server.handle_style),
             web.get("/app.js", server.handle_js),
+            web.get("/manifest.webmanifest", server.handle_manifest),
             web.get("/api/auth/config", server.handle_auth_config),
             web.post("/api/dev/login", server.handle_dev_login),
             web.post("/api/dev/logout", server.handle_dev_logout),
