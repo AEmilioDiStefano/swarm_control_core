@@ -17,6 +17,7 @@ Options:
   --clone-if-missing              Clone package into <workspace>/src/swarm_control_core if absent
   --skip-gpio                     Skip GPIO setup (robot role only)
   --skip-build                    Skip colcon build step
+  --skip-system-upgrade           Skip robot first-boot apt update/upgrade preflight
   --install-service               Install robot systemd service (robot role only)
   --enable-service-now            Enable/start robot systemd service now (implies --install-service)
   --domain-id <id>                ROS_DOMAIN_ID value for build/service (default: 17)
@@ -25,6 +26,8 @@ Options:
 
 Behavior:
   - Runs dependency installer script for the selected role.
+  - (Robot role) waits for first-boot apt jobs, then runs apt update/upgrade
+    before installing project dependencies unless --skip-system-upgrade is used.
   - (Robot role) configures GPIO access unless --skip-gpio is used.
   - Builds swarm_control_core in the given workspace unless --skip-build is used.
   - Optionally installs/enables the robot service.
@@ -103,6 +106,49 @@ run_bootstrap_step() {
 # progress as every other bootstrap step.
 run_bootstrap_step_with_subprogress() {
   run_bootstrap_step "$@"
+}
+
+wait_for_package_manager() {
+  local waited=0
+  local interval="${SWARM_CORE_APT_LOCK_WAIT_INTERVAL:-15}"
+  local max_wait="${SWARM_CORE_APT_LOCK_MAX_WAIT:-1800}"
+  local holders=""
+
+  while true; do
+    holders="$(
+      pgrep -x unattended-upgr 2>/dev/null || true
+      pgrep -x apt 2>/dev/null || true
+      pgrep -x apt-get 2>/dev/null || true
+      pgrep -x dpkg 2>/dev/null || true
+    )"
+    if [[ -z "${holders//[[:space:]]/}" ]]; then
+      return 0
+    fi
+
+    if (( waited >= max_wait )); then
+      log "Timed out waiting for package-manager jobs after ${max_wait}s. Still running PIDs: ${holders//$'\n'/ }"
+      return 1
+    fi
+
+    log "Waiting for Ubuntu package-manager jobs to finish before setup. PIDs: ${holders//$'\n'/ }"
+    sleep "$interval"
+    waited=$(( waited + interval ))
+  done
+}
+
+robot_system_update_upgrade() {
+  if ! command -v sudo >/dev/null 2>&1; then
+    fail "sudo is required for robot system update/upgrade preflight"
+  fi
+
+  wait_for_package_manager
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=1800 update
+  wait_for_package_manager
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=1800 upgrade -y
+  wait_for_package_manager
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=1800 --fix-broken install -y
+  wait_for_package_manager
+  sudo dpkg --configure -a
 }
 
 current_step="initialization"
@@ -210,6 +256,7 @@ repo_url=""
 clone_if_missing="0"
 skip_gpio="0"
 skip_build="0"
+skip_system_upgrade="0"
 install_service="0"
 enable_service_now="0"
 domain_id="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
@@ -244,6 +291,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-build)
       skip_build="1"
+      ;;
+    --skip-system-upgrade)
+      skip_system_upgrade="1"
       ;;
     --install-service)
       install_service="1"
@@ -292,8 +342,8 @@ if [[ ! -d "$target_pkg_dir" ]]; then
   [[ -n "$repo_url" ]] || fail "--repo-url is required when using --clone-if-missing."
   if ! command -v git >/dev/null 2>&1; then
     if command -v sudo >/dev/null 2>&1; then
-      sudo apt-get update
-      sudo apt-get install -y git
+      sudo apt-get -o DPkg::Lock::Timeout=1800 update
+      sudo apt-get -o DPkg::Lock::Timeout=1800 install -y git
     else
       fail "git is required for --clone-if-missing and could not be auto-installed (missing sudo)."
     fi
@@ -316,6 +366,9 @@ log "Role=${machine_role}"
 log "Domain ID=${domain_id}"
 
 bootstrap_progress_total_weight=68
+if [[ "$machine_role" == "robot" && "$skip_system_upgrade" != "1" ]]; then
+  bootstrap_progress_total_weight=$(( bootstrap_progress_total_weight + 12 ))
+fi
 if [[ "$machine_role" == "robot" && "$skip_gpio" != "1" ]]; then
   bootstrap_progress_total_weight=$(( bootstrap_progress_total_weight + 7 ))
 fi
@@ -326,6 +379,11 @@ if [[ "$machine_role" == "robot" && "$install_service" == "1" ]]; then
   bootstrap_progress_total_weight=$(( bootstrap_progress_total_weight + 5 ))
 fi
 bootstrap_progress_init
+
+if [[ "$machine_role" == "robot" && "$skip_system_upgrade" != "1" ]]; then
+  current_step="robot-system-update-upgrade"
+  run_bootstrap_step 12 "Waiting for apt and upgrading robot OS packages" robot_system_update_upgrade
+fi
 
 current_step="dependency-check"
 run_bootstrap_step_with_subprogress 55 "Installing dependencies" \

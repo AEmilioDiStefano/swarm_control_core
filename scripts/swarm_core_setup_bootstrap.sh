@@ -54,8 +54,8 @@ ensure_git() {
   if ! command -v sudo >/dev/null 2>&1; then
     fail "git is required and sudo is unavailable, so it could not be installed automatically."
   fi
-  sudo apt-get update
-  sudo apt-get install -y git
+  sudo apt-get -o DPkg::Lock::Timeout=1800 update
+  sudo apt-get -o DPkg::Lock::Timeout=1800 install -y git
 }
 
 detect_target_workspace() {

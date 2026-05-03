@@ -42,6 +42,9 @@ When you finish this guide:
 - the control machine and robots can reach the internet during initial install
 - the control machine and robots will be on the same private LAN for runtime
 - you can use `sudo` on every machine
+- freshly imaged Ubuntu machines may run automatic first-boot updates for
+  several minutes; wait for `apt`/`dpkg` locks to clear before dependency
+  installation
 
 ## Terminal Layout
 
@@ -85,6 +88,157 @@ ssh <robot_user>@<robot_host>.local
 ### IF SSH fails or hostname resolution fails
 
 Go to [Fix Step 0.1](#setup-ref-0-1), then return to [Step 0](#setup-step-0).
+
+### IF this is the first login after imaging Ubuntu
+
+Go to [Fix Step 0.2](#setup-ref-0-2), then return to [Step 1](#setup-step-1).
+
+<a id="setup-combined-path"></a>
+## Recommended Combined Path
+
+Use these combined blocks for normal fresh-machine setup. They collapse the
+workspace bootstrap, machine preparation, shell reset, and robot-local profile
+steps into the fewest safe copy/paste blocks.
+
+Keep registration/approval as a later control-machine gate because each robot
+prints the registration source that the control machine needs in Step 6.
+
+<a id="setup-step-1-combined-control"></a>
+## Step 1: Prepare the Control Machine
+
+Run this once in the control-machine terminal.
+
+### CONTROL MACHINE:
+
+```bash
+SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_WORKSPACE_ROOT:-${WS:-$HOME/ros2_ws_dev}}"
+SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_SETUP_WORKSPACE%/}"
+SWARM_CORE_SETUP_HELPER="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_setup_bootstrap.sh" 2>/dev/null | sort | head -n1)"
+
+if [[ -z "${SWARM_CORE_SETUP_HELPER:-}" ]]; then
+  command -v git >/dev/null 2>&1 || {
+    sudo apt-get -o DPkg::Lock::Timeout=1800 update
+    sudo apt-get -o DPkg::Lock::Timeout=1800 install -y git
+  }
+
+  SWARM_CORE_SETUP_PKG="${SWARM_CORE_SETUP_WORKSPACE}/src/swarm_control_core"
+  install -d "${SWARM_CORE_SETUP_WORKSPACE}/src"
+  if [[ ! -d "${SWARM_CORE_SETUP_PKG}/.git" ]]; then
+    git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$SWARM_CORE_SETUP_PKG"
+  fi
+  SWARM_CORE_SETUP_HELPER="${SWARM_CORE_SETUP_PKG}/scripts/swarm_core_setup_bootstrap.sh"
+fi
+
+eval "$("$SWARM_CORE_SETUP_HELPER" \
+  --workspace "$SWARM_CORE_SETUP_WORKSPACE" \
+  --emit-shell)"
+
+unset SWARM_CORE_SETUP_WORKSPACE SWARM_CORE_SETUP_HELPER SWARM_CORE_SETUP_PKG
+export SWARM_CORE_ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
+
+"$SC/scripts/swarm_core_bootstrap_machine.sh" \
+  --machine-role control \
+  --workspace "$WS" \
+  --domain-id "$SWARM_CORE_ROS_DOMAIN_ID"
+
+source "$SC/scripts/swarm_core_reset_env.sh" \
+  --scope deep \
+  --machine-role control \
+  --compat-mode \
+  --domain-id "$SWARM_CORE_ROS_DOMAIN_ID"
+```
+
+Expected:
+
+- the control machine has `WS` and `SC` exported
+- `swarm_control_core` dependencies are installed and built
+- the control shell is ready for Step 6 registration/approval
+
+<a id="setup-step-2-combined-robot"></a>
+## Step 2: Prepare Each Robot and Add Its Local Profile
+
+Run this in each dedicated robot SSH terminal. This block intentionally waits
+for first-boot Ubuntu package jobs, then runs `apt update` and `apt upgrade`
+before any ROS/project dependency installation.
+
+### ROBOT(S):
+
+```bash
+while pgrep -x unattended-upgr >/dev/null || pgrep -x apt >/dev/null || pgrep -x apt-get >/dev/null || pgrep -x dpkg >/dev/null; do
+  echo "[WAIT] Ubuntu package job is still running..."
+  sleep 15
+done
+
+sudo apt-get -o DPkg::Lock::Timeout=1800 update
+sudo apt-get -o DPkg::Lock::Timeout=1800 upgrade -y
+sudo apt-get -o DPkg::Lock::Timeout=1800 --fix-broken install -y
+sudo dpkg --configure -a
+
+SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_WORKSPACE_ROOT:-${WS:-$HOME/ros2_ws_dev}}"
+SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_SETUP_WORKSPACE%/}"
+SWARM_CORE_SETUP_HELPER="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_setup_bootstrap.sh" 2>/dev/null | sort | head -n1)"
+
+if [[ -z "${SWARM_CORE_SETUP_HELPER:-}" ]]; then
+  command -v git >/dev/null 2>&1 || {
+    sudo apt-get -o DPkg::Lock::Timeout=1800 update
+    sudo apt-get -o DPkg::Lock::Timeout=1800 install -y git
+  }
+
+  SWARM_CORE_SETUP_PKG="${SWARM_CORE_SETUP_WORKSPACE}/src/swarm_control_core"
+  install -d "${SWARM_CORE_SETUP_WORKSPACE}/src"
+  if [[ ! -d "${SWARM_CORE_SETUP_PKG}/.git" ]]; then
+    git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$SWARM_CORE_SETUP_PKG"
+  fi
+  SWARM_CORE_SETUP_HELPER="${SWARM_CORE_SETUP_PKG}/scripts/swarm_core_setup_bootstrap.sh"
+fi
+
+eval "$("$SWARM_CORE_SETUP_HELPER" \
+  --workspace "$SWARM_CORE_SETUP_WORKSPACE" \
+  --emit-shell)"
+
+unset SWARM_CORE_SETUP_WORKSPACE SWARM_CORE_SETUP_HELPER SWARM_CORE_SETUP_PKG
+export SWARM_CORE_ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
+
+"$SC/scripts/swarm_core_bootstrap_machine.sh" \
+  --machine-role robot \
+  --workspace "$WS" \
+  --domain-id "$SWARM_CORE_ROS_DOMAIN_ID" \
+  --skip-system-upgrade
+
+source "$SC/scripts/swarm_core_reset_env.sh" \
+  --scope deep \
+  --machine-role robot \
+  --compat-mode \
+  --domain-id "$SWARM_CORE_ROS_DOMAIN_ID"
+
+export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
+export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
+
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+ros2 run swarm_control_core add_robot_core \
+  --workspace "$WS" \
+  --name "$ROBOT_NAME"
+```
+
+What to do here:
+
+- choose the robot `control_type` and `control_interface` if prompted
+- choose the camera entry that robot should use if prompted
+- copy the printed control-machine registration source, such as
+  `robot7=robot7@legion7.local`, for Step 6
+
+After every robot finishes this block, continue with
+[Check Local Robot Readiness](#setup-step-5).
+
+## Detailed/Fallback Blocks
+
+The following smaller blocks are the same setup split into rerunnable pieces.
+Use them when you need to retry only one stage.
 
 <a id="setup-step-1"></a>
 ## Step 1: Universal Workspace Bootstrap
@@ -205,6 +359,12 @@ Go to [Fix Step 2.1](#setup-ref-2-1), then return to [Step 2](#setup-step-2).
 ## Step 3: Prepare Each Robot
 
 Run this in each robot SSH terminal after Step 1.
+
+The robot bootstrap script also performs the same first-boot apt wait,
+`apt update`, `apt upgrade`, `apt --fix-broken install`, and
+`dpkg --configure -a` preflight before installing ROS/project dependencies. Use
+`--skip-system-upgrade` only when you intentionally do not want that robot OS
+upgrade pass.
 
 ### ROBOT(S):
 
@@ -513,6 +673,36 @@ If `.local` does not resolve, use the robot IP address for SSH and for Step 6
 sources, for example `robot4=robot4@192.168.1.44`.
 
 Return to [Step 0](#setup-step-0).
+
+<a id="setup-ref-0-2"></a>
+## Fix Step 0.2: First-Boot Ubuntu Updates Hold the Apt Lock
+
+On freshly imaged Ubuntu, `unattended-upgrades` may run automatically in the
+background. If setup output repeats a line like this, the package manager is
+busy, not permanently broken:
+
+```text
+Waiting for cache lock: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process ... (unattended-upgr)
+```
+
+Do not remove apt lock files. Wait for the background update to finish, then
+repair any partially configured packages before rerunning the setup step.
+
+### ROBOT(S):
+
+```bash
+while pgrep -x unattended-upgr >/dev/null || pgrep -x apt >/dev/null || pgrep -x apt-get >/dev/null || pgrep -x dpkg >/dev/null; do
+  echo "[WAIT] Ubuntu first-boot package job is still running..."
+  sleep 15
+done
+
+sudo dpkg --configure -a
+sudo apt-get --fix-broken install -y
+sudo apt-get update
+```
+
+Return to [Step 1](#setup-step-1), then rerun the robot preparation step that
+was waiting on apt.
 
 <a id="setup-ref-1-1"></a>
 ## Fix Step 1.1: Workspace Bootstrap Fails
