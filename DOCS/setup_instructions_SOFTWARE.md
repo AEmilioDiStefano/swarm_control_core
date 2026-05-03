@@ -164,10 +164,17 @@ before any ROS/project dependency installation.
 ### ROBOT(S):
 
 ```bash
+SWARM_APT_WAIT_DEADLINE=$((SECONDS + ${SWARM_APT_LOCK_MAX_WAIT:-1800}))
 while pgrep -x unattended-upgr >/dev/null || pgrep -x apt >/dev/null || pgrep -x apt-get >/dev/null || pgrep -x dpkg >/dev/null; do
-  echo "[WAIT] Ubuntu package job is still running..."
+  echo "[WAIT] Ubuntu package job is still running:"
+  ps -eo pid,ppid,etime,stat,comm,args | awk '$5 ~ /^(unattended-upgr|apt|apt-get|dpkg)$/ {print "  " $0}'
+  if (( SECONDS >= SWARM_APT_WAIT_DEADLINE )); then
+    echo "[FAIL] Timed out waiting for Ubuntu package jobs. Inspect the processes above before continuing." >&2
+    return 1 2>/dev/null || exit 1
+  fi
   sleep 15
 done
+unset SWARM_APT_WAIT_DEADLINE
 
 sudo apt-get -o DPkg::Lock::Timeout=1800 update
 sudo apt-get -o DPkg::Lock::Timeout=1800 upgrade -y
@@ -691,10 +698,17 @@ repair any partially configured packages before rerunning the setup step.
 ### ROBOT(S):
 
 ```bash
+SWARM_APT_WAIT_DEADLINE=$((SECONDS + ${SWARM_APT_LOCK_MAX_WAIT:-1800}))
 while pgrep -x unattended-upgr >/dev/null || pgrep -x apt >/dev/null || pgrep -x apt-get >/dev/null || pgrep -x dpkg >/dev/null; do
-  echo "[WAIT] Ubuntu first-boot package job is still running..."
+  echo "[WAIT] Ubuntu first-boot package job is still running:"
+  ps -eo pid,ppid,etime,stat,comm,args | awk '$5 ~ /^(unattended-upgr|apt|apt-get|dpkg)$/ {print "  " $0}'
+  if (( SECONDS >= SWARM_APT_WAIT_DEADLINE )); then
+    echo "[FAIL] Timed out waiting for Ubuntu package jobs. Inspect the processes above before continuing." >&2
+    return 1 2>/dev/null || exit 1
+  fi
   sleep 15
 done
+unset SWARM_APT_WAIT_DEADLINE
 
 sudo dpkg --configure -a
 sudo apt-get --fix-broken install -y
