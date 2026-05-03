@@ -158,23 +158,36 @@ Expected:
 ## Step 2: Prepare Each Robot and Add Its Local Profile
 
 Run this in each dedicated robot SSH terminal. This block intentionally waits
-for first-boot Ubuntu package jobs, then runs `apt update` and `apt upgrade`
-before any ROS/project dependency installation.
+for real apt/dpkg lock holders, then runs `apt update` and `apt upgrade` before
+any ROS/project dependency installation. It does not wait on
+`unattended-upgrade-shutdown --wait-for-signal`, which can remain present even
+when no package install is active.
 
 ### ROBOT(S):
 
 ```bash
+swarm_apt_lock_holders() {
+  command -v fuser >/dev/null 2>&1 || return 0
+  fuser \
+    /var/lib/dpkg/lock-frontend \
+    /var/lib/dpkg/lock \
+    /var/cache/apt/archives/lock \
+    /var/lib/apt/lists/lock \
+    2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
+}
+
 SWARM_APT_WAIT_DEADLINE=$((SECONDS + ${SWARM_APT_LOCK_MAX_WAIT:-1800}))
-while pgrep -x unattended-upgr >/dev/null || pgrep -x apt >/dev/null || pgrep -x apt-get >/dev/null || pgrep -x dpkg >/dev/null; do
-  echo "[WAIT] Ubuntu package job is still running:"
-  ps -eo pid,ppid,etime,stat,comm,args | awk '$5 ~ /^(unattended-upgr|apt|apt-get|dpkg)$/ {print "  " $0}'
+while SWARM_APT_LOCK_HOLDERS="$(swarm_apt_lock_holders)" && [[ -n "${SWARM_APT_LOCK_HOLDERS//[[:space:]]/}" ]]; do
+  echo "[WAIT] apt/dpkg lock holder is still running:"
+  ps -o pid,ppid,etime,stat,comm,args -p "$(printf '%s' "$SWARM_APT_LOCK_HOLDERS" | paste -sd, -)" || true
   if (( SECONDS >= SWARM_APT_WAIT_DEADLINE )); then
-    echo "[FAIL] Timed out waiting for Ubuntu package jobs. Inspect the processes above before continuing." >&2
+    echo "[FAIL] Timed out waiting for apt/dpkg locks. Inspect the processes above before continuing." >&2
     return 1 2>/dev/null || exit 1
   fi
   sleep 15
 done
-unset SWARM_APT_WAIT_DEADLINE
+unset SWARM_APT_WAIT_DEADLINE SWARM_APT_LOCK_HOLDERS
+unset -f swarm_apt_lock_holders
 
 sudo apt-get -o DPkg::Lock::Timeout=1800 update
 sudo apt-get -o DPkg::Lock::Timeout=1800 upgrade -y
@@ -693,22 +706,35 @@ Waiting for cache lock: Could not get lock /var/lib/dpkg/lock-frontend. It is he
 ```
 
 Do not remove apt lock files. Wait for the background update to finish, then
-repair any partially configured packages before rerunning the setup step.
+repair any partially configured packages before rerunning the setup step. Do
+not wait on `unattended-upgrade-shutdown --wait-for-signal`; that process can
+remain present without holding apt/dpkg locks.
 
 ### ROBOT(S):
 
 ```bash
+swarm_apt_lock_holders() {
+  command -v fuser >/dev/null 2>&1 || return 0
+  fuser \
+    /var/lib/dpkg/lock-frontend \
+    /var/lib/dpkg/lock \
+    /var/cache/apt/archives/lock \
+    /var/lib/apt/lists/lock \
+    2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
+}
+
 SWARM_APT_WAIT_DEADLINE=$((SECONDS + ${SWARM_APT_LOCK_MAX_WAIT:-1800}))
-while pgrep -x unattended-upgr >/dev/null || pgrep -x apt >/dev/null || pgrep -x apt-get >/dev/null || pgrep -x dpkg >/dev/null; do
-  echo "[WAIT] Ubuntu first-boot package job is still running:"
-  ps -eo pid,ppid,etime,stat,comm,args | awk '$5 ~ /^(unattended-upgr|apt|apt-get|dpkg)$/ {print "  " $0}'
+while SWARM_APT_LOCK_HOLDERS="$(swarm_apt_lock_holders)" && [[ -n "${SWARM_APT_LOCK_HOLDERS//[[:space:]]/}" ]]; do
+  echo "[WAIT] apt/dpkg lock holder is still running:"
+  ps -o pid,ppid,etime,stat,comm,args -p "$(printf '%s' "$SWARM_APT_LOCK_HOLDERS" | paste -sd, -)" || true
   if (( SECONDS >= SWARM_APT_WAIT_DEADLINE )); then
-    echo "[FAIL] Timed out waiting for Ubuntu package jobs. Inspect the processes above before continuing." >&2
+    echo "[FAIL] Timed out waiting for apt/dpkg locks. Inspect the processes above before continuing." >&2
     return 1 2>/dev/null || exit 1
   fi
   sleep 15
 done
-unset SWARM_APT_WAIT_DEADLINE
+unset SWARM_APT_WAIT_DEADLINE SWARM_APT_LOCK_HOLDERS
+unset -f swarm_apt_lock_holders
 
 sudo dpkg --configure -a
 sudo apt-get --fix-broken install -y

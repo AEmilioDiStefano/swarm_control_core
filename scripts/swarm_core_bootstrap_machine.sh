@@ -113,14 +113,20 @@ wait_for_package_manager() {
   local interval="${SWARM_CORE_APT_LOCK_WAIT_INTERVAL:-15}"
   local max_wait="${SWARM_CORE_APT_LOCK_MAX_WAIT:-1800}"
   local holders=""
+  local lock_paths=(
+    /var/lib/dpkg/lock-frontend
+    /var/lib/dpkg/lock
+    /var/cache/apt/archives/lock
+    /var/lib/apt/lists/lock
+  )
+
+  if ! command -v fuser >/dev/null 2>&1; then
+    log "fuser is unavailable; relying on apt-get DPkg::Lock::Timeout for package-manager lock waits."
+    return 0
+  fi
 
   while true; do
-    holders="$(
-      pgrep -x unattended-upgr 2>/dev/null || true
-      pgrep -x apt 2>/dev/null || true
-      pgrep -x apt-get 2>/dev/null || true
-      pgrep -x dpkg 2>/dev/null || true
-    )"
+    holders="$(fuser "${lock_paths[@]}" 2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu || true)"
     if [[ -z "${holders//[[:space:]]/}" ]]; then
       return 0
     fi
@@ -130,7 +136,8 @@ wait_for_package_manager() {
       return 1
     fi
 
-    log "Waiting for Ubuntu package-manager jobs to finish before setup. PIDs: ${holders//$'\n'/ }"
+    log "Waiting for apt/dpkg lock holders before setup. PIDs: ${holders//$'\n'/ }"
+    ps -o pid,ppid,etime,stat,comm,args -p "$(printf '%s' "$holders" | paste -sd, -)" >&2 || true
     sleep "$interval"
     waited=$(( waited + interval ))
   done
