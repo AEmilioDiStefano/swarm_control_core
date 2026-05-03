@@ -333,54 +333,41 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+launch_args=(
+  "ros_domain_id:=${ROS_DOMAIN_ID}"
+  "bind_host:=${SWARM_CORE_BIND_HOST}"
+  "bind_port:=${SWARM_CORE_BIND_PORT}"
+  "webrtc_fps:=${SWARM_CORE_WEBRTC_FPS}"
+  "webrtc_main_only:=${SWARM_CORE_WEBRTC_MAIN_ONLY}"
+  "allow_unknown_robot_control:=${SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL}"
+  "fleet_preview_preset:=${SWARM_CORE_FLEET_PREVIEW_PRESET}"
+  "thumb_refresh_hz:=${SWARM_CORE_THUMB_REFRESH_HZ}"
+  "image_subscription_mode:=${SWARM_CORE_IMAGE_SUBSCRIPTION_MODE}"
+  "image_thumb_interest_ttl_s:=${SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S}"
+  "thumb_robots_per_tick:=${SWARM_CORE_THUMB_ROBOTS_PER_TICK}"
+  "drive_cmd_rate_hz:=${SWARM_CORE_DRIVE_CMD_RATE_HZ}"
+  "drive_hold_timeout_s:=${SWARM_CORE_DRIVE_HOLD_TIMEOUT_S}"
+  "robot_presence_timeout_s:=${SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S}"
+  "robot_presence_bootstrap_grace_s:=${SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S}"
+  "gateway_id:=${SWARM_CORE_GATEWAY_ID}"
+  "gateway_name:=${SWARM_CORE_GATEWAY_NAME}"
+  "gateway_role:=${SWARM_CORE_GATEWAY_ROLE}"
+  "gateway_route_type:=${SWARM_CORE_GATEWAY_ROUTE_TYPE}"
+)
+if [[ -n "${SWARM_CORE_HUB_URL:-}" ]]; then
+  launch_args+=("hub_url:=${SWARM_CORE_HUB_URL}")
+fi
+if [[ -n "${SWARM_CORE_SITE_ID:-}" ]]; then
+  launch_args+=("gateway_site_id:=${SWARM_CORE_SITE_ID}")
+fi
+if [[ -n "${PROFILES_PATH:-}" ]]; then
+  launch_args+=("profiles_path:=${PROFILES_PATH}")
+fi
+
 if command -v setsid >/dev/null 2>&1; then
-  setsid ros2 launch swarm_control_core swarm_fpv_ui.launch.py \
-    ros_domain_id:="$ROS_DOMAIN_ID" \
-    bind_host:="$SWARM_CORE_BIND_HOST" \
-    bind_port:="$SWARM_CORE_BIND_PORT" \
-    webrtc_fps:="$SWARM_CORE_WEBRTC_FPS" \
-    webrtc_main_only:="$SWARM_CORE_WEBRTC_MAIN_ONLY" \
-    allow_unknown_robot_control:="$SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL" \
-    fleet_preview_preset:="$SWARM_CORE_FLEET_PREVIEW_PRESET" \
-    thumb_refresh_hz:="$SWARM_CORE_THUMB_REFRESH_HZ" \
-    image_subscription_mode:="$SWARM_CORE_IMAGE_SUBSCRIPTION_MODE" \
-    image_thumb_interest_ttl_s:="$SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S" \
-    thumb_robots_per_tick:="$SWARM_CORE_THUMB_ROBOTS_PER_TICK" \
-    drive_cmd_rate_hz:="$SWARM_CORE_DRIVE_CMD_RATE_HZ" \
-    drive_hold_timeout_s:="$SWARM_CORE_DRIVE_HOLD_TIMEOUT_S" \
-    robot_presence_timeout_s:="$SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S" \
-    robot_presence_bootstrap_grace_s:="$SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S" \
-    gateway_id:="$SWARM_CORE_GATEWAY_ID" \
-    gateway_name:="$SWARM_CORE_GATEWAY_NAME" \
-    gateway_role:="$SWARM_CORE_GATEWAY_ROLE" \
-    gateway_route_type:="$SWARM_CORE_GATEWAY_ROUTE_TYPE" \
-    hub_url:="$SWARM_CORE_HUB_URL" \
-    gateway_site_id:="$SWARM_CORE_SITE_ID" \
-    profiles_path:="${PROFILES_PATH:-}" &
+  setsid ros2 launch swarm_control_core swarm_fpv_ui.launch.py "${launch_args[@]}" &
 else
-  ros2 launch swarm_control_core swarm_fpv_ui.launch.py \
-    ros_domain_id:="$ROS_DOMAIN_ID" \
-    bind_host:="$SWARM_CORE_BIND_HOST" \
-    bind_port:="$SWARM_CORE_BIND_PORT" \
-    webrtc_fps:="$SWARM_CORE_WEBRTC_FPS" \
-    webrtc_main_only:="$SWARM_CORE_WEBRTC_MAIN_ONLY" \
-    allow_unknown_robot_control:="$SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL" \
-    fleet_preview_preset:="$SWARM_CORE_FLEET_PREVIEW_PRESET" \
-    thumb_refresh_hz:="$SWARM_CORE_THUMB_REFRESH_HZ" \
-    image_subscription_mode:="$SWARM_CORE_IMAGE_SUBSCRIPTION_MODE" \
-    image_thumb_interest_ttl_s:="$SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S" \
-    thumb_robots_per_tick:="$SWARM_CORE_THUMB_ROBOTS_PER_TICK" \
-    drive_cmd_rate_hz:="$SWARM_CORE_DRIVE_CMD_RATE_HZ" \
-    drive_hold_timeout_s:="$SWARM_CORE_DRIVE_HOLD_TIMEOUT_S" \
-    robot_presence_timeout_s:="$SWARM_CORE_ROBOT_PRESENCE_TIMEOUT_S" \
-    robot_presence_bootstrap_grace_s:="$SWARM_CORE_ROBOT_PRESENCE_BOOTSTRAP_GRACE_S" \
-    gateway_id:="$SWARM_CORE_GATEWAY_ID" \
-    gateway_name:="$SWARM_CORE_GATEWAY_NAME" \
-    gateway_role:="$SWARM_CORE_GATEWAY_ROLE" \
-    gateway_route_type:="$SWARM_CORE_GATEWAY_ROUTE_TYPE" \
-    hub_url:="$SWARM_CORE_HUB_URL" \
-    gateway_site_id:="$SWARM_CORE_SITE_ID" \
-    profiles_path:="${PROFILES_PATH:-}" &
+  ros2 launch swarm_control_core swarm_fpv_ui.launch.py "${launch_args[@]}" &
 fi
 ui_pid="$!"
 wait "$ui_pid"

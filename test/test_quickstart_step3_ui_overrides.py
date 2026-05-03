@@ -31,3 +31,16 @@ def test_step3_uses_defaults_only_when_ui_overrides_are_unset():
     assert 'export SWARM_CORE_THUMB_ROBOTS_PER_TICK="${SWARM_CORE_THUMB_ROBOTS_PER_TICK:-1}"' in text
     assert 'export SWARM_CORE_DRIVE_CMD_RATE_HZ="${SWARM_CORE_DRIVE_CMD_RATE_HZ:-20.0}"' in text
     assert 'export SWARM_CORE_DRIVE_HOLD_TIMEOUT_S="${SWARM_CORE_DRIVE_HOLD_TIMEOUT_S:-0.35}"' in text
+
+
+def test_local_ui_launcher_omits_empty_optional_launch_args():
+    run_script = CORE_ROOT / "scripts" / "swarm_core_run_local_ui.sh"
+    text = run_script.read_text(encoding="utf-8")
+
+    assert "launch_args=(" in text
+    assert 'if [[ -n "${SWARM_CORE_HUB_URL:-}" ]]; then' in text
+    assert 'launch_args+=("hub_url:=${SWARM_CORE_HUB_URL}")' in text
+    assert 'if [[ -n "${SWARM_CORE_SITE_ID:-}" ]]; then' in text
+    assert 'launch_args+=("gateway_site_id:=${SWARM_CORE_SITE_ID}")' in text
+    assert 'hub_url:="$SWARM_CORE_HUB_URL"' not in text
+    assert 'gateway_site_id:="$SWARM_CORE_SITE_ID"' not in text
