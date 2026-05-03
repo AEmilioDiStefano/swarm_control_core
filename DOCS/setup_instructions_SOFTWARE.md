@@ -163,6 +163,11 @@ any ROS/project dependency installation. It does not wait on
 `unattended-upgrade-shutdown --wait-for-signal`, which can remain present even
 when no package install is active.
 
+Important: if your terminal output shows a loop containing
+`pgrep -x unattended-upgr`, or it keeps printing
+`unattended-upgrade-shutdown --wait-for-signal`, stop that command with
+`Ctrl-C`. That is the old stale wait logic, not this updated block.
+
 ### ROBOT(S):
 
 ```bash
@@ -709,6 +714,9 @@ Do not remove apt lock files. Wait for the background update to finish, then
 repair any partially configured packages before rerunning the setup step. Do
 not wait on `unattended-upgrade-shutdown --wait-for-signal`; that process can
 remain present without holding apt/dpkg locks.
+
+If your copied command uses `pgrep -x unattended-upgr`, you are using the old
+wait logic. Stop it with `Ctrl-C` and rerun the updated block from this guide.
 
 ### ROBOT(S):
 
