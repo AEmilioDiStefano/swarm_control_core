@@ -102,7 +102,9 @@ Every reference entry should:
 
 ## Machine Labels
 
-Every shell command block should be immediately preceded by a context label.
+Every command or code block that the user is expected to enter into a terminal
+must be immediately preceded by a machine/context label. This is mandatory in
+both the Direct Run Path and the Alternative/Debug/Fix Reference.
 
 Preferred labels:
 
@@ -111,8 +113,25 @@ Preferred labels:
 
 Use other labels only when the distinction is essential, such as:
 
+- `### AFFECTED ROBOT(S):`
 - `### AFFECTED ROBOT:`
 - `### SECOND ROBOT SSH TERMINAL:`
+
+Do not place an executable terminal block after unlabeled prose such as:
+
+- `Run this:`
+- `Copy/paste:`
+- `On the robot:`
+
+Instead, write the label as a heading immediately before the block:
+
+````text
+### CONTROL MACHINE:
+
+```bash
+command_to_run
+```
+````
 
 ## Readiness and Trust Language
 
@@ -156,4 +175,5 @@ Before finishing a DRP guide edit, check:
 - every reference entry tells the reader where to return
 - optional and debug commands live in the reference section
 - success output appears only after the step that actually guarantees it
-- robot/control-machine command blocks are clearly labeled
+- every terminal command/code block is immediately preceded by a machine/context
+  heading such as `### CONTROL MACHINE:` or `### ROBOT(S):`
