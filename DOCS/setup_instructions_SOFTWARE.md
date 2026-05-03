@@ -554,6 +554,7 @@ Run this in the control-machine terminal.
 
 ```bash
 sudo apt-get update
+sudo apt-get --fix-broken install -y
 "$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role control
 cd "$WS"
 set +u
@@ -593,6 +594,7 @@ Run this in the affected robot SSH terminal.
 
 ```bash
 sudo apt-get update
+sudo apt-get --fix-broken install -y
 "$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role robot
 cd "$WS"
 set +u
@@ -603,6 +605,36 @@ set -u || true
 ```
 
 Return to [Step 3](#setup-step-3).
+
+If `apt` reports unmet dependencies for ROS packages such as
+`python3-catkin-pkg-modules`, `ros-jazzy-cyclonedds`,
+`ros-jazzy-cv-bridge`, or `ros-jazzy-image-transport`, the robot's package
+database is already in a broken or partially configured state. Let
+`apt --fix-broken install` complete first, then rerun Step 3.
+
+If `apt --fix-broken install` fails with an overwrite error like:
+
+```text
+trying to overwrite '/usr/lib/python3/dist-packages/catkin_pkg/__init__.py',
+which is also in package python3-catkin-pkg
+```
+
+remove the older conflicting package, repair the package database, then rerun
+the dependency check.
+
+### ROBOT(S):
+
+```bash
+sudo apt-get -s remove python3-catkin-pkg
+sudo apt-get remove -y python3-catkin-pkg
+sudo apt-get --fix-broken install -y
+sudo dpkg --configure -a
+"$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role robot
+```
+
+The first command is a dry run. If it says it would remove a large ROS stack
+instead of only the stale `python3-catkin-pkg` package, stop and inspect the
+package state before continuing.
 
 <a id="setup-ref-4-1"></a>
 ## Alternative Step 4.1: Non-Default Names or Known Hardware Profiles
