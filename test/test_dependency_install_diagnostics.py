@@ -41,3 +41,15 @@ def test_dependency_installer_skips_universe_when_already_enabled():
     assert "ubuntu_component_enabled()" in script
     assert "Ubuntu universe repository already enabled" in script
     assert "if ubuntu_component_enabled universe \"$codename\"; then" in script
+
+
+def test_dependency_installer_repairs_duplicate_ros_apt_sources_before_update():
+    script = (CORE_ROOT / "scripts" / "swarm_core_check_install_dependencies.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "disable_duplicate_ros_apt_sources()" in script
+    assert "packages.ros.org/ros2/ubuntu" in script
+    assert ".disabled-by-swarm-control" in script
+    assert "Disabling duplicate ROS apt source" in script
+    assert "[[ \"$(sudo cat \"$source_file\" 2>/dev/null)\" != \"$repo_line\" ]]" in script

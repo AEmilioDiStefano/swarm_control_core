@@ -788,10 +788,17 @@ Return to [Step 1](#setup-step-1).
 
 Run this in the control-machine terminal.
 
+If `apt` reports `Conflicting values set for option Signed-By` for
+`packages.ros.org/ros2/ubuntu`, the control machine has duplicate ROS apt
+source entries. The dependency script disables duplicate ROS entries under
+`/etc/apt/sources.list.d` and rewrites the canonical
+`/etc/apt/sources.list.d/ros2.list` entry before it refreshes apt.
+
 ### CONTROL MACHINE:
 
 ```bash
-sudo apt-get update
+sudo dpkg --configure -a
+"$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role control
 sudo apt-get --fix-broken install -y
 "$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role control
 cd "$WS"
@@ -828,10 +835,17 @@ Return to [Step 3](#setup-step-3).
 
 Run this in the affected robot SSH terminal.
 
+If `apt` reports `Conflicting values set for option Signed-By` for
+`packages.ros.org/ros2/ubuntu`, the robot has duplicate ROS apt source entries.
+The dependency script disables duplicate ROS entries under
+`/etc/apt/sources.list.d` and rewrites the canonical
+`/etc/apt/sources.list.d/ros2.list` entry before it refreshes apt.
+
 ### ROBOT(S):
 
 ```bash
-sudo apt-get update
+sudo dpkg --configure -a
+"$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role robot
 sudo apt-get --fix-broken install -y
 "$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role robot
 cd "$WS"

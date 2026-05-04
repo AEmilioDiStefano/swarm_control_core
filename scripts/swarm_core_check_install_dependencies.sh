@@ -245,13 +245,44 @@ ubuntu_component_enabled() {
   return 1
 }
 
-ensure_ros_apt_repository() {
-  local setup_file="/opt/ros/${ros_distro}/setup.bash"
-  if [[ -f "$setup_file" ]]; then
-    dependency_status "ROS ${ros_distro} setup already present"
-    return 0
+disable_duplicate_ros_apt_sources() {
+  local canonical_source_file="$1"
+  local source_path=""
+  local disabled_path=""
+  local suffix=0
+  local changed="0"
+  local apt_source_paths=(/etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources)
+
+  for source_path in "${apt_source_paths[@]}"; do
+    [[ -f "$source_path" ]] || continue
+    [[ "$source_path" == "$canonical_source_file" ]] && continue
+    if ! grep -q "packages.ros.org/ros2/ubuntu" "$source_path"; then
+      continue
+    fi
+
+    disabled_path="${source_path}.disabled-by-swarm-control"
+    suffix=0
+    while sudo test -e "$disabled_path"; do
+      suffix=$((suffix + 1))
+      disabled_path="${source_path}.disabled-by-swarm-control.${suffix}"
+    done
+
+    dependency_status "Disabling duplicate ROS apt source ${source_path}"
+    if ! sudo mv "$source_path" "$disabled_path"; then
+      return 2
+    fi
+    changed="1"
+  done
+
+  if [[ -f /etc/apt/sources.list ]] && grep -q "packages.ros.org/ros2/ubuntu" /etc/apt/sources.list; then
+    dependency_status "WARNING: /etc/apt/sources.list contains a ROS apt source; disable that duplicate manually if apt still reports a Signed-By conflict"
   fi
 
+  [[ "$changed" == "1" ]]
+}
+
+ensure_ros_apt_repository() {
+  local setup_file="/opt/ros/${ros_distro}/setup.bash"
   if [[ ! -f /etc/os-release ]]; then
     dependency_status "Skipping ROS apt repository setup: /etc/os-release missing"
     return 0
@@ -273,6 +304,15 @@ ensure_ros_apt_repository() {
   arch="$(dpkg --print-architecture 2>/dev/null || echo arm64)"
   local repo_line="deb [arch=${arch} signed-by=${keyring}] http://packages.ros.org/ros2/ubuntu ${codename} main"
   local changed="0"
+
+  if disable_duplicate_ros_apt_sources "$source_file"; then
+    changed="1"
+  else
+    local disable_status=$?
+    if (( disable_status != 1 )); then
+      return "$disable_status"
+    fi
+  fi
 
   if ! command -v add-apt-repository >/dev/null 2>&1; then
     dependency_status "Installing software-properties-common for add-apt-repository"
@@ -303,10 +343,15 @@ ensure_ros_apt_repository() {
     changed="1"
   fi
 
-  if ! sudo test -f "$source_file" || ! sudo grep -Fxq "$repo_line" "$source_file"; then
+  if ! sudo test -f "$source_file" || [[ "$(sudo cat "$source_file" 2>/dev/null)" != "$repo_line" ]]; then
     dependency_status "Writing ROS apt source list for ${codename}/${arch}"
     echo "$repo_line" | sudo tee "$source_file" >/dev/null
     changed="1"
+  fi
+
+  if [[ -f "$setup_file" && "$changed" != "1" ]]; then
+    dependency_status "ROS ${ros_distro} setup already present"
+    return 0
   fi
 
   if [[ "$changed" == "1" ]]; then
