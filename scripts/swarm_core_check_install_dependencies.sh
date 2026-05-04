@@ -21,6 +21,8 @@ USAGE
 machine_role="control"
 ros_distro="${ROS_DISTRO:-jazzy}"
 apt_updated="0"
+apt_http_timeout="${SWARM_APT_HTTP_TIMEOUT:-30}"
+apt_retries="${SWARM_APT_RETRIES:-2}"
 failures=()
 already_installed=()
 just_installed=()
@@ -85,6 +87,13 @@ dependency_status() {
   progress_render
   dependency_log "$*"
 }
+
+handle_interrupt() {
+  dependency_log "Interrupted; stopping dependency checks now."
+  exit 130
+}
+
+trap handle_interrupt INT TERM
 
 print_dependency_summary() {
   local title="$1"
@@ -174,7 +183,12 @@ ensure_apt_update() {
     return 0
   fi
   dependency_status "Running apt-get update"
-  if sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 update; then
+  if sudo env DEBIAN_FRONTEND=noninteractive apt-get \
+    -o DPkg::Lock::Timeout=120 \
+    -o Acquire::Retries="${apt_retries}" \
+    -o Acquire::http::Timeout="${apt_http_timeout}" \
+    -o Acquire::https::Timeout="${apt_http_timeout}" \
+    update; then
     apt_updated="1"
     return 0
   fi
@@ -186,7 +200,12 @@ install_apt_packages() {
   if ! ensure_apt_update; then
     return 1
   fi
-  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y "$@"
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get \
+    -o DPkg::Lock::Timeout=120 \
+    -o Acquire::Retries="${apt_retries}" \
+    -o Acquire::http::Timeout="${apt_http_timeout}" \
+    -o Acquire::https::Timeout="${apt_http_timeout}" \
+    install -y "$@"
 }
 
 apt_installed_version() {
