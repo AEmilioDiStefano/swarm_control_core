@@ -155,7 +155,9 @@ control_interfaces:
       cmd_rate_hz: 0
       pwm_slew_pct_per_s: 0
 
-  dual_tb6612_diff:
+  dual_tb6612_diff_4wheel_tracked:
+    aliases:
+      - dual_tb6612_diff
     compatible_control_types:
       - diff_drive
     backend: gpio_hbridge

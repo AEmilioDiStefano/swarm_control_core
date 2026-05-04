@@ -1,5 +1,9 @@
 # GPIO connections from Raspberry Pi 4 to DUAL Tb6612fng motor controllers to motors for a TANK TRACK DIFFERENTIAL DRIVE Chassis  
 
+This mapping is aligned to the `dual_tb6612_diff_4wheel_tracked.gpio` profile in
+`config/control_interfaces.yaml`. The older `dual_tb6612_diff` ID remains as a
+compatibility alias only.
+
 ### **This version wires each SIDE as a paired set**:  
 ###   - LEFT FRONT and LEFT REAR receive the SAME PWM and direction signals  
 ###   - RIGHT FRONT and RIGHT REAR receive the SAME PWM and direction signals  
@@ -8,7 +12,7 @@
 #  
 #  
 
-### IMPORTANT:  This robot uses a <u>Tb6612</u> motor driver.  
+### IMPORTANT:  This robot uses <u>two Tb6612</u> motor drivers.  
 
 ### ALL WIRING from the Li-Ion batteries to the motor drivers MUST BE at least 18 AWG    
 
@@ -188,7 +192,6 @@ One end to STBY on MOTOR DRIVER 2
 
 #  
 #  
-
 
 
 

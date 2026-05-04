@@ -10,7 +10,7 @@ the wiring guide. They are selected from `robot_instances.yaml` through the
 Canonical profile IDs use lowercase snake case:
 
 ```text
-<controller_count>_<controller_model>_<drive_family>
+<controller_count>_<controller_model>_<drive_family>[_physical_layout]
 ```
 
 Examples:
@@ -18,12 +18,13 @@ Examples:
 - `l298n_diff`
 - `dual_l298n_diff`
 - `dual_l298n_mecanum`
-- `dual_tb6612_diff`
+- `dual_tb6612_diff_4wheel_tracked`
 - `dual_tb6612_mecanum`
 
 Legacy mixed-case aliases such as `dual_L298N_diff` are accepted for backward
-compatibility, but new docs and robot entries should use the canonical lowercase
-names.
+compatibility, and the old `dual_tb6612_diff` profile ID resolves as an alias
+for `dual_tb6612_diff_4wheel_tracked`. New docs and robot entries should use
+the canonical lowercase names.
 
 ## Required Metadata
 

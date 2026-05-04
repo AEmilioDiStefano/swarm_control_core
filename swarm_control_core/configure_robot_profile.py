@@ -37,7 +37,7 @@ _FALLBACK_CONTROL_INTERFACES = [
     "l298n_diff",
     "dual_l298n_diff",
     "dual_l298n_mecanum",
-    "dual_tb6612_diff",
+    "dual_tb6612_diff_4wheel_tracked",
     "dual_tb6612_mecanum",
 ]
 

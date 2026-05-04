@@ -31,7 +31,7 @@ def test_select_robot_entry_prefers_exact_ssh_target_match() -> None:
             "other": {
                 "ssh_target": "other@other-host.local",
                 "control_type": "diff_drive",
-                "control_interface": "dual_tb6612_diff",
+                "control_interface": "dual_tb6612_diff_4wheel_tracked",
             },
         }
     }

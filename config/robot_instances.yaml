@@ -37,7 +37,7 @@ robots:
     # Format: username@hostname, username@hostname.local, or username@IPv4
     ssh_target: robot1@legion1.local
     control_type: diff_drive
-    control_interface: dual_tb6612_diff
+    control_interface: dual_tb6612_diff_4wheel_tracked
     params:
       control_type:
         # Test tune: stronger response while keeping conservative safety margins.

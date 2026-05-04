@@ -33,7 +33,7 @@ def test_gpio_hbridge_backend_registry_exposes_layouts() -> None:
 
 def test_legacy_control_interface_aliases_resolve_to_canonical_names() -> None:
     reg = load_profile_registry(str(PACKAGE_ROOT / "config" / "robot_instances.yaml"))
-    profile = resolve_robot_profile(
+    l298n_profile = resolve_robot_profile(
         {
             **reg,
             "robots": {
@@ -45,8 +45,21 @@ def test_legacy_control_interface_aliases_resolve_to_canonical_names() -> None:
         },
         "legacy_robot",
     )
+    tracked_profile = resolve_robot_profile(
+        {
+            **reg,
+            "robots": {
+                "legacy_tracked_robot": {
+                    "control_type": "diff_drive",
+                    "control_interface": "dual_tb6612_diff",
+                }
+            },
+        },
+        "legacy_tracked_robot",
+    )
 
-    assert profile["control_interface"] == "dual_l298n_diff"
+    assert l298n_profile["control_interface"] == "dual_l298n_diff"
+    assert tracked_profile["control_interface"] == "dual_tb6612_diff_4wheel_tracked"
 
 
 def test_metadata_drives_control_interface_compatibility() -> None:
@@ -61,7 +74,7 @@ def test_metadata_drives_control_interface_compatibility() -> None:
     assert compatible_interface_names("diff_drive", list(interfaces), interfaces) == [
         "l298n_diff",
         "dual_l298n_diff",
-        "dual_tb6612_diff",
+        "dual_tb6612_diff_4wheel_tracked",
     ]
 
 

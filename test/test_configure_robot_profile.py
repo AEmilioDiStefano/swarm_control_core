@@ -66,7 +66,7 @@ control_interfaces:
   l298n_diff:
     gpio: {}
     params: {}
-  dual_tb6612_diff:
+  dual_tb6612_diff_4wheel_tracked:
     gpio: {}
     params: {}
   dual_tb6612_mecanum:
@@ -83,7 +83,7 @@ control_interfaces:
         robot_name="robot_new",
         prompt_input=None,
         control_type="diff_drive",
-        control_interface="dual_tb6612_diff",
+        control_interface="dual_tb6612_diff_4wheel_tracked",
         linux_username="robot_new",
         hostname="robot-new-pi",
     )
@@ -91,7 +91,7 @@ control_interfaces:
     assert created is True
     assert entry["ssh_target"] == "robot_new@robot-new-pi.local"
     assert entry["control_type"] == "diff_drive"
-    assert entry["control_interface"] == "dual_tb6612_diff"
+    assert entry["control_interface"] == "dual_tb6612_diff_4wheel_tracked"
     assert len(sync_results) == 1
     assert sync_results[0]["path"] == runtime_profiles
     assert sync_results[0]["state"] == "missing_file"
@@ -134,7 +134,7 @@ control_types:
         control_interfaces,
         """schema_version: "1.0"
 control_interfaces:
-  dual_tb6612_diff:
+  dual_tb6612_diff_4wheel_tracked:
     compatible_control_types:
       - diff_drive
     gpio: {}
@@ -150,7 +150,7 @@ control_interfaces:
         robot_name="robot_new",
         prompt_input=None,
         control_type="diff_drive",
-        control_interface="dual_tb6612_diff",
+        control_interface="dual_tb6612_diff_4wheel_tracked",
         linux_username="robot_new",
         hostname="robot-new-pi",
         update_source_baseline=True,
@@ -158,7 +158,7 @@ control_interfaces:
 
     repo_text = repo_profiles.read_text(encoding="utf-8")
     assert "robot_new:" in repo_text
-    assert "control_interface: dual_tb6612_diff" in repo_text
+    assert "control_interface: dual_tb6612_diff_4wheel_tracked" in repo_text
 
 
 def test_ensure_robot_entry_reports_stale_runtime_entry(tmp_path: Path) -> None:
@@ -178,7 +178,7 @@ robots:
   robot_existing:
     ssh_target: robot_existing@robot-existing.local
     control_type: diff_drive
-    control_interface: dual_tb6612_diff
+    control_interface: dual_tb6612_diff_4wheel_tracked
 """,
     )
     _write(
@@ -194,7 +194,7 @@ control_types:
         control_interfaces,
         """schema_version: "1.0"
 control_interfaces:
-  dual_tb6612_diff:
+  dual_tb6612_diff_4wheel_tracked:
     gpio: {}
     params: {}
 """,
@@ -223,13 +223,13 @@ robots:
     )
 
     assert created is False
-    assert entry["control_interface"] == "dual_tb6612_diff"
+    assert entry["control_interface"] == "dual_tb6612_diff_4wheel_tracked"
     assert sync_results[0]["state"] == "stale_entry"
     assert sync_results[0]["repaired"] is True
 
     runtime_text = runtime_profiles.read_text(encoding="utf-8")
     assert "ssh_target: robot_existing@robot-existing.local" in runtime_text
-    assert "control_interface: dual_tb6612_diff" in runtime_text
+    assert "control_interface: dual_tb6612_diff_4wheel_tracked" in runtime_text
 
 
 def test_ensure_robot_entry_can_update_existing_robot_runtime_when_explicit(tmp_path: Path) -> None:
@@ -425,13 +425,13 @@ def test_compatible_control_interfaces_prefers_matching_drive_family() -> None:
         "l298n_diff",
         "dual_l298n_diff",
         "dual_l298n_mecanum",
-        "dual_tb6612_diff",
+        "dual_tb6612_diff_4wheel_tracked",
         "dual_tb6612_mecanum",
     ]
     assert _compatible_control_interfaces("diff_drive", interfaces) == [
         "l298n_diff",
         "dual_l298n_diff",
-        "dual_tb6612_diff",
+        "dual_tb6612_diff_4wheel_tracked",
     ]
     assert _compatible_control_interfaces("mecanum_drive", interfaces) == [
         "dual_l298n_mecanum",
