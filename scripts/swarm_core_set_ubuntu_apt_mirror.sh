@@ -66,7 +66,7 @@ security_mirror="${security_mirror:-$mirror}"
 mirror="${mirror%/}"
 security_mirror="${security_mirror%/}"
 
-if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+if [[ "$dry_run" != "1" && "${EUID:-$(id -u)}" -ne 0 ]]; then
   exec sudo --preserve-env=PATH "$0" \
     --mirror "$mirror" \
     --security-mirror "$security_mirror" \
