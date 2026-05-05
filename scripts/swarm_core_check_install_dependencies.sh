@@ -23,6 +23,8 @@ ros_distro="${ROS_DISTRO:-jazzy}"
 apt_updated="0"
 apt_http_timeout="${SWARM_APT_HTTP_TIMEOUT:-30}"
 apt_retries="${SWARM_APT_RETRIES:-2}"
+apt_force_ipv4="${SWARM_APT_FORCE_IPV4:-0}"
+ubuntu_mirror_normalized="0"
 failures=()
 already_installed=()
 just_installed=()
@@ -175,37 +177,62 @@ run_progress_step() {
   else
     dependency_log "FAILED ($(progress_percent), exit=${step_status}): ${label}"
   fi
+  if (( step_status == 130 || step_status == 131 || step_status == 143 )); then
+    exit "$step_status"
+  fi
   return "$step_status"
 }
 
+apt_network_options() {
+  printf '%s\n' \
+    -o DPkg::Lock::Timeout=120 \
+    -o "Acquire::Retries=${apt_retries}" \
+    -o "Acquire::http::Timeout=${apt_http_timeout}" \
+    -o "Acquire::https::Timeout=${apt_http_timeout}"
+  if [[ "$apt_force_ipv4" == "1" ]]; then
+    printf '%s\n' -o Acquire::ForceIPv4=true
+  fi
+}
+
 ensure_apt_update() {
+  local apt_status=0
+  local -a apt_opts=()
+
   if [[ "$apt_updated" == "1" ]]; then
     return 0
   fi
+  if [[ "$ubuntu_mirror_normalized" != "1" && "${SWARM_CORE_SKIP_UBUNTU_MIRROR_NORMALIZE:-0}" != "1" ]]; then
+    local mirror_helper=""
+    mirror_helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/swarm_core_set_ubuntu_apt_mirror.sh"
+    if [[ -x "$mirror_helper" ]]; then
+      dependency_status "Normalizing Ubuntu apt mirror before apt-get update"
+      "$mirror_helper" --no-update || return 1
+    fi
+    ubuntu_mirror_normalized="1"
+  fi
   dependency_status "Running apt-get update"
-  if sudo env DEBIAN_FRONTEND=noninteractive apt-get \
-    -o DPkg::Lock::Timeout=120 \
-    -o Acquire::Retries="${apt_retries}" \
-    -o Acquire::http::Timeout="${apt_http_timeout}" \
-    -o Acquire::https::Timeout="${apt_http_timeout}" \
-    update; then
+  mapfile -t apt_opts < <(apt_network_options)
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get "${apt_opts[@]}" update
+  apt_status=$?
+  if (( apt_status == 0 )); then
     apt_updated="1"
     return 0
   fi
-  return 1
+  return "$apt_status"
 }
 
 install_apt_packages() {
+  local -a apt_opts=()
+  local update_status=0
+
   dependency_status "Installing apt packages: $*"
-  if ! ensure_apt_update; then
-    return 1
+  ensure_apt_update
+  update_status=$?
+  if (( update_status != 0 )); then
+    return "$update_status"
   fi
-  sudo env DEBIAN_FRONTEND=noninteractive apt-get \
-    -o DPkg::Lock::Timeout=120 \
-    -o Acquire::Retries="${apt_retries}" \
-    -o Acquire::http::Timeout="${apt_http_timeout}" \
-    -o Acquire::https::Timeout="${apt_http_timeout}" \
-    install -y "$@"
+  mapfile -t apt_opts < <(apt_network_options)
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get "${apt_opts[@]}" install -y "$@"
 }
 
 apt_installed_version() {
@@ -224,8 +251,10 @@ apt_package_is_current() {
   installed_version="$(apt_installed_version "$pkg")"
   [[ -n "$installed_version" ]] || return 1
 
-  if ! ensure_apt_update; then
-    return 1
+  ensure_apt_update
+  local update_status=$?
+  if (( update_status != 0 )); then
+    return "$update_status"
   fi
 
   candidate_version="$(apt_candidate_version "$pkg")"

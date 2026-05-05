@@ -11,6 +11,7 @@ Options:
                            Default: http://archive.ubuntu.com/ubuntu
                            On arm64/armhf, default: http://ports.ubuntu.com/ubuntu-ports
   --security-mirror <url>  Ubuntu security mirror URL. Default: same as --mirror.
+  --no-update              Rewrite sources but do not run apt-get update.
   --dry-run                Show what would change without writing files.
   -h, --help               Show this help.
 
@@ -24,6 +25,7 @@ USAGE
 mirror=""
 security_mirror=""
 dry_run="0"
+run_update="1"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,6 +39,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dry-run)
       dry_run="1"
+      ;;
+    --no-update)
+      run_update="0"
       ;;
     -h|--help)
       usage
@@ -67,10 +72,11 @@ mirror="${mirror%/}"
 security_mirror="${security_mirror%/}"
 
 if [[ "$dry_run" != "1" && "${EUID:-$(id -u)}" -ne 0 ]]; then
-  exec sudo --preserve-env=PATH "$0" \
-    --mirror "$mirror" \
-    --security-mirror "$security_mirror" \
-    ${dry_run:+--dry-run}
+  sudo_args=(--preserve-env=PATH "$0" --mirror "$mirror" --security-mirror "$security_mirror")
+  if [[ "$run_update" != "1" ]]; then
+    sudo_args+=(--no-update)
+  fi
+  exec sudo "${sudo_args[@]}"
 fi
 
 rewrite_file() {
@@ -118,7 +124,7 @@ done
 echo "[swarm_core_set_ubuntu_apt_mirror] Ubuntu apt mirror set to: $mirror"
 echo "[swarm_core_set_ubuntu_apt_mirror] Ubuntu security mirror set to: $security_mirror"
 
-if [[ "$dry_run" != "1" ]]; then
+if [[ "$dry_run" != "1" && "$run_update" == "1" ]]; then
   apt-get \
     -o DPkg::Lock::Timeout=120 \
     -o Acquire::Retries="${SWARM_APT_RETRIES:-1}" \
