@@ -1,6 +1,6 @@
 # GPIO connections from L298N motor controller to Raspberry Pi 4 for differential drive chassis
 
-This mapping is aligned to `l298n_diff.gpio` in
+This mapping is aligned to `4wheel_diff_l298n_1.gpio` in
 `config/control_interfaces.yaml` and should be treated as authoritative for this package.
 
 Left motor channel:

@@ -66,7 +66,7 @@ Recommended:
 Connect Pi ground to motor-controller ground first and keep that common ground
 through the whole build.
 
-The default `swarm_control_core` reference wiring for `l298n_diff` is:
+The default `swarm_control_core` reference wiring for `4wheel_diff_l298n_1` is:
 
 | Drive side | Function | BCM GPIO | Physical pin |
 | --- | --- | --- | --- |
@@ -79,7 +79,7 @@ The default `swarm_control_core` reference wiring for `l298n_diff` is:
 
 Important notes:
 
-- This mapping is chosen to match the current default `l298n_diff` interface in
+- This mapping is chosen to match the current default `4wheel_diff_l298n_1` interface in
   [../config/control_interfaces.yaml](../config/control_interfaces.yaml).
 - Treat one L298N motor channel as one side of the drivetrain and the other
   L298N motor channel as the opposite side.
@@ -95,9 +95,16 @@ side to the other output channel.
 
 For common four-wheel differential-drive chassis builds:
 
-- wire the left-side motors as one drive side
-- wire the right-side motors as the other drive side
+- use a four-channel control interface such as `4wheel_diff_l298n_2` or
+  `4wheel_diff_tb6612fng_2`
+- wire each physical motor to its own motor-controller output channel
+- let the software mirror the left command to the left-front/left-rear motors
+  and the right command to the right-front/right-rear motors
 - make sure the current draw stays within the limits of the controller and power path
+
+Do not connect two motors in parallel into one output channel unless you have
+explicitly verified that the motor-controller channel, wiring, fuse, and battery
+path are rated for the combined stall current.
 
 Do not worry if one side later spins backward during software validation. That
 can be corrected by:

@@ -63,7 +63,7 @@ Decode path changes:
 - Main pane is always strict WebRTC-only
 - `SWARM_CORE_THUMB_REFRESH_HZ` (`0.5` default)
 - `swarm_core_reset_env.sh` clears these tuning env vars to prevent stale cross-session carryover.
-- Core runtime knobs are scoped to `SWARM_CORE_*`; proprietary env names are not used for core runtime behavior.
+- Core runtime knobs are scoped to `SWARM_CORE_*`; legacy/pro env names are not used for core runtime behavior.
 - `swarm_core_run_robot.sh` / `swarm_core_run_local_ui.sh` invoke
   `swarm_core_terminate_existing_robot_processes.sh` in compat mode by default.
 - In compat mode, temporary `ufw` stop behavior is controlled by

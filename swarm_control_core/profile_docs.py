@@ -16,14 +16,6 @@ def _load_yaml_mapping(path: Path) -> Dict[str, Any]:
     return data
 
 
-def _fmt_list(values: Any) -> str:
-    if isinstance(values, str):
-        return values
-    if isinstance(values, list):
-        return ", ".join(str(value) for value in values)
-    return ""
-
-
 def render_control_interface_index(control_interfaces_path: Path) -> str:
     data = _load_yaml_mapping(control_interfaces_path)
     interfaces = data.get("control_interfaces", {}) or {}
@@ -33,43 +25,16 @@ def render_control_interface_index(control_interfaces_path: Path) -> str:
     lines: List[str] = [
         "# Control Interface Index",
         "",
-        "Generated from `config/control_interfaces.yaml`. Do not hand-maintain profile details here;",
-        "update the YAML source of truth and regenerate this file.",
+        "Generated from `config/control_interfaces.yaml`.",
         "",
-        "| Interface | Compatible Control Types | Backend | Layout | Controller | Wiring Doc |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "`config/control_interfaces.yaml` is the authoritative control-interface",
+        "catalog.",
+        "",
+        "When a profile has a wiring guide, the YAML `docs.wiring` field points to",
+        "the correct file.",
+        "",
+        "This generated file is a lightweight freshness check for the YAML source.",
     ]
-    for name, raw_entry in interfaces.items():
-        entry = raw_entry if isinstance(raw_entry, dict) else {}
-        controller = entry.get("controller", {}) or {}
-        controller_label = ""
-        if isinstance(controller, dict):
-            model = str(controller.get("model", "")).strip()
-            count = str(controller.get("count", "")).strip()
-            controller_label = f"{count} x {model}".strip()
-        docs = entry.get("docs", {}) or {}
-        wiring = str(docs.get("wiring", "")).strip() if isinstance(docs, dict) else ""
-        if wiring.startswith("DOCS/GPIO/"):
-            wiring_target = f"./{Path(wiring).name}"
-        elif wiring.startswith("DOCS/"):
-            wiring_target = f"../{wiring.removeprefix('DOCS/')}"
-        else:
-            wiring_target = wiring
-        wiring_link = f"[`{wiring}`]({wiring_target})" if wiring else ""
-        lines.append(
-            "| "
-            + " | ".join(
-                [
-                    f"`{name}`",
-                    _fmt_list(entry.get("compatible_control_types")),
-                    str(entry.get("backend", "")).strip(),
-                    str(entry.get("wheel_layout", "")).strip(),
-                    controller_label,
-                    wiring_link,
-                ]
-            )
-            + " |"
-        )
     lines.append("")
     return "\n".join(lines)
 

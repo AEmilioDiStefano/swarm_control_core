@@ -44,7 +44,7 @@ def generate_launch_description() -> LaunchDescription:
     profiles_path_arg = DeclareLaunchArgument(
         "profiles_path",
         default_value="",
-        description="Path to robot_instances.yaml (or legacy robot_profiles.yaml). Set explicitly or via PROFILES_PATH.",
+        description="Path to robot_instances.yaml. Set explicitly or via PROFILES_PATH.",
     )
 
     common_params = [

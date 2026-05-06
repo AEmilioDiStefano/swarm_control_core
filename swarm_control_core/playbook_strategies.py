@@ -35,7 +35,7 @@ class CompiledStrategy:
 
 def _is_mecanum(drive_type: str) -> bool:
     dt = str(drive_type or "").strip().lower()
-    return dt in ("mecanum", "omni", "omnidirectional", "mecanum_drive", "mecanum-drive")
+    return dt in ("mecanum", "mecanum_drive", "mecanum-drive")
 
 
 def _strategy_id_for(drive_type: str, hardware: str) -> str:
@@ -43,7 +43,7 @@ def _strategy_id_for(drive_type: str, hardware: str) -> str:
     if _is_mecanum(drive_type):
         # Current field behavior: mecanum lateral motion can be unreliable,
         # so we use rotate+forward axis stepping for predictable outcomes.
-        return "omni_axis_turn_xy"
+        return "mecanum_axis_turn_xy"
     if "l298n" in hw:
         return "diff_axis_split_xy"
     if "tb6612" in hw:
@@ -97,7 +97,7 @@ def _resolve_body_displacement(
     return north_m, east_m
 
 
-def _plan_omni_axis_turn(forward_m: float, right_m: float, v_fwd: float, w_rot: float) -> List[TimedTwistPlan]:
+def _plan_mecanum_axis_turn(forward_m: float, right_m: float, v_fwd: float, w_rot: float) -> List[TimedTwistPlan]:
     if abs(forward_m) < 1e-9 and abs(right_m) < 1e-9:
         return [TimedTwistPlan(twist=Twist(), duration_s=0.0, status_text="already at target")]
     plans: List[TimedTwistPlan] = []
@@ -111,7 +111,7 @@ def _plan_omni_axis_turn(forward_m: float, right_m: float, v_fwd: float, w_rot: 
             TimedTwistPlan(
                 twist=_mk_twist(vx=abs(v_fwd) if forward_m > 0.0 else -abs(v_fwd), vy=0.0, wz=0.0),
                 duration_s=_duration(forward_m, v_fwd),
-                status_text=f"omni forward leg {forward_m:.2f}m",
+                status_text=f"mecanum forward leg {forward_m:.2f}m",
             )
         )
 
@@ -122,14 +122,14 @@ def _plan_omni_axis_turn(forward_m: float, right_m: float, v_fwd: float, w_rot: 
             TimedTwistPlan(
                 twist=_mk_twist(vx=0.0, vy=0.0, wz=to_right_sign * abs(w_rot)),
                 duration_s=quarter_turn / max(1e-6, abs(w_rot)),
-                status_text="omni rotate to lateral leg",
+                status_text="mecanum rotate to lateral leg",
             )
         )
         plans.append(
             TimedTwistPlan(
                 twist=_mk_twist(vx=abs(v_fwd), vy=0.0, wz=0.0),
                 duration_s=abs(right_m) / max(1e-6, abs(v_fwd)),
-                status_text=f"omni lateral leg right={right_m:.2f}m",
+                status_text=f"mecanum lateral leg right={right_m:.2f}m",
             )
         )
 
@@ -227,8 +227,8 @@ def compile_transit_xy_plans(
         heading_rad=heading_rad,
     )
     sid = _strategy_id_for(drive_type, hardware)
-    if sid == "omni_axis_turn_xy":
-        plans = _plan_omni_axis_turn(forward_m, right_m, v_fwd, w_rot)
+    if sid == "mecanum_axis_turn_xy":
+        plans = _plan_mecanum_axis_turn(forward_m, right_m, v_fwd, w_rot)
     elif sid == "diff_axis_split_xy":
         plans = _plan_diff_axis_split(forward_m, right_m, v_fwd, w_rot)
     else:

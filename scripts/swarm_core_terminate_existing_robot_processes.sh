@@ -9,9 +9,9 @@ Usage:
 Options:
   --machine-role <control|robot|auto>
                                    Apply role-specific behavior (default: auto)
-  --compat-mode                    Community compatibility prep mode:
+  --compat-mode                    Core compatibility prep mode:
                                    stop conflicting services/processes and, on robots,
-                                   apply runtime-only masks to proprietary services.
+                                   apply runtime-only masks to conflicting services.
   --compat-stop-ufw <auto|always|never>
                                    In compat mode, optionally stop ufw at runtime
                                    so DDS traffic is not blocked by restrictive

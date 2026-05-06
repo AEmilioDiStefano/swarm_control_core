@@ -16,7 +16,7 @@ def test_add_control_interface_appends_profile_and_wiring_doc(tmp_path: Path) ->
         """schema_version: "1.0"
 control_types:
   mecanum_drive:
-    type: omni
+    type: mecanum
     params: {}
 """,
     )

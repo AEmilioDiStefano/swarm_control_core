@@ -130,7 +130,7 @@ class MotorDriverNode(Node):
         self.cmd_vel_topic = self.get_parameter("cmd_vel_topic").value.strip() or f"/{self.robot_name}/cmd_vel"
 
         # Normalize common profile naming and initialize hardware interface.
-        # For mecanum/omni we keep 4-channel names intact (fl/fr/rl/rr).
+        # For mecanum we keep 4-channel names intact (fl/fr/rl/rr).
         gpio_map = self._normalize_gpio_map(gpio_map, drive_type=self.drive_type)
         # Pass PWM frequency through the gpio_map for HardwareInterface
         gpio_map["pwm_hz"] = int(self.get_parameter("pwm_hz").value)
@@ -249,8 +249,8 @@ class MotorDriverNode(Node):
         if not gpio_map:
             return {}
 
-        # If mecanum/omni, keep 4-channel map intact
-        if str(drive_type).lower() in ("mecanum", "omni", "omnidirectional", "mecanum_drive"):
+        # If mecanum, keep 4-channel map intact
+        if str(drive_type).lower() in ("mecanum", "mecanum_drive", "mecanum-drive"):
             return gpio_map
 
         if all(k in gpio_map for k in ("en_left", "in1_left", "in2_left", "en_right", "in1_right", "in2_right")):
@@ -270,7 +270,7 @@ class MotorDriverNode(Node):
             mapped["in2_right"] = gpio_map.get("fr_in2")
             return mapped
 
-        # l298n_diff (hbridge_2ch) style mapping
+        # 4wheel_diff_l298n_1 (hbridge_2ch) style mapping
         if "en_left" in gpio_map or "in1_left" in gpio_map:
             mapped.update(gpio_map)
             return mapped
@@ -370,7 +370,7 @@ class MotorDriverNode(Node):
 
     def _watchdog(self):
         if time.time() - self.last_cmd_time > self.timeout_sec:
-            if str(self.drive_type).lower() in ("mecanum", "omni", "omnidirectional", "mecanum_drive"):
+            if str(self.drive_type).lower() in ("mecanum", "mecanum_drive", "mecanum-drive"):
                 self._set_mecanum_stop(force=True)
             else:
                 self._set_motor_outputs(0.0, 0.0, force=True)

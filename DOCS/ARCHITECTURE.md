@@ -21,6 +21,20 @@
 - Optional terminal playbook control.
 - No cloud control plane and no internet-ingress automation.
 
+## Local Scope Boundary
+
+`swarm_control_core` is the limited local/private-LAN runtime. Its docs
+should describe local robot setup and operation without documenting features
+outside this package or site-specific deployment architecture.
+
+- Robot profiles describe local capability and wiring.
+- The robot registry is the local control allowlist. Discovered robots absent
+  from the registry may appear for diagnostics, but remain read-only.
+- Profile names, ROS namespaces, and topic names are operational identifiers,
+  not secrets.
+- Public core docs should not contain credentials, site-specific access policy,
+  deployment topology, or remote-operation procedures.
+
 ## Runtime Components
 
 - `motor_driver_node_core`: consumes `/robot/cmd_vel` and drives hardware interface.
@@ -82,10 +96,11 @@ Design rule for future features:
 
 - Keep hot loops bounded by active-interest sets and explicit budgets.
 - Avoid full-fleet scans inside high-frequency paths unless required for correctness.
-- Reset scripts clear both core and proprietary FPV tuning env vars so mode switches do not inherit stale runtime budgets.
+- Reset scripts clear runtime tuning env vars so mode switches do not inherit stale runtime budgets.
 
 ## Configuration Model
 
+- Directory guide: [../config/config.md](../config/config.md)
 - `config/robot_instances.yaml` is the canonical robot registry: robot name,
   SSH target, control type, selected hardware/control interface, and per-robot
   tuning belong there.
@@ -94,13 +109,17 @@ Design rule for future features:
   `compatible_control_types`, `backend`, `wheel_layout`, controller metadata,
   GPIO maps, params, and a `docs.wiring` pointer so tools can filter, validate,
   and document interfaces without hardcoded profile names.
-- Control interface IDs use canonical lowercase snake case such as
-  `dual_l298n_mecanum`; legacy aliases remain supported for older robot entries.
+- Control interface IDs use canonical lowercase snake case. The YAML registry is
+  the authoritative control-interface catalog.
 - `validate_profiles_core` performs generic profile schema validation, and
-  `generate_profile_docs_core` renders `DOCS/GPIO/CONTROL_INTERFACE_INDEX.md`
-  from YAML.
+  `generate_profile_docs_core` keeps `DOCS/GPIO/CONTROL_INTERFACE_INDEX.md`
+  aligned as a generated pointer back to YAML.
 - `add_control_interface_core` scaffolds new reusable control interfaces so most
   motor-controller additions touch YAML/docs only, not runtime Python.
+- Core does not ship baseline `capability_profiles.yaml` or
+  `adapter_profiles.yaml` files. The resolver accepts optional higher-level
+  deployment files when supplied, otherwise it uses an empty capability fallback
+  and the built-in `passthrough_local` adapter fallback.
 - `camera_profiles.yaml` is generated robot-local state. It records detected
   camera choices and guarded software orientation (`flip_horizontal`,
   `flip_vertical`, `orientation_device`) from `save_camera_profile_core` and
@@ -111,8 +130,7 @@ Design rule for future features:
   profiles, preserves camera profiles, and prints wiring guidance.
 - The FPV UI separates ROS discovery from trusted control. Robots visible on the
   ROS domain but absent from the configured robot registry may appear read-only
-  for diagnostics/video; drive and autonomy commands are blocked unless the
-  explicit lab override `SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL=1` is set.
+  for diagnostics/video; drive and autonomy commands are blocked.
 - `wheel_test_core` validates physical wheel direction/order. Saved results are
   robot-specific GPIO overrides in `robot_instances.yaml`, not changes to the
   reusable hardware profile shared by every robot of that type.
@@ -128,9 +146,10 @@ Design rule for future features:
 ## Safety and Constraints
 
 - Browser UI enforces local security defaults (`auth_mode=off` with local binding defaults).
+- Core docs and guides assume local/private-LAN operation.
 - Runtime wrappers fail-fast when `ufw.service` is active under LAN discovery defaults, to avoid silent DDS traffic loss.
 - Quickstart applies an idempotent Wi-Fi check (`iw`): if `wlan0` power save is ON, it is switched OFF before bringup to avoid camera/control jitter on Wi-Fi links.
-- Runtime behavior is scoped to `SWARM_CORE_*` env names; proprietary env names are only cleared by reset scripts, not consumed for behavior.
+- Runtime behavior is scoped to `SWARM_CORE_*` env names.
 - Main pane is strict WebRTC-only.
 - Thumbnail rail stays bounded with JPEG polling budgets and does not replace main-stream video.
 - Recommended multi-robot switching profile keeps `thumb_robots_per_tick=1`; `0` is a single-robot focus mode with lower background load but slower switches.

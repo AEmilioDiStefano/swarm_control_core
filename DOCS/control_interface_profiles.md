@@ -10,21 +10,14 @@ the wiring guide. They are selected from `robot_instances.yaml` through the
 Canonical profile IDs use lowercase snake case:
 
 ```text
-<controller_count>_<controller_model>_<drive_family>[_physical_layout]
+<drive_layout>_<controller_model>_<controller_count>
 ```
 
-Examples:
+For example, a four-wheel differential profile with two L298N boards follows
+that pattern.
 
-- `l298n_diff`
-- `dual_l298n_diff`
-- `dual_l298n_mecanum`
-- `dual_tb6612_diff_4wheel_tracked`
-- `dual_tb6612_mecanum`
-
-Legacy mixed-case aliases such as `dual_L298N_diff` are accepted for backward
-compatibility, and the old `dual_tb6612_diff` profile ID resolves as an alias
-for `dual_tb6612_diff_4wheel_tracked`. New docs and robot entries should use
-the canonical lowercase names.
+Robot entries should use the canonical lowercase names. The profile registry no
+longer carries duplicate mixed-case or shortened profile IDs.
 
 ## Required Metadata
 
@@ -48,7 +41,7 @@ hardware):
 
 ```bash
 "$WS/src/swarm_control_core/scripts/swarm_core_add_control_interface.sh" \
-  --name dual_newdriver_mecanum \
+  --name mecanum_newdriver_2 \
   --compatible-control-types mecanum_drive \
   --backend gpio_hbridge \
   --wheel-layout four_wheel \
@@ -61,7 +54,7 @@ hardware):
   --generate-wiring-doc
 ```
 
-Then regenerate the GPIO index:
+Then refresh the generated source pointer:
 
 ```bash
 ros2 run swarm_control_core generate_profile_docs_core \
@@ -86,7 +79,8 @@ Adding a new motor-controller wiring profile should not require Python changes.
 Python changes are still expected when adding a genuinely new runtime behavior,
 such as:
 
-- a new drive mixer beyond differential/mecanum
-- a new backend beyond GPIO H-bridge output
-- new safety behavior or diagnostics
-- a new ROS topic/adapter contract
+- a new drive mixer in `swarm_control_core/drive_types.py`
+- a new hardware backend in `swarm_control_core/hardware_interface.py`
+- new actuator command handling in `swarm_control_core/motor_driver_node.py`
+- new safety behavior or diagnostics in the runtime node that enforces it
+- a new ROS topic or adapter contract in `swarm_control_core/adapter_runtime.py`

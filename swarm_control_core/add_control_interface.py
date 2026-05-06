@@ -106,7 +106,7 @@ def _default_workspace_root(requested: str) -> Path:
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Scaffold a reusable control interface profile.")
     parser.add_argument("--workspace", default="", help="Workspace root containing src/swarm_control_core")
-    parser.add_argument("--name", required=True, help="Canonical lower_snake_case profile id, e.g. dual_l298n_mecanum")
+    parser.add_argument("--name", required=True, help="Canonical lower_snake_case profile id, e.g. mecanum_l298n_2")
     parser.add_argument("--compatible-control-types", required=True, help="Comma-separated control types, e.g. mecanum_drive")
     parser.add_argument("--backend", default="gpio_hbridge", help="Backend schema name")
     parser.add_argument("--wheel-layout", required=True, choices=("side_pair", "front_pair", "four_wheel"))

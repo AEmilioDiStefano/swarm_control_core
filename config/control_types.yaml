@@ -40,12 +40,12 @@ control_types:
       teleop_medium_steps: 10
       teleop_fast_linear_steps: 15
       teleop_fast_angular_steps: 10
-      teleop_omni_turn_gain: 0.5
+      teleop_mecanum_turn_gain: 0.5
       teleop_smoothing_alpha: 0.0
       fpv_lease_ttl_sec: 3.0
 
   mecanum_drive:
-    type: omni
+    type: mecanum
     params:
       wheel_base_m: 0.18
       track_width_m: 0.18
@@ -61,6 +61,6 @@ control_types:
       teleop_medium_steps: 10
       teleop_fast_linear_steps: 15
       teleop_fast_angular_steps: 10
-      teleop_omni_turn_gain: 0.5
+      teleop_mecanum_turn_gain: 0.5
       teleop_smoothing_alpha: 0.0
       fpv_lease_ttl_sec: 3.0

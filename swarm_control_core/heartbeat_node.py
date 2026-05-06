@@ -53,7 +53,7 @@ class HeartbeatNode(Node):
             if hw:
                 self.hardware = hw
             else:
-                self.hardware = "l298n_diff"
+                self.hardware = "4wheel_diff_l298n_1"
             self.profile_name = None
             self.get_logger().warning(f"[{self.robot}] profile not found in registry; publishing heartbeat with drive_type={self.drive_type} hardware={self.hardware}")
 

@@ -7,10 +7,10 @@ This module loads a YAML registry and resolves
 robot profiles. Keeping it separate makes the rest of the code (teleop, motor driver,
 heartbeat) easier to read and test.
 
-Compatibility note:
-Some earlier iterations of this workspace imported a function named
-`load_robot_profiles_yaml()`. Newer code uses `load_profile_registry()`.
-We provide BOTH so older/newer nodes don't crash due to an import rename.
+Profile entrypoint:
+`robot_instances.yaml` is the only supported registry entrypoint. It is resolved
+with sibling split config files such as `control_types.yaml` and
+`control_interfaces.yaml`.
 """
 
 from __future__ import annotations
@@ -50,8 +50,7 @@ def load_profile_registry(profiles_path: Optional[str] = None) -> Dict[str, Any]
 
     Args:
         profiles_path:
-            Optional explicit path to profile entrypoint YAML
-            (`robot_instances.yaml` preferred, `robot_profiles.yaml` legacy).
+            Optional explicit path to `robot_instances.yaml`.
             If None/empty, we use a reasonable default.
 
     Returns:
@@ -70,16 +69,6 @@ def load_profile_registry(profiles_path: Optional[str] = None) -> Dict[str, Any]
         )
 
     data = _load_yaml_mapping(path, "profile entrypoint")
-    if _is_legacy_registry(data):
-        # Legacy monolithic layout:
-        #   defaults + robots + drive_profiles + hardware_profiles
-        _validate_legacy_registry(data)
-        _assert_no_camera_settings_in_robot_registry(data, path)
-        return data
-
-    # Split layout:
-    #   robot_instances.yaml + control_types.yaml + control_interfaces.yaml
-    #   (+ optional capability_profiles.yaml / adapter_profiles.yaml)
     reg = _load_split_registry(path, data)
     _assert_no_camera_settings_in_robot_registry(reg, path)
     return reg
@@ -90,20 +79,6 @@ def _load_yaml_mapping(path: Path, label: str) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"{label} YAML must be a mapping (dict). Got: {type(data)}")
     return data
-
-
-def _is_legacy_registry(data: Dict[str, Any]) -> bool:
-    required = {"defaults", "robots", "drive_profiles", "hardware_profiles"}
-    return required.issubset(set(data.keys()))
-
-
-def _validate_legacy_registry(data: Dict[str, Any]) -> None:
-    for required in ("defaults", "robots", "drive_profiles", "hardware_profiles"):
-        if required not in data:
-            raise ValueError(
-                f"robot profile registry missing required key '{required}'. "
-                f"Keys present: {list(data.keys())}"
-            )
 
 
 def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -291,7 +266,7 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
 
         robots[str(robot_name)] = {
             **entry,
-            # Compatibility aliases used by existing nodes.
+            # Runtime key names used by existing nodes.
             "drive_profile": control_type_name,
             "hardware_profile": control_interface_name,
             # Canonical split-layout keys.
@@ -312,7 +287,7 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
             "adapter_profile": default_adapter_profile,
         },
         "robots": robots,
-        # Compatibility key names expected by current runtime.
+        # Runtime key names used by current nodes.
         "drive_profiles": control_types,
         "hardware_profiles": control_interfaces,
         # Split-layout native names retained for future use.
@@ -375,14 +350,6 @@ def _resolve_split_path_optional(config_dir: Path, fallback_name: str, env_keys:
     if fallback.exists():
         return fallback
     return None
-
-
-# --- Backwards-compatible alias (older code imports this name) -----------------
-def load_robot_profiles_yaml(profiles_path: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Backwards-compatible alias of load_profile_registry().
-    """
-    return load_profile_registry(profiles_path)
 
 
 def _assert_no_camera_settings_in_robot_registry(data: Dict[str, Any], path: Path) -> None:
@@ -607,7 +574,7 @@ def _validate_params(drive_params: Dict[str, Any], hw_params: Dict[str, Any], dr
 
     # Drive params
     positive_keys = ("wheel_base_m", "wheel_separation_m", "track_width_m", "watchdog_timeout_s", "fpv_lease_ttl_sec")
-    nonneg_keys = ("max_linear_mps", "max_angular_rps", "teleop_linear_mps", "teleop_angular_rps", "teleop_omni_turn_gain")
+    nonneg_keys = ("max_linear_mps", "max_angular_rps", "teleop_linear_mps", "teleop_angular_rps", "teleop_mecanum_turn_gain")
     int_nonneg_keys = ("teleop_medium_steps", "teleop_fast_linear_steps", "teleop_fast_angular_steps")
 
     for k in positive_keys:

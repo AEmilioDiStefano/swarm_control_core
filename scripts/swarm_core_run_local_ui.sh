@@ -32,7 +32,7 @@ BIND_PORT="${SWARM_CORE_BIND_PORT:-8080}"
 RECLAIM_BIND_PORT="${SWARM_CORE_RECLAIM_BIND_PORT:-1}"
 export ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
 
-# Guard against stale proprietary discovery/session exports.
+# Guard against stale pro/discovery/session exports.
 unset ROS_DISCOVERY_SERVER
 unset ROS_SUPER_CLIENT
 unset ROS_STATIC_PEERS
@@ -210,7 +210,6 @@ export SWARM_CORE_WEBRTC_ICE_SERVERS_JSON='[]'
 export SWARM_CORE_WEBRTC_ICE_TRANSPORT_POLICY="all"
 export SWARM_CORE_WEBRTC_FPS="${SWARM_CORE_WEBRTC_FPS:-15.0}"
 export SWARM_CORE_WEBRTC_MAIN_ONLY="${SWARM_CORE_WEBRTC_MAIN_ONLY:-1}"
-export SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL="${SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL:-0}"
 export SWARM_CORE_FLEET_PREVIEW_PRESET="${SWARM_CORE_FLEET_PREVIEW_PRESET:-scalable_fleet}"
 case "${SWARM_CORE_FLEET_PREVIEW_PRESET,,}" in
   single|single_robot|single_robot_focus|focus)
@@ -289,7 +288,6 @@ log "gateway_name=${SWARM_CORE_GATEWAY_NAME}"
 log "gateway_role=${SWARM_CORE_GATEWAY_ROLE}"
 log "gateway_route_type=${SWARM_CORE_GATEWAY_ROUTE_TYPE}"
 log "hub_url=${SWARM_CORE_HUB_URL:-<none>}"
-log "allow_unknown_robot_control=${SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL}"
 log "profiles_path=${PROFILES_PATH:-<default>}"
 log "control_types_path=${CONTROL_TYPES_PATH:-<default>}"
 log "control_interfaces_path=${CONTROL_INTERFACES_PATH:-<default>}"
@@ -339,7 +337,6 @@ launch_args=(
   "bind_port:=${SWARM_CORE_BIND_PORT}"
   "webrtc_fps:=${SWARM_CORE_WEBRTC_FPS}"
   "webrtc_main_only:=${SWARM_CORE_WEBRTC_MAIN_ONLY}"
-  "allow_unknown_robot_control:=${SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL}"
   "fleet_preview_preset:=${SWARM_CORE_FLEET_PREVIEW_PRESET}"
   "thumb_refresh_hz:=${SWARM_CORE_THUMB_REFRESH_HZ}"
   "image_subscription_mode:=${SWARM_CORE_IMAGE_SUBSCRIPTION_MODE}"

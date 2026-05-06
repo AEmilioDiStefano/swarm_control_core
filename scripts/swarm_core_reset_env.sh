@@ -2,7 +2,7 @@
 #
 # swarm_core_reset_env.sh
 #
-# Source-only reset helper that clears ROS/community/proprietary carryover
+# Source-only reset helper that clears ROS/core/pro carryover
 # environment variables in the current shell and optionally stops running
 # robot/UI processes and services.
 
@@ -24,9 +24,9 @@ Options:
   --domain-id <id>             Community ROS domain ID target (default: 17)
   --machine-role <control|robot|auto>
                                Used for process/service reset behavior (default: auto)
-  --compat-mode                Community compatibility prep mode:
+  --compat-mode                Core compatibility prep mode:
                                stop conflicting services/processes and on robots apply
-                               runtime-only masks for proprietary services.
+                               runtime-only masks for conflicting services.
   --skip-process-reset         Do not stop existing services/processes
   --dry-run                    Print process-reset actions without applying them
   -h, --help                   Show this help
@@ -35,7 +35,7 @@ Behavior:
   - Clears stale ROS/discovery/auth/profile variables from current shell.
   - Deep scope also clears shell overlay vars (AMENT/CMAKE/COLCON plus
     PYTHON/LD/ROS_PACKAGE/PKG_CONFIG) and sets ROS_DOMAIN_ID to --domain-id
-    (17 by default) for community defaults.
+    (17 by default) for core defaults.
   - By default, calls swarm_core_terminate_existing_robot_processes.sh to stop
     prior package processes/services.
 USAGE
@@ -165,6 +165,7 @@ runtime_vars=(
   SWARM_CORE_ALLOW_ANON_READONLY
   SWARM_CORE_DEV_LOGIN_ENABLED
   SWARM_CORE_DEV_USERS_JSON
+  SWARM_CORE_UNSAFE_ALLOW_WEAK_AUTH_NON_LOOPBACK
   SWARM_CORE_WEBRTC_ICE_SERVERS_JSON
   SWARM_CORE_WEBRTC_ICE_TRANSPORT_POLICY
   SWARM_CORE_FPV_BIND_HOST
@@ -178,6 +179,7 @@ runtime_vars=(
   SWARM_FPV_ALLOW_ANON_READONLY
   SWARM_FPV_DEV_LOGIN_ENABLED
   SWARM_FPV_DEV_USERS_JSON
+  SWARM_FPV_UNSAFE_ALLOW_WEAK_AUTH_NON_LOOPBACK
   SWARM_FPV_WEBRTC_ICE_SERVERS_JSON
   SWARM_FPV_WEBRTC_ICE_TRANSPORT_POLICY
   SWARM_CORE_MAIN_STREAM_FPS
@@ -188,6 +190,12 @@ runtime_vars=(
   SWARM_CORE_IMAGE_SUBSCRIPTION_MODE
   SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S
   SWARM_CORE_THUMB_ROBOTS_PER_TICK
+  SWARM_CORE_REMOTE_REQUEST_HOST_SUFFIX
+  SWARM_CORE_REMOTE_MAIN_STREAM
+  SWARM_CORE_REMOTE_JPEG_POLL_MS
+  SWARM_CORE_REMOTE_JPEG_MAX_W
+  SWARM_CORE_REMOTE_JPEG_MAX_H
+  SWARM_CORE_REMOTE_JPEG_QUALITY
   SWARM_CORE_GATEWAY_ID
   SWARM_CORE_GATEWAY_NAME
   SWARM_CORE_GATEWAY_ROLE

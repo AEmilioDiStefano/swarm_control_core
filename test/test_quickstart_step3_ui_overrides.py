@@ -7,13 +7,15 @@ CORE_ROOT = Path(__file__).resolve().parents[1]
 STEP3_SCRIPT = CORE_ROOT / "scripts" / "swarm_core_quickstart_step3.sh"
 
 
-def test_step3_preserves_cloudflare_ui_override_vars_across_reset():
+def test_step3_preserves_ui_override_vars_across_reset():
     text = STEP3_SCRIPT.read_text(encoding="utf-8")
 
     assert 'SWARM_CORE_AUTH_MODE' in text
     assert 'SWARM_CORE_DEV_USERS_JSON' in text
     assert 'SWARM_CORE_WEBRTC_MAIN_ONLY' in text
     assert 'SWARM_CORE_FLEET_PREVIEW_PRESET' in text
+    assert 'SWARM_CORE_REMOTE_REQUEST_HOST_SUFFIX' in text
+    assert 'SWARM_CORE_REMOTE_MAIN_STREAM' in text
     assert 'SWARM_CORE_GATEWAY_ID' in text
     assert 'SWARM_CORE_HUB_URL' in text
     assert 'declare -A preserved_env=()' in text

@@ -4,10 +4,10 @@ Use these wiring references for the hardware-side GPIO mappings that back the
 core robot drive profiles:
 
 - [`CONTROL_INTERFACE_INDEX.md`](./CONTROL_INTERFACE_INDEX.md) is generated from
-  `config/control_interfaces.yaml` and lists every interface, backend, layout,
-  compatible control type, and wiring doc.
-- [`GPIO_for_differential_L298N.md`](./GPIO_for_differential_L298N.md)
-- [`GPIO_for_differential_DUAL_L298N.md`](./GPIO_for_differential_DUAL_L298N.md)
-- [`GPIO_for_differential_Tb6612_DUAL.md`](./GPIO_for_differential_Tb6612_DUAL.md)
-- [`GPIO_for_mecanum_DUAL_L298N.md`](./GPIO_for_mecanum_DUAL_L298N.md)
-- [`GPIO_for_mecanum_Tb6612_DUAL.md`](./GPIO_for_mecanum_Tb6612_DUAL.md)
+  `config/control_interfaces.yaml` and points maintainers back to the YAML
+  source of truth.
+- Each control-interface entry in `config/control_interfaces.yaml` uses
+  `docs.wiring` to point at the correct wiring guide in this directory.
+
+Add or change the YAML first, then add a wiring guide only when the new
+interface needs one.

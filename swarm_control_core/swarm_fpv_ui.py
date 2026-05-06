@@ -255,6 +255,47 @@ def _community_allow_lan_bind() -> bool:
     )
 
 
+def _unsafe_allow_weak_auth_non_loopback() -> bool:
+    return str(os.environ.get("SWARM_CORE_UNSAFE_ALLOW_WEAK_AUTH_NON_LOOPBACK", "0")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _remote_or_gateway_profile_requested() -> bool:
+    gateway_role = str(os.environ.get("SWARM_CORE_GATEWAY_ROLE", "")).strip().lower()
+    gateway_route = str(os.environ.get("SWARM_CORE_GATEWAY_ROUTE_TYPE", "")).strip().lower()
+    if gateway_role and gateway_role not in ("local_gateway", "local"):
+        return True
+    if gateway_route and gateway_route not in ("local_gateway", "local"):
+        return True
+    if str(os.environ.get("SWARM_CORE_HUB_URL", "")).strip():
+        return True
+    for key in (
+        "SWARM_CORE_REMOTE_REQUEST_HOST_SUFFIX",
+        "SWARM_CORE_REMOTE_MAIN_STREAM",
+        "SWARM_CORE_REMOTE_JPEG_POLL_MS",
+        "SWARM_CORE_REMOTE_JPEG_MAX_W",
+        "SWARM_CORE_REMOTE_JPEG_MAX_H",
+        "SWARM_CORE_REMOTE_JPEG_QUALITY",
+    ):
+        if str(os.environ.get(key, "")).strip():
+            return True
+    return False
+
+
+def _host_matches_suffix(host: str, suffix: str) -> bool:
+    normalized_host = str(host or "").strip().lower()
+    normalized_suffix = str(suffix or "").strip().lower()
+    if not normalized_host or not normalized_suffix:
+        return False
+    if normalized_suffix.startswith("."):
+        return normalized_host.endswith(normalized_suffix)
+    return normalized_host == normalized_suffix or normalized_host.endswith("." + normalized_suffix)
+
+
 def _is_loopback_host(host: str) -> bool:
     normalized = str(host or "").strip().lower()
     if normalized in ("127.0.0.1", "localhost", "::1"):
@@ -417,7 +458,6 @@ class RosFleetHub(Node):
         self.declare_parameter("fleet_preview_preset", "scalable_fleet")
         self.declare_parameter("robot_presence_timeout_s", 5.0)
         self.declare_parameter("robot_presence_bootstrap_grace_s", 3.0)
-        self.declare_parameter("allow_unknown_robot_control", False)
         self.declare_parameter("gateway_id", "")
         self.declare_parameter("gateway_name", "")
         self.declare_parameter("gateway_role", "")
@@ -459,9 +499,6 @@ class RosFleetHub(Node):
             1.0,
             float(self.get_parameter("robot_presence_bootstrap_grace_s").value),
         )
-        self.allow_unknown_robot_control = str(
-            self.get_parameter("allow_unknown_robot_control").value
-        ).strip().lower() in ("1", "true", "yes", "on")
         gateway_defaults = gateway_identity_from_env(prefixes=("SWARM_CORE",))
         self.gateway_info = build_gateway_public(
             gateway_id=str(self.get_parameter("gateway_id").value).strip() or gateway_defaults["id"],
@@ -557,11 +594,8 @@ class RosFleetHub(Node):
             )
         )
         self.get_logger().info(
-            "[swarm_fpv_ui] trusted_robots=%s allow_unknown_robot_control=%s"
-            % (
-                ",".join(sorted(self._trusted_robots)) or "<none>",
-                "true" if self.allow_unknown_robot_control else "false",
-            )
+            "[swarm_fpv_ui] trusted_robots=%s"
+            % (",".join(sorted(self._trusted_robots)) or "<none>")
         )
         self.get_logger().info(
             "[swarm_fpv_ui] gateway id=%s name=%s role=%s route=%s hub=%s"
@@ -588,7 +622,7 @@ class RosFleetHub(Node):
         robot = str(robot or "").strip()
         if not robot:
             return False
-        return self.is_trusted_robot(robot) or bool(self.allow_unknown_robot_control)
+        return self.is_trusted_robot(robot)
 
     def gateway_public(self) -> Dict[str, Any]:
         return dict(self.gateway_info)
@@ -610,9 +644,6 @@ class RosFleetHub(Node):
         if trusted:
             status = "trusted"
             reason = "Robot exists in the configured robot registry."
-        elif control_allowed:
-            status = "unknown_control_allowed"
-            reason = "Robot is not in the registry, but unknown robot control override is enabled."
         else:
             status = "unknown_readonly"
             reason = (
@@ -628,7 +659,7 @@ class RosFleetHub(Node):
 
     def _warn_unknown_robot_once(self, robot: str, context: str = "discovery") -> None:
         robot = str(robot or "").strip()
-        if not robot or self.is_trusted_robot(robot) or self.allow_unknown_robot_control:
+        if not robot or self.is_trusted_robot(robot):
             return
         if robot in self._unknown_robot_warned:
             return
@@ -636,8 +667,7 @@ class RosFleetHub(Node):
         known = ", ".join(sorted(self._trusted_robots)) or "<none>"
         self.get_logger().warn(
             "[swarm_fpv_ui] untrusted robot '%s' discovered via %s; keeping it read-only. "
-            "Known trusted robots: %s. Run sync_robot_entries_core/add_robot_core on the control machine, "
-            "or set SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL=1 only in a trusted lab."
+            "Known trusted robots: %s. Run sync_robot_entries_core/add_robot_core on the control machine."
             % (robot, str(context or "discovery"), known)
         )
 
@@ -1293,7 +1323,7 @@ class RosFleetHub(Node):
         meta = self.robot_meta(robot)
         trust = self._robot_trust_public(robot)
         dt = str(meta.get("drive_type", "")).lower()
-        can_strafe = ("omni" in dt) or ("mecanum" in dt)
+        can_strafe = "mecanum" in dt
         can_vertical = ("aerial" in dt) or ("uav" in dt) or ("drone" in dt)
         profile = "ground_xyaw"
         if can_strafe:
@@ -1335,7 +1365,7 @@ class RosFleetHub(Node):
         teleop_medium_steps = _safe_int("teleop_medium_steps", 10, min_value=0)
         teleop_fast_linear_steps = _safe_int("teleop_fast_linear_steps", 15, min_value=0)
         teleop_fast_angular_steps = _safe_int("teleop_fast_angular_steps", 10, min_value=0)
-        teleop_omni_turn_gain = _safe_float("teleop_omni_turn_gain", 0.5, min_value=0.0)
+        teleop_mecanum_turn_gain = _safe_float("teleop_mecanum_turn_gain", 0.5, min_value=0.0)
         teleop_diff_arc_inner_ratio = _safe_float("teleop_diff_arc_inner_ratio", 0.6)
         teleop_diff_arc_inner_ratio = max(0.0, min(1.0, teleop_diff_arc_inner_ratio))
         wheel_separation_m = drive_params.get("wheel_separation_m", drive_params.get("wheel_base_m", 0.18))
@@ -1369,7 +1399,7 @@ class RosFleetHub(Node):
             "teleop_medium_steps": teleop_medium_steps,
             "teleop_fast_linear_steps": teleop_fast_linear_steps,
             "teleop_fast_angular_steps": teleop_fast_angular_steps,
-            "teleop_omni_turn_gain": teleop_omni_turn_gain,
+            "teleop_mecanum_turn_gain": teleop_mecanum_turn_gain,
             "teleop_diff_arc_inner_ratio": teleop_diff_arc_inner_ratio,
             "wheel_separation_m": wheel_separation_m,
         }
@@ -1932,6 +1962,35 @@ class BrowserServer:
         asyncio.create_task(self._lock_reaper())
         asyncio.create_task(self._dev_session_reaper())
 
+    def _weak_auth_remote_request_blocked(self, req: web.Request) -> bool:
+        if self.auth_config.mode not in (AUTH_MODE_OFF, AUTH_MODE_DEV):
+            return False
+        if _unsafe_allow_weak_auth_non_loopback():
+            return False
+        req_host = _request_host_without_port(req)
+        if _is_loopback_host(req_host) or _is_private_or_wildcard_host(req_host):
+            return False
+        return True
+
+    @web.middleware
+    async def weak_auth_remote_request_guard(self, req: web.Request, handler):
+        if self._weak_auth_remote_request_blocked(req):
+            req_host = _request_host_without_port(req) or "<unknown>"
+            self.hub.get_logger().warn(
+                "[community] rejected weak-auth request for non-local host "
+                f"'{req_host}'. Use production auth in pro, or set "
+                "SWARM_CORE_UNSAFE_ALLOW_WEAK_AUTH_NON_LOOPBACK=1 only for an explicit trusted-lab exception."
+            )
+            return web.Response(
+                status=403,
+                text=(
+                    "Refusing weak local-lab auth over a non-local host. "
+                    "Use production auth in pro, or set the explicit trusted-lab override."
+                ),
+                headers=_no_cache_headers(),
+            )
+        return await handler(req)
+
     def _principal_can_control(self, principal: Principal) -> bool:
         # Community edition runs in local auth_mode=off; do not gate drive/autonomy
         # on scope claims in this mode.
@@ -2393,16 +2452,19 @@ class BrowserServer:
         default_jpeg_max_w = ""
         default_jpeg_max_h = ""
         default_jpeg_quality = ""
-        trycloudflare_main_stream = _normalize_main_stream_mode(
-            os.environ.get("SWARM_CORE_TRYCLOUDFLARE_MAIN_STREAM", "")
-        )
-        if trycloudflare_main_stream:
+        remote_main_stream = _normalize_main_stream_mode(os.environ.get("SWARM_CORE_REMOTE_MAIN_STREAM", ""))
+        remote_host_suffixes = [
+            part.strip()
+            for part in str(os.environ.get("SWARM_CORE_REMOTE_REQUEST_HOST_SUFFIX", "")).split(",")
+            if part.strip()
+        ]
+        if remote_main_stream and remote_host_suffixes:
             req_host = _request_host_without_port(req)
-            if req_host.endswith(".trycloudflare.com"):
-                default_main_stream = trycloudflare_main_stream
+            if any(_host_matches_suffix(req_host, suffix) for suffix in remote_host_suffixes):
+                default_main_stream = remote_main_stream
                 default_jpeg_poll_ms = str(
                     _bounded_int(
-                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_POLL_MS", "160"),
+                        os.environ.get("SWARM_CORE_REMOTE_JPEG_POLL_MS", "160"),
                         fallback=160,
                         minimum=40,
                         maximum=500,
@@ -2410,7 +2472,7 @@ class BrowserServer:
                 )
                 default_jpeg_max_w = str(
                     _bounded_int(
-                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_MAX_W", "424"),
+                        os.environ.get("SWARM_CORE_REMOTE_JPEG_MAX_W", "424"),
                         fallback=424,
                         minimum=0,
                         maximum=1920,
@@ -2418,7 +2480,7 @@ class BrowserServer:
                 )
                 default_jpeg_max_h = str(
                     _bounded_int(
-                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_MAX_H", "318"),
+                        os.environ.get("SWARM_CORE_REMOTE_JPEG_MAX_H", "318"),
                         fallback=318,
                         minimum=0,
                         maximum=1080,
@@ -2426,7 +2488,7 @@ class BrowserServer:
                 )
                 default_jpeg_quality = str(
                     _bounded_int(
-                        os.environ.get("SWARM_CORE_TRYCLOUDFLARE_JPEG_QUALITY", "45"),
+                        os.environ.get("SWARM_CORE_REMOTE_JPEG_QUALITY", "45"),
                         fallback=45,
                         minimum=30,
                         maximum=95,
@@ -3983,7 +4045,7 @@ let driveMediumLinear = 0.5;
 let driveMediumAngular = 1.0;
 let driveFastLinear = 0.5;
 let driveFastAngular = 1.0;
-let driveOmniTurnGain = 0.5;
+let driveMecanumTurnGain = 0.5;
 let driveDiffArcInnerRatio = 0.6;
 let driveWheelSeparation = 0.18;
 const driveButtonsByToken = new Map();
@@ -4490,7 +4552,7 @@ function configureDriveProfile(robot){
   driveFastAngular = driveSlowAngular * Math.pow(driveSpeedStep, fastAngularSteps);
   driveLinearSpeed = driveSlowLinear;
   driveAngularSpeed = driveSlowAngular;
-  driveOmniTurnGain = Math.max(0.0, _toNumber(c.teleop_omni_turn_gain, 0.5));
+  driveMecanumTurnGain = Math.max(0.0, _toNumber(c.teleop_mecanum_turn_gain, 0.5));
   driveDiffArcInnerRatio = _clamp(_toNumber(c.teleop_diff_arc_inner_ratio, 0.6), 0.0, 1.0);
   driveWheelSeparation = Math.max(1e-3, _toNumber(c.wheel_separation_m, 0.18));
   strafeMode = false;
@@ -4523,8 +4585,8 @@ function _diffArcCommand(token, linearMag){
   return { lin: v, yaw: w, lat: 0.0, vert: 0.0 };
 }
 
-function _omniArcCommand(token, linearMag, angularMag){
-  const yawMag = driveOmniTurnGain * angularMag;
+function _mecanumArcCommand(token, linearMag, angularMag){
+  const yawMag = driveMecanumTurnGain * angularMag;
   if (token === "7") return { lin: +linearMag, yaw: +yawMag, lat: 0.0, vert: 0.0 };
   if (token === "9") return { lin: +linearMag, yaw: -yawMag, lat: 0.0, vert: 0.0 };
   if (token === "1") return { lin: -linearMag, yaw: +yawMag, lat: 0.0, vert: 0.0 };
@@ -4572,7 +4634,7 @@ function driveCommandForToken(token){
     if (_isDiffDrive(c)){
       return _diffArcCommand(token, S);
     }
-    return _omniArcCommand(token, S, A);
+    return _mecanumArcCommand(token, S, A);
   }
 
   return null;
@@ -4587,7 +4649,7 @@ function toggleStrafeMode(){
   const c = capFor(activeRobot);
   if (!c.can_strafe){
     strafeMode = false;
-    setStatus("[STRAFE] Disabled: active robot is not mecanum/omni.");
+    setStatus("[STRAFE] Disabled: active robot is not mecanum.");
     renderCapabilityMeta();
     renderDriveControls();
     return true;
@@ -5206,7 +5268,7 @@ function capFor(robot){
     teleop_medium_steps: 10,
     teleop_fast_linear_steps: 15,
     teleop_fast_angular_steps: 10,
-    teleop_omni_turn_gain: 0.5,
+    teleop_mecanum_turn_gain: 0.5,
     teleop_diff_arc_inner_ratio: 0.6,
     wheel_separation_m: 0.18
   };
@@ -6816,6 +6878,23 @@ async def _run_server():
     auth_issuer = ""
     auth_audience = ""
     auth_jwks_url = ""
+
+    weak_auth_exposure_requested = (not _is_loopback_host(bind_host)) or _remote_or_gateway_profile_requested()
+    if auth_mode in (AUTH_MODE_OFF, AUTH_MODE_DEV) and weak_auth_exposure_requested:
+        if not _unsafe_allow_weak_auth_non_loopback():
+            raise RuntimeError(
+                "Refusing to start FPV UI with auth_mode=%s for non-loopback, tunnel, "
+                "or gateway-style exposure. Core auth_mode=off/dev is for local lab use only. "
+                "Use a production auth mode in pro, or set "
+                "SWARM_CORE_UNSAFE_ALLOW_WEAK_AUTH_NON_LOOPBACK=1 for an explicit trusted-lab exception."
+                % auth_mode
+            )
+        hub.get_logger().warn(
+            "UNSAFE LAB OVERRIDE: SWARM_CORE_UNSAFE_ALLOW_WEAK_AUTH_NON_LOOPBACK=1 permits "
+            "auth_mode=%s outside loopback/local-only operation. Do not use this posture for production."
+            % auth_mode
+        )
+
     if auth_mode == AUTH_MODE_OFF:
         allow_anon = False
     site_id = "community_local"
@@ -6846,7 +6925,7 @@ async def _run_server():
         webrtc_ice_servers_json=webrtc_ice_servers_json,
         webrtc_ice_transport_policy=webrtc_ice_transport_policy,
     )
-    app = web.Application()
+    app = web.Application(middlewares=[server.weak_auth_remote_request_guard])
     app.add_routes(
         [
             web.get("/", server.handle_index),
@@ -6874,8 +6953,7 @@ async def _run_server():
     )
     if auth_config.mode == AUTH_MODE_OFF and bind_host not in ("127.0.0.1", "localhost"):
         hub.get_logger().warn(
-            "FPV UI is running with auth_mode=off on a non-loopback bind host. "
-            "Use auth_mode=dev before exposing this endpoint outside a trusted lab."
+            "FPV UI is running with auth_mode=off on a non-loopback bind host under an explicit unsafe lab override."
         )
     hub.get_logger().info(f"Swarm FPV UI dev_login_enabled={dev_login_enabled}")
     if hub.webrtc_main_only:

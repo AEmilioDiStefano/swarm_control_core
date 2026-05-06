@@ -8,7 +8,6 @@ DriveType implementation without touching motor_driver_node.py.
 
 ⭐ Relationship to profile files:
   - robot_instances.yaml selects control_type/drive_profile + control_interface per robot
-  - legacy robot_profiles.yaml remains supported as fallback
   - drive_types.py decides how a Twist is mixed for a given drive_profile.type
 
 How to add a new drive type (tiny README):
@@ -114,7 +113,7 @@ def register_drive_type(cls: Type[DriveType], *names: str) -> None:
 
 
 register_drive_type(DiffDrive, "diff", "diff-drive")
-register_drive_type(MecanumDrive, "omni", "omnidirectional", "mecanum_drive", "mecanum-drive")
+register_drive_type(MecanumDrive, "mecanum_drive", "mecanum-drive")
 
 
 def get_drive_type(name: str) -> DriveType:

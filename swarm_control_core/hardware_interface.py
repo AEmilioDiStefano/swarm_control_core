@@ -269,7 +269,7 @@ class HardwareInterface:
         rr_duty: float, rr_dir: int,
         bypass_ramp: bool = False,
     ):
-        """Set outputs for a 4-channel mecanum/omni drivetrain."""
+        """Set outputs for a 4-channel mecanum drivetrain."""
         if getattr(self, "_mock", True):
             LOG.debug(
                 "MOCK set_mecanum: FL(duty=%s,dir=%s) FR(duty=%s,dir=%s) RL(duty=%s,dir=%s) RR(duty=%s,dir=%s)",

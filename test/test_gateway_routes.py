@@ -28,8 +28,8 @@ def test_gateway_identity_prefers_env_prefix_order(monkeypatch):
 def test_local_gateway_routes_mark_live_and_control_allowed():
     gateway = build_gateway_public(
         gateway_id="base-01",
-        gateway_name="Field Base 01",
-        gateway_role="field_gateway",
+        gateway_name="Local Base 01",
+        gateway_role="local_gateway",
     )
 
     routes = build_local_gateway_routes(
@@ -41,7 +41,7 @@ def test_local_gateway_routes_mark_live_and_control_allowed():
     )
 
     assert routes["robot5"]["route_status"] == "live"
-    assert routes["robot5"]["gateway_name"] == "Field Base 01"
+    assert routes["robot5"]["gateway_name"] == "Local Base 01"
     assert routes["robot5"]["control_allowed"] is True
     assert routes["robot5"]["video_plane"] == "local_ros2_dds_to_ui_webrtc"
     assert routes["robot4"]["route_status"] == "visible_stale"

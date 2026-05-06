@@ -1,6 +1,6 @@
 # GPIO connections from two L298N motor controllers to Raspberry Pi 4 for mecanum drive
 
-This mapping is aligned to `dual_l298n_mecanum.gpio` in
+This mapping is aligned to `mecanum_l298n_2.gpio` in
 `config/control_interfaces.yaml`. It is intended for a four-wheel mecanum robot
 where each wheel has its own L298N channel.
 
@@ -62,7 +62,7 @@ Rear-right wheel, L298N #2 Channel B:
 
 ## Expected software behavior
 
-The software treats this profile as a mecanum/omni drive robot:
+The software treats this profile as a mecanum drive robot:
 
 - forward -> all four wheels drive forward
 - backward -> all four wheels drive backward

@@ -39,12 +39,12 @@ def test_ensure_robot_entry_creates_runtime_entry_without_dirtying_repo_by_defau
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots:
   robot3:
     ssh_target: robot3@legion3.local
     control_type: diff_drive
-    control_interface: l298n_diff
+    control_interface: 4wheel_diff_l298n_1
 """,
     )
     _write(
@@ -55,7 +55,7 @@ control_types:
     type: diff_drive
     params: {}
   mecanum_drive:
-    type: omni
+    type: mecanum
     params: {}
 """,
     )
@@ -63,13 +63,13 @@ control_types:
         control_interfaces,
         """schema_version: "1.0"
 control_interfaces:
-  l298n_diff:
+  4wheel_diff_l298n_1:
     gpio: {}
     params: {}
-  dual_tb6612_diff_4wheel_tracked:
+  4wheel_diff_tb6612fng_2:
     gpio: {}
     params: {}
-  dual_tb6612_mecanum:
+  mecanum_tb6612fng_2:
     gpio: {}
     params: {}
 """,
@@ -83,7 +83,7 @@ control_interfaces:
         robot_name="robot_new",
         prompt_input=None,
         control_type="diff_drive",
-        control_interface="dual_tb6612_diff_4wheel_tracked",
+        control_interface="4wheel_diff_tb6612fng_2",
         linux_username="robot_new",
         hostname="robot-new-pi",
     )
@@ -91,7 +91,7 @@ control_interfaces:
     assert created is True
     assert entry["ssh_target"] == "robot_new@robot-new-pi.local"
     assert entry["control_type"] == "diff_drive"
-    assert entry["control_interface"] == "dual_tb6612_diff_4wheel_tracked"
+    assert entry["control_interface"] == "4wheel_diff_tb6612fng_2"
     assert len(sync_results) == 1
     assert sync_results[0]["path"] == runtime_profiles
     assert sync_results[0]["state"] == "missing_file"
@@ -117,7 +117,7 @@ def test_ensure_robot_entry_can_update_source_baseline_when_requested(tmp_path: 
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots: {}
 """,
     )
@@ -134,7 +134,7 @@ control_types:
         control_interfaces,
         """schema_version: "1.0"
 control_interfaces:
-  dual_tb6612_diff_4wheel_tracked:
+  4wheel_diff_tb6612fng_2:
     compatible_control_types:
       - diff_drive
     gpio: {}
@@ -150,7 +150,7 @@ control_interfaces:
         robot_name="robot_new",
         prompt_input=None,
         control_type="diff_drive",
-        control_interface="dual_tb6612_diff_4wheel_tracked",
+        control_interface="4wheel_diff_tb6612fng_2",
         linux_username="robot_new",
         hostname="robot-new-pi",
         update_source_baseline=True,
@@ -158,7 +158,7 @@ control_interfaces:
 
     repo_text = repo_profiles.read_text(encoding="utf-8")
     assert "robot_new:" in repo_text
-    assert "control_interface: dual_tb6612_diff_4wheel_tracked" in repo_text
+    assert "control_interface: 4wheel_diff_tb6612fng_2" in repo_text
 
 
 def test_ensure_robot_entry_reports_stale_runtime_entry(tmp_path: Path) -> None:
@@ -173,12 +173,12 @@ def test_ensure_robot_entry_reports_stale_runtime_entry(tmp_path: Path) -> None:
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots:
   robot_existing:
     ssh_target: robot_existing@robot-existing.local
     control_type: diff_drive
-    control_interface: dual_tb6612_diff_4wheel_tracked
+    control_interface: 4wheel_diff_tb6612fng_2
 """,
     )
     _write(
@@ -194,7 +194,7 @@ control_types:
         control_interfaces,
         """schema_version: "1.0"
 control_interfaces:
-  dual_tb6612_diff_4wheel_tracked:
+  4wheel_diff_tb6612fng_2:
     gpio: {}
     params: {}
 """,
@@ -204,12 +204,12 @@ control_interfaces:
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots:
   robot_existing:
     ssh_target: robot_existing@old-host.local
     control_type: diff_drive
-    control_interface: l298n_diff
+    control_interface: 4wheel_diff_l298n_1
 """,
     )
 
@@ -223,13 +223,13 @@ robots:
     )
 
     assert created is False
-    assert entry["control_interface"] == "dual_tb6612_diff_4wheel_tracked"
+    assert entry["control_interface"] == "4wheel_diff_tb6612fng_2"
     assert sync_results[0]["state"] == "stale_entry"
     assert sync_results[0]["repaired"] is True
 
     runtime_text = runtime_profiles.read_text(encoding="utf-8")
     assert "ssh_target: robot_existing@robot-existing.local" in runtime_text
-    assert "control_interface: dual_tb6612_diff_4wheel_tracked" in runtime_text
+    assert "control_interface: 4wheel_diff_tb6612fng_2" in runtime_text
 
 
 def test_ensure_robot_entry_can_update_existing_robot_runtime_when_explicit(tmp_path: Path) -> None:
@@ -244,12 +244,12 @@ def test_ensure_robot_entry_can_update_existing_robot_runtime_when_explicit(tmp_
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots:
   robot4:
     ssh_target: robot4@legion4.local
     control_type: diff_drive
-    control_interface: l298n_diff
+    control_interface: 4wheel_diff_l298n_1
 """,
     )
     _write(
@@ -265,10 +265,10 @@ control_types:
         control_interfaces,
         """schema_version: "1.0"
 control_interfaces:
-  l298n_diff:
+  4wheel_diff_l298n_1:
     gpio: {}
     params: {}
-  dual_l298n_diff:
+  4wheel_diff_l298n_2:
     gpio: {}
     params: {}
 """,
@@ -282,16 +282,16 @@ control_interfaces:
         robot_name="robot4",
         prompt_input=None,
         control_type="diff_drive",
-        control_interface="dual_l298n_diff",
+        control_interface="4wheel_diff_l298n_2",
         update_existing=True,
     )
 
     assert created is False
     assert entry["ssh_target"] == "robot4@legion4.local"
-    assert entry["control_interface"] == "dual_l298n_diff"
+    assert entry["control_interface"] == "4wheel_diff_l298n_2"
     assert sync_results[0]["repaired"] is True
-    assert "control_interface: l298n_diff" in repo_profiles.read_text(encoding="utf-8")
-    assert "control_interface: dual_l298n_diff" in runtime_profiles.read_text(encoding="utf-8")
+    assert "control_interface: 4wheel_diff_l298n_1" in repo_profiles.read_text(encoding="utf-8")
+    assert "control_interface: 4wheel_diff_l298n_2" in runtime_profiles.read_text(encoding="utf-8")
 
 
 def test_ensure_robot_entry_update_preserves_explicit_ip_host(tmp_path: Path) -> None:
@@ -306,12 +306,12 @@ def test_ensure_robot_entry_update_preserves_explicit_ip_host(tmp_path: Path) ->
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots:
   robot4:
     ssh_target: robot4@legion4.local
     control_type: diff_drive
-    control_interface: l298n_diff
+    control_interface: 4wheel_diff_l298n_1
 """,
     )
     _write(
@@ -327,10 +327,10 @@ control_types:
         control_interfaces,
         """schema_version: "1.0"
 control_interfaces:
-  l298n_diff:
+  4wheel_diff_l298n_1:
     gpio: {}
     params: {}
-  dual_l298n_diff:
+  4wheel_diff_l298n_2:
     gpio: {}
     params: {}
 """,
@@ -344,7 +344,7 @@ control_interfaces:
         robot_name="robot4",
         prompt_input=None,
         control_type="diff_drive",
-        control_interface="dual_l298n_diff",
+        control_interface="4wheel_diff_l298n_2",
         linux_username="robot4",
         hostname="10.42.0.44",
         update_existing=True,
@@ -359,12 +359,12 @@ def test_refresh_runtime_core_profiles_copies_reusable_profile_files(tmp_path: P
     runtime_profiles = tmp_path / "runtime" / "robot_instances.yaml"
     _write(runtime_profiles, "schema_version: '1.0'\nrobots: {}\n")
     _write(source_config / "control_types.yaml", "schema_version: '1.0'\ncontrol_types: {}\n")
-    _write(source_config / "control_interfaces.yaml", "schema_version: '1.0'\ncontrol_interfaces:\n  dual_l298n_diff: {}\n")
+    _write(source_config / "control_interfaces.yaml", "schema_version: '1.0'\ncontrol_interfaces:\n  4wheel_diff_l298n_2: {}\n")
 
     results = refresh_runtime_core_profiles(workspace, [runtime_profiles])
 
     assert {Path(item["path"]).name for item in results} == {"control_types.yaml", "control_interfaces.yaml"}
-    assert (tmp_path / "runtime" / "control_interfaces.yaml").read_text(encoding="utf-8").find("dual_l298n_diff") >= 0
+    assert (tmp_path / "runtime" / "control_interfaces.yaml").read_text(encoding="utf-8").find("4wheel_diff_l298n_2") >= 0
 
 
 def test_wiring_doc_for_interface_reads_profile_metadata(tmp_path: Path) -> None:
@@ -373,12 +373,12 @@ def test_wiring_doc_for_interface_reads_profile_metadata(tmp_path: Path) -> None
         control_interfaces,
         """schema_version: "1.0"
 control_interfaces:
-  dual_l298n_diff:
+  4wheel_diff_l298n_2:
     docs:
       wiring: DOCS/GPIO/GPIO_for_differential_DUAL_L298N.md
     gpio: {}
     params: {}
-  dual_l298n_mecanum:
+  mecanum_l298n_2:
     docs:
       wiring: DOCS/GPIO/GPIO_for_mecanum_DUAL_L298N.md
     gpio: {}
@@ -386,8 +386,8 @@ control_interfaces:
 """,
     )
 
-    assert wiring_doc_for_interface(control_interfaces, "dual_l298n_diff") == "DOCS/GPIO/GPIO_for_differential_DUAL_L298N.md"
-    assert wiring_doc_for_interface(control_interfaces, "dual_l298n_mecanum") == "DOCS/GPIO/GPIO_for_mecanum_DUAL_L298N.md"
+    assert wiring_doc_for_interface(control_interfaces, "4wheel_diff_l298n_2") == "DOCS/GPIO/GPIO_for_differential_DUAL_L298N.md"
+    assert wiring_doc_for_interface(control_interfaces, "mecanum_l298n_2") == "DOCS/GPIO/GPIO_for_mecanum_DUAL_L298N.md"
 
 
 def test_ensure_camera_profile_uses_callback_when_profile_missing(tmp_path: Path) -> None:
@@ -422,20 +422,20 @@ profiles:
 
 def test_compatible_control_interfaces_prefers_matching_drive_family() -> None:
     interfaces = [
-        "l298n_diff",
-        "dual_l298n_diff",
-        "dual_l298n_mecanum",
-        "dual_tb6612_diff_4wheel_tracked",
-        "dual_tb6612_mecanum",
+        "4wheel_diff_l298n_1",
+        "4wheel_diff_l298n_2",
+        "mecanum_l298n_2",
+        "4wheel_diff_tb6612fng_2",
+        "mecanum_tb6612fng_2",
     ]
     assert _compatible_control_interfaces("diff_drive", interfaces) == [
-        "l298n_diff",
-        "dual_l298n_diff",
-        "dual_tb6612_diff_4wheel_tracked",
+        "4wheel_diff_l298n_1",
+        "4wheel_diff_l298n_2",
+        "4wheel_diff_tb6612fng_2",
     ]
     assert _compatible_control_interfaces("mecanum_drive", interfaces) == [
-        "dual_l298n_mecanum",
-        "dual_tb6612_mecanum",
+        "mecanum_l298n_2",
+        "mecanum_tb6612fng_2",
     ]
 
 
@@ -453,14 +453,14 @@ def test_build_robot_entry_preserves_explicit_host_suffix_or_address() -> None:
     assert _build_robot_entry(
         "robot4",
         "diff_drive",
-        "dual_l298n_diff",
+        "4wheel_diff_l298n_2",
         linux_username="robot4",
         hostname="legion4.local",
     )["ssh_target"] == "robot4@legion4.local"
     assert _build_robot_entry(
         "robot4",
         "diff_drive",
-        "dual_l298n_diff",
+        "4wheel_diff_l298n_2",
         linux_username="robot4",
         hostname="10.42.0.44",
     )["ssh_target"] == "robot4@10.42.0.44"

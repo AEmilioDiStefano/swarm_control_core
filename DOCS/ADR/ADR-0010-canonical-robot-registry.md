@@ -35,13 +35,13 @@ Reusable component profiles remain separate:
 Operators should add or update robots through the canonical workflow:
 
 ```bash
-ros2 run swarm_control_core add_robot_core --workspace "$WS" --name robot4 --control-type diff_drive --control-interface dual_l298n_diff
+ros2 run swarm_control_core add_robot_core --workspace "$WS" --name robot4 --control-type diff_drive --control-interface 4wheel_diff_l298n_2
 ```
 
 or the source-tree wrapper:
 
 ```bash
-"$WS/src/swarm_control_core/scripts/swarm_core_add_robot.sh" --name robot4 --control-type diff_drive --control-interface dual_l298n_diff
+"$WS/src/swarm_control_core/scripts/swarm_core_add_robot.sh" --name robot4 --control-type diff_drive --control-interface 4wheel_diff_l298n_2
 ```
 
 The add/configure workflow:

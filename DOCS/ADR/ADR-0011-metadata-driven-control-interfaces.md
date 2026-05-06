@@ -21,7 +21,6 @@ Control interface compatibility and schema details now live in
 Each interface declares:
 
 - canonical lowercase snake-case ID
-- optional legacy `aliases`
 - `compatible_control_types`
 - `backend`
 - `wheel_layout`
@@ -32,14 +31,15 @@ Each interface declares:
 
 Python uses this metadata to:
 
-- resolve legacy aliases to canonical names
+- keep canonical profile names in robot entries
 - filter wizard choices by `compatible_control_types`
 - validate profile schemas generically
-- generate the GPIO/control-interface index from YAML
+- keep the generated GPIO/control-interface source pointer aligned with YAML
 
-The canonical naming convention is lowercase snake case, such as
-`dual_l298n_mecanum`. Existing mixed-case names such as `dual_L298N_mecanum`
-remain aliases for backward compatibility.
+The canonical naming convention is lowercase snake case with enough hardware
+detail to identify the wheel layout and controller count. Mixed-case or
+shortened duplicate names are not kept in the baseline config. The YAML is the
+authoritative profile catalog.
 
 ## Consequences
 
@@ -47,7 +47,7 @@ Adding another GPIO H-bridge motor-controller profile should usually require:
 
 1. one `control_interfaces.yaml` entry
 2. an optional wiring doc
-3. regenerated profile docs
+3. generated-doc freshness check
 4. generic validation
 
 It should not require edits to wizard code or profile-specific Python tests.
@@ -69,7 +69,7 @@ ros2 run swarm_control_core validate_profiles_core \
   --check-docs-exist
 ```
 
-Regenerate profile docs with:
+Refresh the generated source pointer with:
 
 ```bash
 ros2 run swarm_control_core generate_profile_docs_core \

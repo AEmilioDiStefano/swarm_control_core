@@ -19,19 +19,19 @@ def test_robot_doctor_reports_stale_runtime_control_interface(tmp_path: Path, mo
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots:
   robot4:
     ssh_target: robot4@legion4.local
     control_type: diff_drive
-    control_interface: dual_l298n_diff
+    control_interface: 4wheel_diff_l298n_2
 """,
     )
     _write(
         config / "control_interfaces.yaml",
         """schema_version: "1.0"
 control_interfaces:
-  dual_l298n_diff:
+  4wheel_diff_l298n_2:
     docs:
       wiring: DOCS/GPIO/GPIO_for_differential_DUAL_L298N.md
     gpio: {}
@@ -65,7 +65,7 @@ def test_robot_doctor_accepts_runtime_only_robot_entry(tmp_path: Path, monkeypat
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots: {}
 """,
     )
@@ -73,7 +73,7 @@ robots: {}
         config / "control_interfaces.yaml",
         """schema_version: "1.0"
 control_interfaces:
-  dual_l298n_mecanum:
+  mecanum_l298n_2:
     docs:
       wiring: DOCS/GPIO/GPIO_for_mecanum_DUAL_L298N.md
     gpio: {}
@@ -86,12 +86,12 @@ control_interfaces:
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots:
   robot5:
     ssh_target: robot5@legion5.local
     control_type: mecanum_drive
-    control_interface: dual_l298n_mecanum
+    control_interface: mecanum_l298n_2
 """,
     )
     _write(runtime / "control_types.yaml", (config / "control_types.yaml").read_text(encoding="utf-8"))

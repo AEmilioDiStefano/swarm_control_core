@@ -123,9 +123,6 @@ def default_profiles_path() -> str:
     new_path = config_dir / "robot_instances.yaml"
     if new_path.exists():
         return str(new_path)
-    legacy_path = config_dir / "robot_profiles.yaml"
-    if legacy_path.exists():
-        return str(legacy_path)
 
     source_default = _source_tree_config_file("robot_instances.yaml")
     if source_default is not None:

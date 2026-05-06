@@ -17,7 +17,7 @@ CAMERA_PIPELINE="${SWARM_CORE_CAMERA_PIPELINE:-adapter}"
 
 export ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
 
-# Guard against stale proprietary discovery/session exports.
+# Guard against stale pro/discovery/session exports.
 unset ROS_DISCOVERY_SERVER
 unset ROS_SUPER_CLIENT
 unset ROS_STATIC_PEERS

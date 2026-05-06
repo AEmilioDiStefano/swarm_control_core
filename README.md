@@ -1,12 +1,11 @@
 # `swarm_control_core`
 
-Source-available local/LAN FPV and robot control for ROS 2 fleets.
+Local/LAN FPV and robot control for ROS 2 fleets.
 
-`swarm_control_core` is the public, source-available package for
-low-latency first-person video, manual drive control, and local fleet
-visibility on a private network. It focuses on local/LAN operation, while
-`swarm_control_pro` covers the broader remote-operations workflows used in the
-larger project.
+`swarm_control_core` provides low-latency first-person video, manual drive
+control, and local fleet visibility on a private network. It focuses on
+local/LAN operation, while `swarm_control_pro` covers the broader
+remote-operations workflows used in the larger project.
 
 <p align="center">
   <img src="media/remote_operation_GIF.gif" alt="Remote operation demo"> <img src="media/playbook_two_robots_INITIAL.gif" alt="Playbook orchestration demo">
@@ -34,7 +33,7 @@ in [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md).
 
 Contributions are welcome.
 
-Accepted contributions may be publicly credited and may receive non-monetary
+Accepted contributions may be credited and may receive non-monetary
 career-support benefits described in this repository. Contributors are not
 entitled to financial compensation, royalties, or profit-sharing unless
 separately agreed in writing.

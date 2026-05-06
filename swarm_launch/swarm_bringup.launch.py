@@ -698,19 +698,18 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "drive_type",
                 default_value="diff_drive",
-                description="Robot drive type: 'diff_drive' for differential drive, 'mecanum' for omnidirectional",
+                description="Robot drive type: 'diff_drive' for differential drive, 'mecanum' for mecanum",
             ),
             DeclareLaunchArgument(
                 "hardware",
-                default_value="L298N_diff",
-                description="Motor driver hardware profile: 'L298N_diff', 'dual_tb6612_mecanum', etc.",
+                default_value="4wheel_diff_l298n_1",
+                description="Motor driver hardware profile: '4wheel_diff_l298n_1', 'mecanum_tb6612fng_2', etc.",
             ),
             DeclareLaunchArgument(
                 "profiles_path",
                 default_value="",
                 description=(
-                    "Path to robot_instances.yaml (or legacy robot_profiles.yaml). "
-                    "Set explicitly or via PROFILES_PATH."
+                    "Path to robot_instances.yaml. Set explicitly or via PROFILES_PATH."
                 ),
             ),
             DeclareLaunchArgument(

@@ -153,7 +153,7 @@ class SwarmTeleop(Node):
         teleop_medium_steps = int(drive_defaults.get("teleop_medium_steps") or 10)
         teleop_fast_linear_steps = int(drive_defaults.get("teleop_fast_linear_steps") or 15)
         teleop_fast_angular_steps = int(drive_defaults.get("teleop_fast_angular_steps") or 10)
-        teleop_omni_turn_gain = float(drive_defaults.get("teleop_omni_turn_gain") or 0.5)
+        teleop_mecanum_turn_gain = float(drive_defaults.get("teleop_mecanum_turn_gain") or 0.5)
         teleop_diff_arc_inner_ratio = float(drive_defaults.get("teleop_diff_arc_inner_ratio") or 0.6)
         teleop_smooth_default = float(drive_defaults.get("teleop_smoothing_alpha") or 0.0)
 
@@ -168,7 +168,7 @@ class SwarmTeleop(Node):
         self.declare_parameter("teleop_medium_steps", int(teleop_medium_steps))
         self.declare_parameter("teleop_fast_linear_steps", int(teleop_fast_linear_steps))
         self.declare_parameter("teleop_fast_angular_steps", int(teleop_fast_angular_steps))
-        self.declare_parameter("teleop_omni_turn_gain", float(teleop_omni_turn_gain))
+        self.declare_parameter("teleop_mecanum_turn_gain", float(teleop_mecanum_turn_gain))
         self.declare_parameter("teleop_diff_arc_inner_ratio", float(teleop_diff_arc_inner_ratio))
         self.declare_parameter("teleop_smoothing_alpha", float(teleop_smooth_default))
 
@@ -192,7 +192,7 @@ class SwarmTeleop(Node):
         self.current_robot_name: Optional[str] = None
 
         # Speed profile (defaults from YAML; can be overridden per-robot)
-        self.teleop_omni_turn_gain = float(self.get_parameter("teleop_omni_turn_gain").value)
+        self.teleop_mecanum_turn_gain = float(self.get_parameter("teleop_mecanum_turn_gain").value)
         self.teleop_diff_arc_inner_ratio = float(self.get_parameter("teleop_diff_arc_inner_ratio").value)
         # Smoothing for Twist commands (0=off, 1=very smooth)
         self.teleop_smoothing_alpha = float(self.get_parameter("teleop_smoothing_alpha").value)
@@ -453,7 +453,7 @@ class SwarmTeleop(Node):
         lines.append("")
         lines.append("Robot selection:")
         lines.append("  m choose robot")
-        lines.append("  0 toggle strafe mode (mecanum/omni only)")
+        lines.append("  0 toggle strafe mode (mecanum only)")
         lines.append("")
         lines.append("CTRL-C to quit.")
         lines.append("-------------------------------")
@@ -574,7 +574,7 @@ class SwarmTeleop(Node):
     @staticmethod
     def _is_mecanum_drive_type(drive_type: str) -> bool:
         dt = str(drive_type or "").strip().lower()
-        return dt in ("mecanum", "omni", "omnidirectional", "mecanum_drive", "mecanum-drive")
+        return dt in ("mecanum", "mecanum_drive", "mecanum-drive")
 
     def _get_robot_drive_type(self, robot_name: Optional[str]) -> str:
         if not robot_name:
@@ -648,7 +648,7 @@ class SwarmTeleop(Node):
         if diag["supports_strafe"] != "True":
             self.strafe_mode = False
             self._tprint(
-                f"[STRAFE] Disabled: robot '{self.current_robot_name}' is not mecanum/omni "
+                f"[STRAFE] Disabled: robot '{self.current_robot_name}' is not mecanum "
                 f"(effective drive_type='{diag['effective_drive_type'] or 'unknown'}')."
             )
             self._tprint(
@@ -689,7 +689,7 @@ class SwarmTeleop(Node):
         teleop_medium_steps = int(drive_params.get("teleop_medium_steps") or 10)
         teleop_fast_linear_steps = int(drive_params.get("teleop_fast_linear_steps") or 15)
         teleop_fast_angular_steps = int(drive_params.get("teleop_fast_angular_steps") or 10)
-        teleop_omni_turn_gain = float(drive_params.get("teleop_omni_turn_gain") or self.teleop_omni_turn_gain)
+        teleop_mecanum_turn_gain = float(drive_params.get("teleop_mecanum_turn_gain") or self.teleop_mecanum_turn_gain)
         teleop_diff_arc_inner_ratio = float(
             drive_params.get("teleop_diff_arc_inner_ratio") or self.teleop_diff_arc_inner_ratio
         )
@@ -703,7 +703,7 @@ class SwarmTeleop(Node):
             fast_linear_steps=teleop_fast_linear_steps,
             fast_angular_steps=teleop_fast_angular_steps,
         )
-        self.teleop_omni_turn_gain = teleop_omni_turn_gain
+        self.teleop_mecanum_turn_gain = teleop_mecanum_turn_gain
         if not self._param_overrides.get("teleop_diff_arc_inner_ratio"):
             self.teleop_diff_arc_inner_ratio = max(0.0, min(1.0, teleop_diff_arc_inner_ratio))
         self.teleop_smoothing_alpha = teleop_smooth
@@ -1046,7 +1046,7 @@ class SwarmTeleop(Node):
                     if self.strafe_mode and key in ("8", "2", "4", "6", "7", "9", "1", "3"):
                         if not self._current_robot_supports_strafe():
                             self.strafe_mode = False
-                            self._tprint(f"[STRAFE] Disabled: robot '{self.current_robot_name}' is not mecanum/omni.")
+                            self._tprint(f"[STRAFE] Disabled: robot '{self.current_robot_name}' is not mecanum.")
                             continue
 
                         S = self.linear_speed
@@ -1080,7 +1080,7 @@ class SwarmTeleop(Node):
                     if mode == "circle":
                         # Circle semantics differ by drive type. For diff_drive
                         # we synthesize an arc turn with both tracks active.
-                        # For omni/mecanum, convert to a safer lateral+rotational motion.
+                        # For mecanum, convert to a safer lateral+rotational motion.
                         S = self.linear_speed
                         drive_type = self._get_robot_drive_type(self.current_robot_name) or "diff_drive"
 
@@ -1094,21 +1094,21 @@ class SwarmTeleop(Node):
                             elif key == "3":
                                 self._publish_diff_arc_turn(forward_sign=-1.0, turn_left=False)
                         else:
-                            # Omni/mecanum: emulate circle via a combination of forward/back
+                            # Mecanum: emulate circle via a combination of forward/back
                             # and a small angular velocity. Keep behaviors intuitive for user.
                             twist = Twist()
                             if key == "7":
                                 twist.linear.x = +S
-                                twist.angular.z = +self.teleop_omni_turn_gain * self.angular_speed
+                                twist.angular.z = +self.teleop_mecanum_turn_gain * self.angular_speed
                             elif key == "9":
                                 twist.linear.x = +S
-                                twist.angular.z = -self.teleop_omni_turn_gain * self.angular_speed
+                                twist.angular.z = -self.teleop_mecanum_turn_gain * self.angular_speed
                             elif key == "1":
                                 twist.linear.x = -S
-                                twist.angular.z = +self.teleop_omni_turn_gain * self.angular_speed
+                                twist.angular.z = +self.teleop_mecanum_turn_gain * self.angular_speed
                             elif key == "3":
                                 twist.linear.x = -S
-                                twist.angular.z = -self.teleop_omni_turn_gain * self.angular_speed
+                                twist.angular.z = -self.teleop_mecanum_turn_gain * self.angular_speed
                             self.last_twist = twist
                             self.is_moving = True
                             self._publish_and_log_twist(twist, f"circle-{key}")

@@ -31,51 +31,72 @@ def test_gpio_hbridge_backend_registry_exposes_layouts() -> None:
     assert "rr_in2" in backend.gpio_layouts["four_wheel"]
 
 
-def test_legacy_control_interface_aliases_resolve_to_canonical_names() -> None:
+def test_control_interface_names_are_canonical() -> None:
     reg = load_profile_registry(str(PACKAGE_ROOT / "config" / "robot_instances.yaml"))
     l298n_profile = resolve_robot_profile(
         {
             **reg,
             "robots": {
-                "legacy_robot": {
+                "l298n_robot": {
                     "control_type": "diff_drive",
-                    "control_interface": "dual_L298N_diff",
+                    "control_interface": "4wheel_diff_l298n_2",
                 }
             },
         },
-        "legacy_robot",
+        "l298n_robot",
     )
     tracked_profile = resolve_robot_profile(
         {
             **reg,
             "robots": {
-                "legacy_tracked_robot": {
+                "tracked_robot": {
                     "control_type": "diff_drive",
-                    "control_interface": "dual_tb6612_diff",
+                    "control_interface": "4wheel_diff_tb6612fng_2",
                 }
             },
         },
-        "legacy_tracked_robot",
+        "tracked_robot",
     )
 
-    assert l298n_profile["control_interface"] == "dual_l298n_diff"
-    assert tracked_profile["control_interface"] == "dual_tb6612_diff_4wheel_tracked"
+    assert l298n_profile["control_interface"] == "4wheel_diff_l298n_2"
+    assert tracked_profile["control_interface"] == "4wheel_diff_tb6612fng_2"
 
 
 def test_metadata_drives_control_interface_compatibility() -> None:
     data = yaml.safe_load((PACKAGE_ROOT / "config" / "control_interfaces.yaml").read_text(encoding="utf-8"))
     interfaces = data["control_interfaces"]
 
-    assert canonical_profile_name(interfaces, "dual_L298N_mecanum") == "dual_l298n_mecanum"
+    assert canonical_profile_name(interfaces, "mecanum_l298n_2") == "mecanum_l298n_2"
     assert compatible_interface_names("mecanum_drive", list(interfaces), interfaces) == [
-        "dual_l298n_mecanum",
-        "dual_tb6612_mecanum",
+        "mecanum_l298n_2",
+        "mecanum_tb6612fng_2",
     ]
     assert compatible_interface_names("diff_drive", list(interfaces), interfaces) == [
-        "l298n_diff",
-        "dual_l298n_diff",
-        "dual_tb6612_diff_4wheel_tracked",
+        "4wheel_diff_l298n_1",
+        "4wheel_diff_l298n_2",
+        "4wheel_diff_tb6612fng_2",
     ]
+
+
+def test_4wheel_diff_tb6612fng_2_uses_four_independent_motor_channels() -> None:
+    data = yaml.safe_load((PACKAGE_ROOT / "config" / "control_interfaces.yaml").read_text(encoding="utf-8"))
+    profile = data["control_interfaces"]["4wheel_diff_tb6612fng_2"]
+
+    assert profile["wheel_layout"] == "four_wheel"
+    assert set(profile["gpio"]) >= {
+        "fl_pwm",
+        "fl_in1",
+        "fl_in2",
+        "fr_pwm",
+        "fr_in1",
+        "fr_in2",
+        "rl_pwm",
+        "rl_in1",
+        "rl_in2",
+        "rr_pwm",
+        "rr_in1",
+        "rr_in2",
+    }
 
 
 def test_control_interface_index_is_generated_from_yaml() -> None:

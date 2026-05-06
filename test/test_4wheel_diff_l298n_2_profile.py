@@ -56,14 +56,14 @@ class _FakeGpio:
         pass
 
 
-def test_robot4_resolves_to_dual_l298n_diff_profile() -> None:
+def test_robot4_resolves_to_4wheel_diff_l298n_2_profile() -> None:
     config_dir = Path(__file__).resolve().parents[1] / "config"
     reg = load_profile_registry(str(config_dir / "robot_instances.yaml"))
 
     profile = resolve_robot_profile(reg, "robot4")
 
     assert profile["control_type"] == "diff_drive"
-    assert profile["control_interface"] == "dual_l298n_diff"
+    assert profile["control_interface"] == "4wheel_diff_l298n_2"
     assert profile["gpio"]["fl_pwm"] == 12
     assert profile["gpio"]["rl_pwm"] == 18
     assert profile["gpio"]["fr_pwm"] == 13
@@ -71,19 +71,19 @@ def test_robot4_resolves_to_dual_l298n_diff_profile() -> None:
     assert profile["drive_params"]["spin_speed_mult"] == 1.0
 
 
-def test_dual_l298n_mecanum_profile_resolves_four_wheel_gpio() -> None:
+def test_mecanum_l298n_2_profile_resolves_four_wheel_gpio() -> None:
     config_dir = Path(__file__).resolve().parents[1] / "config"
     reg = load_profile_registry(str(config_dir / "robot_instances.yaml"))
     reg["robots"]["robot_l298n_mecanum"] = {
         "control_type": "mecanum_drive",
-        "control_interface": "dual_l298n_mecanum",
+        "control_interface": "mecanum_l298n_2",
     }
 
     profile = resolve_robot_profile(reg, "robot_l298n_mecanum")
 
     assert profile["control_type"] == "mecanum_drive"
-    assert profile["control_interface"] == "dual_l298n_mecanum"
-    assert profile["drive_type"] == "omni"
+    assert profile["control_interface"] == "mecanum_l298n_2"
+    assert profile["drive_type"] == "mecanum"
     assert profile["gpio"]["fl_pwm"] == 12
     assert profile["gpio"]["fr_pwm"] == 13
     assert profile["gpio"]["rl_pwm"] == 18

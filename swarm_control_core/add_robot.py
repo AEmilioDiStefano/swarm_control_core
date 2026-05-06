@@ -20,7 +20,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--name", "--robot", dest="robot", default="", help="Robot name, e.g. robot4")
     parser.add_argument("--host", default="", help="SSH target host, e.g. legion4.local or robot4@legion4.local")
     parser.add_argument("--control-type", default="", help="Control type, e.g. diff_drive")
-    parser.add_argument("--control-interface", default="", help="Hardware/control interface, e.g. dual_l298n_diff")
+    parser.add_argument("--control-interface", default="", help="Hardware/control interface, e.g. 4wheel_diff_l298n_2")
     parser.add_argument(
         "--skip-camera",
         action="store_true",

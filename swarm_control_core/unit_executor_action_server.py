@@ -90,9 +90,9 @@ class UnitExecutor(Node):
         except Exception:
             # Fallback: accept explicit parameters or defaults when registry doesn't contain this robot.
             self.declare_parameter("drive_type", "diff_drive")
-            self.declare_parameter("hardware", "l298n_diff")
+            self.declare_parameter("hardware", "4wheel_diff_l298n_1")
             self.drive_type = str(self.get_parameter("drive_type").value).strip() or "diff_drive"
-            self.hardware = str(self.get_parameter("hardware").value).strip() or "l298n_diff"
+            self.hardware = str(self.get_parameter("hardware").value).strip() or "4wheel_diff_l298n_1"
             self.profile_name = None
             self.get_logger().warning(f"[{self.robot}] profile not found in registry; falling back to drive_type={self.drive_type} hardware={self.hardware}")
         else:

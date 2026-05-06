@@ -181,19 +181,24 @@ swarm_apt_lock_holders() {
     2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
 }
 
+SWARM_APT_LOCK_WAIT_FAILED=0
 SWARM_APT_WAIT_DEADLINE=$((SECONDS + ${SWARM_APT_LOCK_MAX_WAIT:-1800}))
 while SWARM_APT_LOCK_HOLDERS="$(swarm_apt_lock_holders)" && [[ -n "${SWARM_APT_LOCK_HOLDERS//[[:space:]]/}" ]]; do
   echo "[WAIT] apt/dpkg lock holder is still running:"
   ps -o pid,ppid,etime,stat,comm,args -p "$(printf '%s' "$SWARM_APT_LOCK_HOLDERS" | paste -sd, -)" || true
   if (( SECONDS >= SWARM_APT_WAIT_DEADLINE )); then
     echo "[FAIL] Timed out waiting for apt/dpkg locks. Inspect the processes above before continuing." >&2
-    return 1 2>/dev/null || exit 1
+    SWARM_APT_LOCK_WAIT_FAILED=1
+    break
   fi
   sleep 15
 done
 unset SWARM_APT_WAIT_DEADLINE SWARM_APT_LOCK_HOLDERS
 unset -f swarm_apt_lock_holders
 
+if [[ "${SWARM_APT_LOCK_WAIT_FAILED:-0}" == "1" ]]; then
+  echo "[STOP] Apt/dpkg locks did not clear. Resolve the lock holder shown above, then rerun this block." >&2
+else
 sudo apt-get -o DPkg::Lock::Timeout=1800 update
 sudo apt-get -o DPkg::Lock::Timeout=1800 upgrade -y
 sudo apt-get -o DPkg::Lock::Timeout=1800 --fix-broken install -y
@@ -248,6 +253,8 @@ set -u || true
 ros2 run swarm_control_core add_robot_core \
   --workspace "$WS" \
   --name "$ROBOT_NAME"
+fi
+unset SWARM_APT_LOCK_WAIT_FAILED
 ```
 
 What to do here:
@@ -456,7 +463,7 @@ What to do here:
 - choose the camera entry that robot should use if no generated camera profile
   exists yet
 - copy the printed control-machine registration source, such as
-  `robot4=robot4@legion4.local`, for Step 6
+  `<robot_name>=<robot_user>@<robot_host>.local`, for Step 6
 - keep robot setup runtime-local by default; this step should not dirty the
   robot's git checkout
 
@@ -535,11 +542,12 @@ message. The robot terminals only prove that each robot has a valid local
 profile. The final readiness message appears in the control-machine terminal
 after this registration/approval command succeeds.
 
-Run this in the control-machine terminal. Use one `--source` per robot. Replace
-the examples with the exact source strings printed by Step 4 or Step 5.
-This updates the control machine's runtime trust registry by default; it does
-not modify the source-tree `config/robot_instances.yaml` unless you explicitly
-add `--update-source-baseline`.
+Run this in the control-machine terminal. The command prompts for each robot's
+registration source, so no temporary robot names are hard-coded into the guide.
+Use the exact source strings printed by Step 4 or Step 5. This updates the
+control machine's runtime trust registry by default; it does not modify the
+source-tree `config/robot_instances.yaml` unless you explicitly add
+`--update-source-baseline`.
 
 ### CONTROL MACHINE:
 
@@ -550,10 +558,14 @@ source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
 
-ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS" \
-  --source robot4=robot4@legion4.local \
-  --source robot5=robot5@legion5.local
+ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
 ```
+
+When prompted, enter one source per robot, then press Enter on a blank line.
+Accepted source forms:
+
+- `robot_user@robot_host.local`
+- `robot_name=robot_user@robot_host.local`
 
 Expected success output ends with:
 
@@ -695,7 +707,7 @@ ssh <robot_user>@<robot_ip_or_hostname>
 ```
 
 If `.local` does not resolve, use the robot IP address for SSH and for Step 6
-sources, for example `robot4=robot4@192.168.1.44`.
+sources, for example `<robot_name>=<robot_user>@<robot_ip>`.
 
 Return to [Step 0](#setup-step-0).
 
@@ -731,22 +743,29 @@ swarm_apt_lock_holders() {
     2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
 }
 
+SWARM_APT_LOCK_WAIT_FAILED=0
 SWARM_APT_WAIT_DEADLINE=$((SECONDS + ${SWARM_APT_LOCK_MAX_WAIT:-1800}))
 while SWARM_APT_LOCK_HOLDERS="$(swarm_apt_lock_holders)" && [[ -n "${SWARM_APT_LOCK_HOLDERS//[[:space:]]/}" ]]; do
   echo "[WAIT] apt/dpkg lock holder is still running:"
   ps -o pid,ppid,etime,stat,comm,args -p "$(printf '%s' "$SWARM_APT_LOCK_HOLDERS" | paste -sd, -)" || true
   if (( SECONDS >= SWARM_APT_WAIT_DEADLINE )); then
     echo "[FAIL] Timed out waiting for apt/dpkg locks. Inspect the processes above before continuing." >&2
-    return 1 2>/dev/null || exit 1
+    SWARM_APT_LOCK_WAIT_FAILED=1
+    break
   fi
   sleep 15
 done
 unset SWARM_APT_WAIT_DEADLINE SWARM_APT_LOCK_HOLDERS
 unset -f swarm_apt_lock_holders
 
+if [[ "${SWARM_APT_LOCK_WAIT_FAILED:-0}" == "1" ]]; then
+  echo "[STOP] Apt/dpkg locks did not clear. Resolve the lock holder shown above, then rerun this block." >&2
+else
 sudo dpkg --configure -a
 sudo apt-get --fix-broken install -y
 sudo apt-get update
+fi
+unset SWARM_APT_LOCK_WAIT_FAILED
 ```
 
 Return to [Step 1](#setup-step-1), then rerun the robot preparation step that
@@ -895,7 +914,8 @@ If you want the runtime robot name to be something other than the Linux
 username, export `SWARM_CORE_ROBOT_NAME=<name>` before running Step 4, and keep
 using that same value later in quickstart robot terminals.
 
-For the four-channel dual-L298N robot4 profile, run this on the robot.
+For a four-channel differential-drive robot using two L298N boards, run this on
+the robot.
 
 ### ROBOT(S):
 
@@ -904,7 +924,7 @@ ros2 run swarm_control_core add_robot_core \
   --workspace "$WS" \
   --name "$ROBOT_NAME" \
   --control-type diff_drive \
-  --control-interface dual_l298n_diff
+  --control-interface 4wheel_diff_l298n_2
 ```
 
 For a mecanum robot using two L298N boards, run this on the robot.
@@ -916,7 +936,7 @@ ros2 run swarm_control_core add_robot_core \
   --workspace "$WS" \
   --name "$ROBOT_NAME" \
   --control-type mecanum_drive \
-  --control-interface dual_l298n_mecanum
+  --control-interface mecanum_l298n_2
 ```
 
 For new hardware profiles that are not already listed, use the metadata-driven
@@ -958,8 +978,6 @@ Return to [Step 5](#setup-step-5).
 <a id="setup-ref-6-1"></a>
 ## Fix Step 6.1: Registration/Approval Sync Fails
 
-Interactive form:
-
 ### CONTROL MACHINE:
 
 ```bash
@@ -972,18 +990,12 @@ set -u || true
 ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
 ```
 
-When prompted, enter one source per line, then press Enter on a blank line when
-finished.
+When prompted, enter one source per robot, then press Enter on a blank line.
 
 Accepted source forms:
 
 - `robot_user@robot_host.local`
 - `robot_name=robot_user@robot_host.local`
-
-Examples:
-
-- `robot4=robot4@legion4.local`
-- `robot5=robot5@legion5.local`
 
 If SSH fails, verify that the control machine can SSH into each robot using the
 same target string.
@@ -991,8 +1003,7 @@ same target string.
 ### CONTROL MACHINE:
 
 ```bash
-ssh robot4@legion4.local hostname
-ssh robot5@legion5.local hostname
+ssh <robot_user>@<robot_host>.local hostname
 ```
 
 Return to [Step 6](#setup-step-6).
@@ -1104,7 +1115,7 @@ Movement keys match terminal teleop and the Swarm Control UI:
 - `4/6`: rotate left/right, or strafe left/right when strafe mode is enabled
 - `7/9/1/3`: arc diagonals in normal mode, strafe diagonals in strafe mode
 - arrow keys: same movement behavior as `8/2/4/6`
-- `0`: toggle strafe mode for mecanum/omni robots
+- `0`: toggle strafe mode for mecanum robots
 - `space`, `s`, or `5`: stop
 
 Calibration keys:

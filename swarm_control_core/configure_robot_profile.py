@@ -34,11 +34,11 @@ RuntimeSyncResult = Dict[str, Any]
 
 _FALLBACK_CONTROL_TYPES = ["diff_drive", "mecanum_drive"]
 _FALLBACK_CONTROL_INTERFACES = [
-    "l298n_diff",
-    "dual_l298n_diff",
-    "dual_l298n_mecanum",
-    "dual_tb6612_diff_4wheel_tracked",
-    "dual_tb6612_mecanum",
+    "4wheel_diff_l298n_1",
+    "4wheel_diff_l298n_2",
+    "mecanum_l298n_2",
+    "4wheel_diff_tb6612fng_2",
+    "mecanum_tb6612fng_2",
 ]
 
 _CORE_PROFILE_FILES = ("control_types.yaml", "control_interfaces.yaml")
@@ -98,7 +98,7 @@ def _empty_robot_registry() -> Dict[str, Any]:
         "schema_version": "1.0",
         "defaults": {
             "control_type": "diff_drive",
-            "control_interface": "l298n_diff",
+            "control_interface": "4wheel_diff_l298n_1",
         },
         "robots": {},
     }
@@ -116,7 +116,7 @@ def _load_robot_registry(path: Path) -> Dict[str, Any]:
         "schema_version": str(data.get("schema_version", "")).strip() or "1.0",
         "defaults": {
             "control_type": str(defaults.get("control_type", "")).strip() or "diff_drive",
-            "control_interface": str(defaults.get("control_interface", "")).strip() or "l298n_diff",
+            "control_interface": str(defaults.get("control_interface", "")).strip() or "4wheel_diff_l298n_1",
         },
         "robots": robots,
     }

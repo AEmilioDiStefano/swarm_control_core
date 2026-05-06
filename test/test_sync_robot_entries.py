@@ -26,12 +26,12 @@ def test_select_robot_entry_prefers_exact_ssh_target_match() -> None:
             "robot3": {
                 "ssh_target": "robot3@legion3.local",
                 "control_type": "diff_drive",
-                "control_interface": "l298n_diff",
+                "control_interface": "4wheel_diff_l298n_1",
             },
             "other": {
                 "ssh_target": "other@other-host.local",
                 "control_type": "diff_drive",
-                "control_interface": "dual_tb6612_diff_4wheel_tracked",
+                "control_interface": "4wheel_diff_tb6612fng_2",
             },
         }
     }
@@ -44,7 +44,7 @@ def test_select_robot_entry_prefers_exact_ssh_target_match() -> None:
     )
 
     assert robot_name == "robot3"
-    assert entry["control_interface"] == "l298n_diff"
+    assert entry["control_interface"] == "4wheel_diff_l298n_1"
 
 
 def test_merge_imported_robot_entry_updates_runtime_without_dirtying_repo_by_default(tmp_path: Path) -> None:
@@ -57,12 +57,12 @@ def test_merge_imported_robot_entry_updates_runtime_without_dirtying_repo_by_def
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots:
   robot3:
     ssh_target: robot3@legion3.local
     control_type: diff_drive
-    control_interface: l298n_diff
+    control_interface: 4wheel_diff_l298n_1
 """,
     )
 
@@ -73,7 +73,7 @@ robots:
         entry={
             "ssh_target": "robot_new@robot-new.local",
             "control_type": "mecanum_drive",
-            "control_interface": "dual_tb6612_mecanum",
+            "control_interface": "mecanum_tb6612fng_2",
         },
     )
 
@@ -98,7 +98,7 @@ def test_merge_imported_robot_entry_can_update_source_baseline_when_requested(tm
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots: {}
 """,
     )
@@ -110,7 +110,7 @@ robots: {}
         entry={
             "ssh_target": "robot_new@robot-new.local",
             "control_type": "mecanum_drive",
-            "control_interface": "dual_l298n_mecanum",
+            "control_interface": "mecanum_l298n_2",
         },
         update_source_baseline=True,
     )
@@ -131,7 +131,7 @@ def test_detect_likely_local_robot_source_from_runtime_registry(tmp_path: Path) 
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots: {}
 """,
     )
@@ -140,12 +140,12 @@ robots: {}
         """schema_version: "1.0"
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 robots:
   robot1:
     ssh_target: robot1@legion1.local
     control_type: diff_drive
-    control_interface: l298n_diff
+    control_interface: 4wheel_diff_l298n_1
 """,
     )
 

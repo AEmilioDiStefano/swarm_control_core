@@ -63,8 +63,8 @@ def interface_is_compatible(
 
     # Legacy fallback for old profile files that predate explicit metadata.
     interface_l = str(interface_name or "").strip().lower()
-    if "mecanum" in control_type_l or "omni" in control_type_l:
-        return "mecanum" in interface_l or "omni" in interface_l
+    if "mecanum" in control_type_l:
+        return "mecanum" in interface_l
     if "diff" in control_type_l:
         return "diff" in interface_l
     return True

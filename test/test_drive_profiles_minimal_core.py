@@ -89,7 +89,7 @@ def test_robot_instance_can_override_gpio_map(tmp_path: Path) -> None:
         schema_version: "1.0"
         control_types:
           mecanum_drive:
-            type: omni
+            type: mecanum
             params:
               max_linear_mps: 0.4
         """,

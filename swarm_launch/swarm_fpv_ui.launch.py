@@ -37,11 +37,6 @@ def _default_webrtc_main_only() -> str:
     return "true" if raw in ("1", "true", "yes", "on") else "false"
 
 
-def _default_allow_unknown_robot_control() -> str:
-    raw = str(os.environ.get("SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL", "0")).strip().lower()
-    return "true" if raw in ("1", "true", "yes", "on") else "false"
-
-
 def _normalize_fleet_preview_preset(raw: str) -> str:
     value = str(raw or "").strip().lower().replace("-", "_")
     aliases = {
@@ -231,7 +226,6 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("bind_port", default_value=_default_bind_port()),
         DeclareLaunchArgument("webrtc_fps", default_value=_default_webrtc_fps()),
         DeclareLaunchArgument("webrtc_main_only", default_value=_default_webrtc_main_only()),
-        DeclareLaunchArgument("allow_unknown_robot_control", default_value=_default_allow_unknown_robot_control()),
         DeclareLaunchArgument("thumb_refresh_hz", default_value=_default_thumb_refresh_hz()),
         DeclareLaunchArgument("image_subscription_mode", default_value=_default_image_subscription_mode()),
         DeclareLaunchArgument("image_thumb_interest_ttl_s", default_value=_default_image_thumb_interest_ttl_s()),
@@ -247,7 +241,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument(
             "profiles_path",
             default_value=_default_profiles_path(),
-            description="Path to robot_instances.yaml (or legacy robot_profiles.yaml). Set explicitly or via PROFILES_PATH.",
+            description="Path to robot_instances.yaml. Set explicitly or via PROFILES_PATH.",
         ),
         DeclareLaunchArgument("gateway_id", default_value=_default_gateway_id()),
         DeclareLaunchArgument("gateway_name", default_value=_default_gateway_name()),
@@ -267,12 +261,6 @@ def generate_launch_description() -> LaunchDescription:
             {"bind_port": LaunchConfiguration("bind_port")},
             {"webrtc_fps": ParameterValue(LaunchConfiguration("webrtc_fps"), value_type=float)},
             {"webrtc_main_only": ParameterValue(LaunchConfiguration("webrtc_main_only"), value_type=bool)},
-            {
-                "allow_unknown_robot_control": ParameterValue(
-                    LaunchConfiguration("allow_unknown_robot_control"),
-                    value_type=bool,
-                )
-            },
             {"thumb_refresh_hz": ParameterValue(LaunchConfiguration("thumb_refresh_hz"), value_type=float)},
             {"image_subscription_mode": LaunchConfiguration("image_subscription_mode")},
             {

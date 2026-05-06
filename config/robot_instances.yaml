@@ -23,13 +23,13 @@
 # - Operational Linux SSH targeting now lives in:
 #     ~/.config/swarm_control_core/swarm_roster.yaml
 # - Any `ssh_target` values in this repository file are template/seed values and
-#   legacy migration inputs only. They are not the primary operational source.
+#   are not the primary operational source.
 
 schema_version: "1.0"
 
 defaults:
   control_type: diff_drive
-  control_interface: l298n_diff
+  control_interface: 4wheel_diff_l298n_1
 
 robots:
   robot1:
@@ -37,7 +37,7 @@ robots:
     # Format: username@hostname, username@hostname.local, or username@IPv4
     ssh_target: robot1@legion1.local
     control_type: diff_drive
-    control_interface: dual_tb6612_diff_4wheel_tracked
+    control_interface: 4wheel_diff_tb6612fng_2
     params:
       control_type:
         # Test tune: stronger response while keeping conservative safety margins.
@@ -67,7 +67,7 @@ robots:
   robot2:
     ssh_target: robot2@legion2.local
     control_type: mecanum_drive
-    control_interface: dual_tb6612_mecanum
+    control_interface: mecanum_tb6612fng_2
     params:
       control_type:
         playbook_linear_duration_scale: 1.55
@@ -88,7 +88,7 @@ robots:
   robot3:
     ssh_target: robot3@legion3.local
     control_type: diff_drive
-    control_interface: l298n_diff
+    control_interface: 4wheel_diff_l298n_1
     params:
       control_type:
         playbook_linear_duration_scale: 0.97
@@ -99,7 +99,7 @@ robots:
   robot4:
     ssh_target: robot4@legion4.local
     control_type: diff_drive
-    control_interface: dual_l298n_diff
+    control_interface: 4wheel_diff_l298n_2
     params:
       control_type:
         playbook_linear_duration_scale: 1.00
@@ -122,12 +122,7 @@ robots:
           - unit_executor_action_server
         allow_rotate_bypass_safety: false
 
-  robot_omni:
-    ssh_target: robot_omni@legion-omni.local
-    control_type: mecanum_drive
-    control_interface: dual_tb6612_mecanum
-
   robot5:
     ssh_target: robot5@legion5.local
     control_type: mecanum_drive
-    control_interface: dual_l298n_mecanum
+    control_interface: mecanum_l298n_2

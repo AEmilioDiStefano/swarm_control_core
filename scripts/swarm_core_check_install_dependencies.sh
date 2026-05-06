@@ -14,7 +14,7 @@ Options:
 Notes:
   - Community edition is local-only.
   - This script intentionally does not install internet-ingress components
-    (for example caddy/cloudflared/coturn).
+    (for example reverse-proxy, tunnel, or TURN services).
 USAGE
 }
 

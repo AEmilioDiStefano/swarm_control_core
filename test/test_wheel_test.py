@@ -30,7 +30,7 @@ TEST_SPEED = SpeedState(
 
 def _mecanum_profile() -> dict:
     return {
-        "drive_type": "omni",
+        "drive_type": "mecanum",
         "drive_params": {
             "wheel_base_m": 0.18,
             "track_width_m": 0.18,
@@ -141,12 +141,12 @@ def test_save_gpio_overrides_writes_robot_entry(tmp_path: Path) -> None:
         """schema_version: "1.0"
 defaults:
   control_type: mecanum_drive
-  control_interface: dual_l298n_mecanum
+  control_interface: mecanum_l298n_2
 robots:
   robot5:
     ssh_target: robot5@legion5.local
     control_type: mecanum_drive
-    control_interface: dual_l298n_mecanum
+    control_interface: mecanum_l298n_2
 """,
         encoding="utf-8",
     )

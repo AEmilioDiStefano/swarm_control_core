@@ -104,7 +104,7 @@ STRAFE_COMMAND_NAMES = {
 
 def _is_mecanum_profile(profile: Dict[str, Any]) -> bool:
     drive_type = str(profile.get("drive_type") or "").strip().lower()
-    return drive_type in ("mecanum", "omni", "omnidirectional", "mecanum_drive", "mecanum-drive")
+    return drive_type in ("mecanum", "mecanum_drive", "mecanum-drive")
 
 
 def _speed_state_from_profile(profile: Dict[str, Any], fallback_linear: float, fallback_angular: float) -> SpeedState:
@@ -196,9 +196,9 @@ def _teleop_diff_arc_command(profile: Dict[str, Any], key: str, speed: SpeedStat
     return TestCommand(NORMAL_COMMAND_NAMES[key], linear_x=linear_x, angular_z=angular_z)
 
 
-def _teleop_omni_arc_command(profile: Dict[str, Any], key: str, speed: SpeedState) -> TestCommand:
+def _teleop_mecanum_arc_command(profile: Dict[str, Any], key: str, speed: SpeedState) -> TestCommand:
     drive_params = profile.get("drive_params", {}) or {}
-    turn_gain = float(drive_params.get("teleop_omni_turn_gain") or 0.5)
+    turn_gain = float(drive_params.get("teleop_mecanum_turn_gain") or 0.5)
     yaw = turn_gain * abs(float(speed.angular))
     if key == "7":
         return TestCommand(NORMAL_COMMAND_NAMES[key], linear_x=+speed.linear, angular_z=+yaw)
@@ -252,7 +252,7 @@ def command_for_key(profile: Dict[str, Any], raw_key: str, *, strafe_mode: bool,
         return TestCommand(NORMAL_COMMAND_NAMES[key], angular_z=-speed.angular)
     if key in ("7", "9", "1", "3"):
         if _is_mecanum_profile(profile):
-            return _teleop_omni_arc_command(profile, key, speed)
+            return _teleop_mecanum_arc_command(profile, key, speed)
         return _teleop_diff_arc_command(profile, key, speed)
     return None
 
@@ -504,7 +504,7 @@ Wheel test keys:
   6 / ArrowRight  rotate-right, or strafe-right when STRAFE mode is enabled
   7 / 9           arc forward-left / arc forward-right
   1 / 3           arc backward-left / arc backward-right
-  0               toggle STRAFE mode for mecanum/omni robots
+  0               toggle STRAFE mode for mecanum robots
   space / s / 5   STOP/zero command
 
 Speed keys match teleop/UI:
@@ -702,7 +702,7 @@ def run_interactive(
                 if canonical_key in STRAFE_TOGGLE_KEYS:
                     if not _is_mecanum_profile(profile):
                         strafe_mode = False
-                        terminal.print("\n[STRAFE] Disabled: this robot profile is not mecanum/omni.")
+                        terminal.print("\n[STRAFE] Disabled: this robot profile is not mecanum.")
                         continue
                     strafe_mode = not strafe_mode
                     terminal.print(f"\n[STRAFE] {'ENABLED' if strafe_mode else 'DISABLED'}")

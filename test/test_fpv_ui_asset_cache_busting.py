@@ -61,8 +61,10 @@ def test_core_ui_supports_server_injected_default_main_stream():
     assert '<meta name="swarm-fpv-jpeg-quality" content="{default_jpeg_quality}"/>' in text
     assert "const defaultMainStreamMeta = document.querySelector('meta[name=\"swarm-fpv-default-main-stream\"]');" in text
     assert '|| defaultMainStream' in text
-    assert 'SWARM_CORE_TRYCLOUDFLARE_MAIN_STREAM' in text
-    assert 'req_host.endswith(".trycloudflare.com")' in text
+    assert 'SWARM_CORE_REMOTE_MAIN_STREAM' in text
+    assert 'SWARM_CORE_REMOTE_REQUEST_HOST_SUFFIX' in text
+    assert "TRYCLOUDFLARE" not in text
+    assert "trycloudflare.com" not in text
     assert 'const jpegMainPollMs = Math.max(40, _toInt(defaultJpegPollMs, 120));' in text
     assert 'next.src = buildMainJpegUrl(activeRobot);' in text
     assert 'max_w = _bounded_int(req.query.get("max_w")' in text

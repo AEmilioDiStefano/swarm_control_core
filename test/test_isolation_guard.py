@@ -66,7 +66,7 @@ def _is_under(path: Path, root: Path) -> bool:
         return False
 
 
-def test_no_runtime_imports_from_proprietary_package():
+def test_no_runtime_imports_from_legacy_package():
     violations = []
     for path in _iter_python_files():
         rel = path.relative_to(REPO_ROOT)
@@ -76,7 +76,7 @@ def test_no_runtime_imports_from_proprietary_package():
     assert not violations, "Cross-package import(s) found:\n" + "\n".join(violations)
 
 
-def test_no_package_metadata_dependency_on_proprietary_package():
+def test_no_package_metadata_dependency_on_legacy_package():
     pkg = PACKAGE_XML.read_text(encoding="utf-8")
     dep_re = re.compile(
         r"<(?:depend|exec_depend|build_depend|buildtool_depend|test_depend)>\s*swarm_control\s*</",
@@ -89,7 +89,7 @@ def test_no_package_metadata_dependency_on_proprietary_package():
     assert setup_dep_re.search(setup_txt) is None, "setup.py references swarm_control"
 
 
-def test_no_direct_script_invocation_of_proprietary_package():
+def test_no_direct_script_invocation_of_legacy_package():
     """
     Compatibility kill-pattern regexes (e.g. .*swarm_control.*) are allowed.
     Direct runtime invocations are not.
@@ -106,12 +106,12 @@ def test_no_direct_script_invocation_of_proprietary_package():
             for pat in direct_patterns:
                 if pat.search(line):
                     bad.append(f"{rel}:{lineno}: {line.strip()}")
-    assert not bad, "Direct proprietary package invocation(s) found:\n" + "\n".join(bad)
+    assert not bad, "Direct legacy package invocation(s) found:\n" + "\n".join(bad)
 
 
 def test_no_cross_package_runtime_tokens_outside_compat_patterns():
     """
-    Catch stale runtime references to the proprietary package name.
+    Catch stale runtime references to the legacy package name.
     Compatibility kill-pattern regexes in scripts are allowed.
     """
     bad = []

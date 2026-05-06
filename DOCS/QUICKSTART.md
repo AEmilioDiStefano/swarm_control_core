@@ -377,7 +377,7 @@ a differential dual-L298N robot:
 ```bash
 "$SC/scripts/swarm_core_quickstart_step2.sh" \
   --control-type diff_drive \
-  --control-interface dual_l298n_diff
+  --control-interface 4wheel_diff_l298n_2
 ```
 
 For a mecanum robot using two L298N boards:
@@ -385,7 +385,7 @@ For a mecanum robot using two L298N boards:
 ```bash
 "$SC/scripts/swarm_core_quickstart_step2.sh" \
   --control-type mecanum_drive \
-  --control-interface dual_l298n_mecanum
+  --control-interface mecanum_l298n_2
 ```
 
 For a new hardware profile, add/validate it first with
@@ -458,9 +458,9 @@ Main menu options:
 - `5) Exit`
 
 `camera_flipper_core` only saves the flip when the currently plugged-in camera
-matches the saved camera profile. That keeps a robot5-specific mirrored camera
-fix from accidentally applying to a different camera later. Stop the affected
-Step 2 terminal with `Ctrl-C`, then return to [Step 2](#step-2).
+matches the saved camera profile. That keeps one robot's mirrored camera fix
+from accidentally applying to a different camera later. Stop the affected Step 2
+terminal with `Ctrl-C`, then return to [Step 2](#step-2).
 
 <a id="ref-2-5"></a>
 ## Fix Step 2.5: Dark Camera or Laggy Video/Control
@@ -482,10 +482,10 @@ reduce cmd_vel audit overhead for this session:
 export SWARM_CORE_AUDIT_CMD_VEL_MIN_PERIOD_S=2.0
 ```
 
-Compatibility prep uses runtime-only masks for proprietary services. Reboot
-clears those masks automatically and returns service startup policy to
-proprietary defaults. If compat mode stopped `ufw.service` at runtime, reboot
-or run `sudo systemctl start ufw.service` to restore the saved firewall policy.
+Compatibility prep uses runtime-only masks for conflicting services. Reboot
+clears those masks automatically and returns service startup policy to its saved
+defaults. If compat mode stopped `ufw.service` at runtime, reboot or run
+`sudo systemctl start ufw.service` to restore the saved firewall policy.
 
 Then return to [Step 2](#step-2).
 
@@ -512,9 +512,8 @@ Then return to [Step 3](#step-3).
 <a id="ref-3-2"></a>
 ## Fix Step 3.2: Robots Are Visible but Read-Only/Untrusted
 
-If the UI logs `trusted_robots=<none>` or says a robot such as `robot4` is
-unknown/read-only, the control machine does not have that robot in its trusted
-runtime registry.  
+If the UI logs `trusted_robots=<none>` or says a robot is unknown/read-only, the
+control machine does not have that robot in its trusted runtime registry.
 
 ### CONTROL MACHINE:
 
@@ -525,14 +524,17 @@ source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
 source "$WS/install/setup.bash"
 set -u || true
 
-ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS" \
-  --source robot4=robot4@legion4.local \
-  --source robot5=robot5@legion5.local
+ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
 ```
 
-Replace the example sources with the exact source strings printed by
-`add_robot_core` or `robot_doctor_core` on each robot. Expected success output
-ends with:
+When prompted, enter the exact source strings printed by `add_robot_core` or
+`robot_doctor_core` on each robot, then press Enter on a blank line. Accepted
+source forms:
+
+- `robot_user@robot_host.local`
+- `robot_name=robot_user@robot_host.local`
+
+Expected success output ends with:
 
 ```text
 [OK] Control-machine robot registration/approval complete.
@@ -544,10 +546,8 @@ The sync command updates the control machine's runtime trust registry by
 default. It should not dirty the source-tree `config/robot_instances.yaml`
 unless you explicitly pass `--update-source-baseline`.
 
-Then stop and restart [Step 3](#step-3). Only use
-`SWARM_CORE_ALLOW_UNKNOWN_ROBOT_CONTROL=1` in a trusted lab when you
-intentionally want to allow control of robots not yet present in
-`robot_instances.yaml`.
+Then stop and restart [Step 3](#step-3). Unknown robots remain read-only until
+they are registered in `robot_instances.yaml`.
 
 Then return to [Step 3](#step-3).
 
@@ -596,7 +596,7 @@ ros2 topic list | rg "/.*/heartbeat"
 All machines must use the same domain id (default `17`) and sourced workspace.
 
 If robot terminals show heartbeat publishing but control still has no heartbeat topics,
-DDS traffic is being blocked (commonly by ufw state carried from proprietary setup).
+DDS traffic is being blocked (commonly by ufw state carried from an earlier setup).
 Keep compat defaults and rerun [Step 2](#step-2) on robots + [Step 3](#step-3) on control.
 
 If the UI sees a robot but logs it as unknown/read-only, go to

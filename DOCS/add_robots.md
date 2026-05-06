@@ -29,8 +29,7 @@ Reusable profiles live separately:
 - `~/.config/swarm_control_core/camera_profiles.yaml`: generated camera choices
 
 Control interface names use canonical lowercase snake case, for example
-`dual_l298n_mecanum`. Legacy mixed-case aliases are accepted for backward
-compatibility, but new robot entries should use the canonical names. See
+`mecanum_l298n_2`. Robot entries should use the canonical names. See
 [`control_interface_profiles.md`](./control_interface_profiles.md).
 
 ## Preferred Command
@@ -47,7 +46,7 @@ ros2 run swarm_control_core add_robot_core \
   --name robot4 \
   --host robot4@legion4.local \
   --control-type diff_drive \
-  --control-interface dual_l298n_diff
+  --control-interface 4wheel_diff_l298n_2
 ```
 
 Equivalent source-tree wrapper:
@@ -57,7 +56,7 @@ Equivalent source-tree wrapper:
   --name robot4 \
   --host robot4@legion4.local \
   --control-type diff_drive \
-  --control-interface dual_l298n_diff
+  --control-interface 4wheel_diff_l298n_2
 ```
 
 The command:
@@ -130,7 +129,7 @@ ros2 run swarm_control_core robot_doctor_core \
   --robot robot4 \
   --repair \
   --control-type diff_drive \
-  --control-interface dual_l298n_diff
+  --control-interface 4wheel_diff_l298n_2
 ```
 
 ## Camera Profiles
@@ -167,7 +166,7 @@ ros2 run swarm_control_core add_robot_core \
   --name robot4 \
   --host robot4@legion4.local \
   --control-type diff_drive \
-  --control-interface dual_l298n_diff
+  --control-interface 4wheel_diff_l298n_2
 ```
 
 Wiring guide:
@@ -185,7 +184,7 @@ ros2 run swarm_control_core add_robot_core \
   --name robot5 \
   --host robot5@legion5.local \
   --control-type mecanum_drive \
-  --control-interface dual_l298n_mecanum
+  --control-interface mecanum_l298n_2
 ```
 
 Wiring guide:

@@ -9,4 +9,4 @@ def test_drive_type_registry_resolves_known_aliases() -> None:
     assert isinstance(get_drive_type("diff_drive"), DiffDrive)
     assert isinstance(get_drive_type("diff"), DiffDrive)
     assert isinstance(get_drive_type("mecanum_drive"), MecanumDrive)
-    assert isinstance(get_drive_type("omni"), MecanumDrive)
+    assert isinstance(get_drive_type("mecanum"), MecanumDrive)
