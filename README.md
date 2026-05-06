@@ -11,39 +11,6 @@ remote-operations workflows used in the larger project.
   <img src="media/remote_operation_GIF.gif" alt="Remote operation demo"> <img src="media/playbook_two_robots_INITIAL.gif" alt="Playbook orchestration demo">
 </p>
 
-## License Summary
-
-- Free for personal use
-- Free for academic and research use
-- Free for internal evaluation
-- Free for entities below USD $1,000,000 annual gross revenue, including
-  commercial use while they remain below that threshold
-- Commercial license required once the licensee and its Affiliates reach or
-  exceed USD $1,000,000 annual gross revenue for continued commercial use
-
-If you cross the USD $1,000,000 annual gross revenue threshold, see COMMERCIAL_LICENSE.md for the required notice
-and transition procedure.
-
-The legal terms are in [LICENSE](./LICENSE). Practical business-use guidance is
-in [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md).
-
-
-
-## Contribution Summary
-
-Contributions are welcome.
-
-Accepted contributions may be credited and may receive non-monetary
-career-support benefits described in this repository. Contributors are not
-entitled to financial compensation, royalties, or profit-sharing unless
-separately agreed in writing.
-
-See:
-
-- [CONTRIBUTING.md](./CONTRIBUTING.md)
-- [CONTRIBUTOR_BENEFITS.md](./CONTRIBUTOR_BENEFITS.md)
-- [CONTRIBUTORS.md](./CONTRIBUTORS.md)
-
 ## Quick Start
 
 For a live local FPV/control session, use [DOCS/QUICKSTART.md](./DOCS/QUICKSTART.md).
@@ -90,6 +57,28 @@ If you are building and preparing the reference robot from scratch, start with:
 - `scripts/`: bootstrap, reset, runtime, and release-gate tooling
 - `config/`: canonical robot registry plus reusable control/interface/camera defaults
 - `DOCS/`: runbooks, GPIO wiring guides, architecture notes, and ADRs
+
+## Contribution Summary
+
+Contributions are welcome.
+
+Accepted contributions may be credited and may receive non-monetary
+career-support benefits described in this repository. Contributors are not
+entitled to financial compensation, royalties, or profit-sharing unless
+separately agreed in writing.
+
+See:
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md)
+- [CONTRIBUTOR_BENEFITS.md](./CONTRIBUTOR_BENEFITS.md)
+- [CONTRIBUTORS.md](./CONTRIBUTORS.md)
+
+## License Summary
+
+- Free for entities below USD $1,000,000 annual gross revenue, including
+  commercial use while they remain below that threshold
+- Commercial license required once the licensee and its Affiliates reach or
+  exceed USD $1,000,000 annual gross revenue for continued commercial use
 
 ## Contact
 
