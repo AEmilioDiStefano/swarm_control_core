@@ -39,7 +39,7 @@ If you are building and preparing the reference robot from scratch, start with:
 ## Documentation
 
 - Quickstart: [DOCS/QUICKSTART.md](./DOCS/QUICKSTART.md)
-- Add/update robots: [DOCS/add_robot.md](./DOCS/add_robot.md)
+- Add/update robots: [DOCS/add_robots.md](./DOCS/add_robots.md)
 - Control interface profiles: [DOCS/control_interface_profiles.md](./DOCS/control_interface_profiles.md)
 - Assembly setup: [DOCS/setup_instructions_ASSEMBLY.md](./DOCS/setup_instructions_ASSEMBLY.md)
 - Software setup: [DOCS/setup_instructions_SOFTWARE.md](./DOCS/setup_instructions_SOFTWARE.md)
@@ -47,8 +47,8 @@ If you are building and preparing the reference robot from scratch, start with:
 - Architecture: [DOCS/ARCHITECTURE.md](./DOCS/ARCHITECTURE.md)
 - ADR index: [DOCS/ADR/README.md](./DOCS/ADR/README.md)
 - Low-latency validation: [DOCS/LOW_LATENCY_VALIDATION.md](./DOCS/LOW_LATENCY_VALIDATION.md)
-- Security policy: [SECURITY.md](./SECURITY.md)
-- Code of conduct: [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
+- Security policy: [DOCS/SECURITY.md](./DOCS/SECURITY.md)
+- Code of conduct: [DOCS/CODE_OF_CONDUCT.md](./DOCS/CODE_OF_CONDUCT.md)
 
 ## Repository Layout
 
@@ -69,9 +69,9 @@ separately agreed in writing.
 
 See:
 
-- [CONTRIBUTING.md](./CONTRIBUTING.md)
-- [CONTRIBUTOR_BENEFITS.md](./CONTRIBUTOR_BENEFITS.md)
-- [CONTRIBUTORS.md](./CONTRIBUTORS.md)
+- [DOCS/CONTRIBUTING.md](./DOCS/CONTRIBUTING.md)
+- [DOCS/CONTRIBUTOR_BENEFITS.md](./DOCS/CONTRIBUTOR_BENEFITS.md)
+- [DOCS/CONTRIBUTORS.md](./DOCS/CONTRIBUTORS.md)
 
 ## License Summary
 
@@ -83,7 +83,7 @@ See:
 ## Contact
 
 - Commercial licensing: `emilio@vitruvian.systems`
-- Security reports: see [SECURITY.md](./SECURITY.md)
+- Security reports: see [DOCS/SECURITY.md](./DOCS/SECURITY.md)
 
 <br>
 <br>

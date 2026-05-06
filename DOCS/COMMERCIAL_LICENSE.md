@@ -1,7 +1,7 @@
 # Commercial Licensing Guide
 
 This document is a practical summary only. The controlling legal terms are in
-[LICENSE](./LICENSE).
+[LICENSE](../LICENSE).
 
 ## Who Needs A Commercial License
 
