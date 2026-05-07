@@ -222,10 +222,11 @@ set -u || true
 ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
 ```
 
-The wizard prints the robots already registered/trusted on the control machine.
-If every robot you intend to control is already listed, press Enter. If one is
-missing, enter the exact source printed by the affected robot in Step 2. Repeat
-for multiple missing robots, then press Enter on a blank line.
+The wizard prints instructions, then ends its initial output with the robots
+already registered/trusted on the control machine, one robot per line. Check
+that list visually. If every robot you intend to control is listed, press
+Enter. If one is missing, enter the exact source printed by the affected robot
+in Step 2. Repeat for multiple missing robots, then press Enter on a blank line.
 
 What this confirms or repairs:
 - imports the robot's generated local profile into the control machine's

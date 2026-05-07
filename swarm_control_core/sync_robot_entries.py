@@ -178,21 +178,26 @@ def _collect_sources(initial_specs: Sequence[str], *, existing_robot_names: Sequ
             "Pass one or more --source values like robot_name=robot_user@robot_host.local."
         )
 
-    existing = ", ".join(sorted(str(name) for name in existing_robot_names)) or "<none>"
     print("[SYNC] This command is intended to run on the control machine.")
-    print(f"[SYNC] Currently registered/trusted robots: {existing}")
-    print("[SYNC] If every robot you intend to control is already listed, press Enter on a blank line.")
-    print("[SYNC] Otherwise, enter each missing robot's SSH target exactly as you would use it from the control machine.")
-    print("[SYNC] Examples:")
-    print("[SYNC]   robot1@legion1.local")
-    print("[SYNC]   my_robot=robot1@legion1.local")
-    print("[SYNC] Format: ssh_target or robot_name=ssh_target")
+    print("[SYNC] Check the list below for every robot you intend to control in this session.")
+    print("[SYNC] If they are all listed, press Enter on a blank line.")
+    print(
+        "[SYNC] If any are missing, enter each missing robot as "
+        "username@hostname.local or robot_name=username@hostname.local."
+    )
     print("[SYNC] Press Enter on a blank line when finished.")
+    print("[SYNC] Registered/trusted robots:")
+    names = sorted(str(name) for name in existing_robot_names if str(name).strip())
+    if names:
+        for name in names:
+            print(f"[SYNC]   {name}")
+    else:
+        print("[SYNC]   <none>")
     collected: List[str] = []
     while True:
         raw = _read_prompt_line(
             prompt_input=prompt_input,
-            prompt="Missing robot source [Enter if already registered]: ",
+            prompt="Missing robot source [Enter if all session robots are listed]: ",
         ).strip()
         if not raw:
             break

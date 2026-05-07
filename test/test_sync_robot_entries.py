@@ -1,8 +1,10 @@
 from unittest.mock import patch
 
+from io import StringIO
 from pathlib import Path
 
 from swarm_control_core.sync_robot_entries import (
+    _collect_sources,
     _detect_likely_local_robot_source,
     _merge_imported_robot_entry,
     _parse_source_spec,
@@ -41,6 +43,17 @@ control_interfaces:
 def test_parse_source_spec_supports_optional_robot_name() -> None:
     assert _parse_source_spec("robot3=robot3@legion3.local") == ("robot3", "robot3@legion3.local")
     assert _parse_source_spec("robot3@legion3.local") == ("", "robot3@legion3.local")
+
+
+def test_collect_sources_prints_registered_robots_one_per_line_before_prompt(capsys) -> None:
+    with patch("swarm_control_core.sync_robot_entries._acquire_prompt_input", return_value=StringIO("\n")):
+        sources = _collect_sources([], existing_robot_names=["robot2", "robot1"])
+
+    output = capsys.readouterr().out
+    assert sources == []
+    assert "[SYNC] Registered/trusted robots:\n[SYNC]   robot1\n[SYNC]   robot2\n" in output
+    assert output.index("[SYNC]   robot2") < output.index("Missing robot source")
+    assert "robot1@legion1.local" not in output
 
 
 def test_select_robot_entry_prefers_exact_ssh_target_match() -> None:
