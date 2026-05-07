@@ -7,7 +7,7 @@ import yaml
 from swarm_control_core.sync_robot_entries import (
     _collect_sources,
     _detect_likely_local_robot_source,
-    _loadable_runtime_robot_names,
+    _loadable_runtime_robot_labels,
     _merge_imported_robot_entry,
     _parse_source_spec,
     _repair_runtime_registries_before_prompt,
@@ -50,13 +50,19 @@ def test_parse_source_spec_supports_optional_robot_name() -> None:
 
 def test_collect_sources_prints_registered_robots_one_per_line_before_prompt(capsys) -> None:
     with patch("swarm_control_core.sync_robot_entries._acquire_prompt_input", return_value=StringIO("\n")):
-        sources = _collect_sources([], ready_robot_names=["robot2", "robot1"])
+        sources = _collect_sources([], ready_robot_labels=["robot1=robot1@legion1.local", "robot2=robot2@legion2.local"])
 
     output = capsys.readouterr().out
     assert sources == []
-    assert "[SYNC] Ready registered/trusted robots:\n[SYNC]   robot1\n[SYNC]   robot2\n" in output
-    assert output.index("[SYNC]   robot2") < output.index("Missing robot source")
-    assert "robot1@legion1.local" not in output
+    assert (
+        "[SYNC] Ready registered/trusted robots:\n"
+        "[SYNC]\n"
+        "[SYNC]   robot1=robot1@legion1.local\n"
+        "[SYNC]\n"
+        "[SYNC]   robot2=robot2@legion2.local\n"
+        "[SYNC]\n"
+    ) in output
+    assert output.index("[SYNC]   robot2=robot2@legion2.local") < output.index("Missing robot source")
 
 
 def test_select_robot_entry_prefers_exact_ssh_target_match() -> None:
@@ -220,7 +226,7 @@ robots:
         control_interfaces_path=control_interfaces,
     )
 
-    assert _loadable_runtime_robot_names([runtime_profiles]) == ["robot_ready"]
+    assert _loadable_runtime_robot_labels([runtime_profiles]) == ["robot_ready=robot_ready@ready.local"]
     data = yaml.safe_load(runtime_profiles.read_text(encoding="utf-8"))
     assert "robot_stale" not in data["robots"]
     assert "robot_stale" in data["quarantined_robots"]

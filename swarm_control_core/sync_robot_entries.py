@@ -167,7 +167,29 @@ def _select_robot_entry_from_registry(
     )
 
 
-def _collect_sources(initial_specs: Sequence[str], *, ready_robot_names: Sequence[str]) -> List[str]:
+def _format_ready_robot_label(name: str, entry: Dict[str, Any]) -> str:
+    robot_name = str(name).strip()
+    ssh_target = str((entry or {}).get("ssh_target", "")).strip()
+    if robot_name and ssh_target:
+        return f"{robot_name}={ssh_target}"
+    return robot_name or ssh_target or "<unknown>"
+
+
+def _print_ready_robot_labels(prefix: str, labels: Sequence[str]) -> None:
+    clean = [str(label).strip() for label in labels if str(label).strip()]
+    print(prefix)
+    if not clean:
+        print(f"{prefix}   <none>")
+        print(prefix)
+        return
+    for index, label in enumerate(clean):
+        if index > 0:
+            print(prefix)
+        print(f"{prefix}   {label}")
+    print(prefix)
+
+
+def _collect_sources(initial_specs: Sequence[str], *, ready_robot_labels: Sequence[str]) -> List[str]:
     specs = [str(spec).strip() for spec in initial_specs if str(spec).strip()]
     if specs:
         return specs
@@ -188,12 +210,7 @@ def _collect_sources(initial_specs: Sequence[str], *, ready_robot_names: Sequenc
     )
     print("[SYNC] Press Enter on a blank line when finished.")
     print("[SYNC] Ready registered/trusted robots:")
-    names = sorted(str(name) for name in ready_robot_names if str(name).strip())
-    if names:
-        for name in names:
-            print(f"[SYNC]   {name}")
-    else:
-        print("[SYNC]   <none>")
+    _print_ready_robot_labels("[SYNC]", ready_robot_labels)
     collected: List[str] = []
     while True:
         raw = _read_prompt_line(
@@ -229,8 +246,8 @@ def _known_runtime_robot_names(runtime_profiles_paths: Sequence[Path]) -> List[s
     return sorted(names)
 
 
-def _loadable_runtime_robot_names(runtime_profiles_paths: Sequence[Path]) -> List[str]:
-    names: set[str] = set()
+def _loadable_runtime_robot_labels(runtime_profiles_paths: Sequence[Path]) -> List[str]:
+    labels: Dict[str, str] = {}
     for path in runtime_profiles_paths:
         try:
             registry = load_profile_registry(str(path))
@@ -239,10 +256,11 @@ def _loadable_runtime_robot_names(runtime_profiles_paths: Sequence[Path]) -> Lis
         robots = registry.get("robots", {}) or {}
         if not isinstance(robots, dict):
             continue
-        for name in robots.keys():
-            if str(name).strip():
-                names.add(str(name).strip())
-    return sorted(names)
+        for name, entry in robots.items():
+            robot_name = str(name).strip()
+            if robot_name and isinstance(entry, dict):
+                labels[robot_name] = _format_ready_robot_label(robot_name, entry)
+    return [labels[name] for name in sorted(labels.keys())]
 
 
 def _print_profile_wizard_hint(robot_name: str = "") -> None:
@@ -575,7 +593,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         source_specs = _collect_sources(
             args.source,
-            ready_robot_names=_loadable_runtime_robot_names(runtime_profiles_paths),
+            ready_robot_labels=_loadable_runtime_robot_labels(runtime_profiles_paths),
         )
     except RuntimeError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
@@ -662,13 +680,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"[ERROR] Control-machine runtime registry is not loadable at {runtime_path}: {exc}", file=sys.stderr)
             return 2
         robots = registry.get("robots", {}) or {}
-        known = sorted(str(name) for name in robots.keys())
+        known = [
+            _format_ready_robot_label(str(name), entry)
+            for name, entry in sorted(robots.items(), key=lambda item: str(item[0]))
+            if isinstance(entry, dict)
+        ] if isinstance(robots, dict) else []
         print("[SYNC] Control-machine trusted robot registry load check OK:")
-        if known:
-            for name in known:
-                print(f"[SYNC]   {name}")
-        else:
-            print("[SYNC]   <none>")
+        _print_ready_robot_labels("[SYNC]", known)
 
     print("[OK] Control-machine robot registration/approval complete.")
     print("[OK] Registered/approved robots are ready for QUICKSTART handoff.")
