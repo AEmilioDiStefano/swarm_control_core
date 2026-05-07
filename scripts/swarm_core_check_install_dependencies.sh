@@ -198,6 +198,24 @@ apt_network_options() {
 
 apt_lock_holders() {
   command -v fuser >/dev/null 2>&1 || return 0
+  if [[ "$(id -u)" == "0" ]]; then
+    fuser \
+      /var/lib/dpkg/lock-frontend \
+      /var/lib/dpkg/lock \
+      /var/cache/apt/archives/lock \
+      /var/lib/apt/lists/lock \
+      2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
+    return 0
+  fi
+  if command -v sudo >/dev/null 2>&1; then
+    sudo fuser \
+      /var/lib/dpkg/lock-frontend \
+      /var/lib/dpkg/lock \
+      /var/cache/apt/archives/lock \
+      /var/lib/apt/lists/lock \
+      2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
+    return 0
+  fi
   fuser \
     /var/lib/dpkg/lock-frontend \
     /var/lib/dpkg/lock \

@@ -64,7 +64,7 @@ quickstart starts dependency installation.
 ```bash
 swarm_apt_lock_holders() {
   command -v fuser >/dev/null 2>&1 || return 0
-  fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock /var/lib/apt/lists/lock 2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
+  sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock /var/lib/apt/lists/lock 2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
 }
 
 while SWARM_APT_LOCK_HOLDERS="$(swarm_apt_lock_holders)" && [[ -n "${SWARM_APT_LOCK_HOLDERS//[[:space:]]/}" ]]; do
