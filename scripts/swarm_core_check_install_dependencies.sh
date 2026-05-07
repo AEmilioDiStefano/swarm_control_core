@@ -24,6 +24,8 @@ apt_updated="0"
 apt_http_timeout="${SWARM_APT_HTTP_TIMEOUT:-30}"
 apt_retries="${SWARM_APT_RETRIES:-2}"
 apt_force_ipv4="${SWARM_APT_FORCE_IPV4:-0}"
+apt_lock_max_wait="${SWARM_APT_LOCK_MAX_WAIT:-1800}"
+apt_lock_poll_s="${SWARM_APT_LOCK_POLL_S:-10}"
 ubuntu_mirror_normalized="0"
 failures=()
 already_installed=()
@@ -194,6 +196,31 @@ apt_network_options() {
   fi
 }
 
+apt_lock_holders() {
+  command -v fuser >/dev/null 2>&1 || return 0
+  fuser \
+    /var/lib/dpkg/lock-frontend \
+    /var/lib/dpkg/lock \
+    /var/cache/apt/archives/lock \
+    /var/lib/apt/lists/lock \
+    2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
+}
+
+wait_for_apt_locks() {
+  local holders=""
+  local deadline=$((SECONDS + apt_lock_max_wait))
+  while holders="$(apt_lock_holders)" && [[ -n "${holders//[[:space:]]/}" ]]; do
+    dependency_status "apt/dpkg is busy; waiting for lock holder(s): ${holders//$'\n'/, }"
+    ps -o pid,ppid,etime,stat,comm,args -p "$(printf '%s' "$holders" | paste -sd, -)" >&2 || true
+    if (( SECONDS >= deadline )); then
+      dependency_status "ERROR: timed out waiting for apt/dpkg locks. Let the process above finish, then rerun this step."
+      return 1
+    fi
+    sleep "$apt_lock_poll_s"
+  done
+  return 0
+}
+
 ensure_apt_update() {
   local apt_status=0
   local -a apt_opts=()
@@ -212,6 +239,7 @@ ensure_apt_update() {
   fi
   dependency_status "Running apt-get update"
   mapfile -t apt_opts < <(apt_network_options)
+  wait_for_apt_locks || return 1
   sudo env DEBIAN_FRONTEND=noninteractive apt-get "${apt_opts[@]}" update
   apt_status=$?
   if (( apt_status == 0 )); then
@@ -232,6 +260,7 @@ install_apt_packages() {
     return "$update_status"
   fi
   mapfile -t apt_opts < <(apt_network_options)
+  wait_for_apt_locks || return 1
   sudo env DEBIAN_FRONTEND=noninteractive apt-get "${apt_opts[@]}" install -y "$@"
 }
 

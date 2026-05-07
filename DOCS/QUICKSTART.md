@@ -52,6 +52,31 @@ Go to [Alternative Step A.1](#ref-a-1), then return to [Step 0](#step-0).
 
 # Quickstart Path:
 
+<a id="apt-lock-preflight"></a>
+## Before Step 0: Apt/Dpkg Lock Preflight
+
+Run this in any control-machine or robot terminal that may install packages. If
+Ubuntu first-boot updates are active, this waits with readable status before the
+quickstart starts dependency installation.
+
+### CONTROL MACHINE / ROBOT(S):
+
+```bash
+swarm_apt_lock_holders() {
+  command -v fuser >/dev/null 2>&1 || return 0
+  fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock /var/lib/apt/lists/lock 2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
+}
+
+while SWARM_APT_LOCK_HOLDERS="$(swarm_apt_lock_holders)" && [[ -n "${SWARM_APT_LOCK_HOLDERS//[[:space:]]/}" ]]; do
+  echo "[WAIT] apt/dpkg lock holder is still running:"
+  ps -o pid,ppid,etime,stat,comm,args -p "$(printf '%s' "$SWARM_APT_LOCK_HOLDERS" | paste -sd, -)" || true
+  sleep 10
+done
+unset -f swarm_apt_lock_holders
+unset SWARM_APT_LOCK_HOLDERS
+echo "[OK] apt/dpkg locks are clear."
+```
+
 <a id="step-0"></a>
 ## Step 0: Workspace Bootstrap + Dependency Readiness
 
