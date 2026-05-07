@@ -224,11 +224,11 @@ ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
 
 The wizard first repairs/quarantines stale runtime entries that would prevent
 the UI from loading the trusted registry. It then ends its initial output with
-the ready registered/trusted robots as `robot_name=username@hostname.local`,
-with a blank line between robots. Check that list visually. If every robot you
-intend to control is listed, press Enter. If one is missing, enter the exact
-source printed by the affected robot in Step 2. Repeat for multiple missing
-robots, then press Enter on a blank line.
+the ready registered/trusted robots as `username@hostname.local`, with a blank
+line between robots. Check that list visually. If every robot you intend to
+control is listed, press Enter. If one is missing, enter the exact source
+printed by the affected robot in Step 2. Repeat for multiple missing robots,
+then press Enter on a blank line.
 
 When you enter a missing robot source, the sync step pulls that robot's saved
 profile from the robot over SSH and imports it into the control machine runtime

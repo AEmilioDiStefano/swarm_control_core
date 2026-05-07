@@ -170,9 +170,7 @@ def _select_robot_entry_from_registry(
 def _format_ready_robot_label(name: str, entry: Dict[str, Any]) -> str:
     robot_name = str(name).strip()
     ssh_target = str((entry or {}).get("ssh_target", "")).strip()
-    if robot_name and ssh_target:
-        return f"{robot_name}={ssh_target}"
-    return robot_name or ssh_target or "<unknown>"
+    return ssh_target or robot_name or "<unknown>"
 
 
 def _print_ready_robot_labels(prefix: str, labels: Sequence[str]) -> None:
