@@ -67,14 +67,31 @@ swarm_apt_lock_holders() {
   sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock /var/lib/apt/lists/lock 2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
 }
 
+SWARM_APT_LOCK_WAIT_DEADLINE=$((SECONDS + ${SWARM_APT_LOCK_MAX_WAIT:-1800}))
+SWARM_APT_LOCK_WAIT_FAILED=0
 while SWARM_APT_LOCK_HOLDERS="$(swarm_apt_lock_holders)" && [[ -n "${SWARM_APT_LOCK_HOLDERS//[[:space:]]/}" ]]; do
   echo "[WAIT] apt/dpkg lock holder is still running:"
   ps -o pid,ppid,etime,stat,comm,args -p "$(printf '%s' "$SWARM_APT_LOCK_HOLDERS" | paste -sd, -)" || true
+  if (( SECONDS >= SWARM_APT_LOCK_WAIT_DEADLINE )); then
+    echo "[STOP] Timed out waiting for apt/dpkg locks. Inspect the process above, then run these only if it is stuck:" >&2
+    echo "  sudo ps -fp $(printf '%s' "$SWARM_APT_LOCK_HOLDERS" | paste -sd, -)" >&2
+    echo "  sudo systemctl status unattended-upgrades apt-daily.service apt-daily-upgrade.service --no-pager" >&2
+    echo "  sudo journalctl -u unattended-upgrades -n 80 --no-pager" >&2
+    echo "  sudo systemctl stop unattended-upgrades apt-daily.service apt-daily-upgrade.service" >&2
+    echo "  sudo dpkg --configure -a" >&2
+    echo "  sudo apt-get --fix-broken install -y" >&2
+    SWARM_APT_LOCK_WAIT_FAILED=1
+    break
+  fi
   sleep 10
 done
 unset -f swarm_apt_lock_holders
-unset SWARM_APT_LOCK_HOLDERS
-echo "[OK] apt/dpkg locks are clear."
+if (( SWARM_APT_LOCK_WAIT_FAILED )); then
+  echo "[STOP] apt/dpkg locks did not clear. Run the recovery commands above, then rerun this block." >&2
+else
+  echo "[OK] apt/dpkg locks are clear."
+fi
+unset SWARM_APT_LOCK_HOLDERS SWARM_APT_LOCK_WAIT_DEADLINE SWARM_APT_LOCK_WAIT_FAILED
 ```
 
 <a id="step-0"></a>

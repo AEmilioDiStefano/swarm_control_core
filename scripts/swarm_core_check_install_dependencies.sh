@@ -231,7 +231,15 @@ wait_for_apt_locks() {
     dependency_status "apt/dpkg is busy; waiting for lock holder(s): ${holders//$'\n'/, }"
     ps -o pid,ppid,etime,stat,comm,args -p "$(printf '%s' "$holders" | paste -sd, -)" >&2 || true
     if (( SECONDS >= deadline )); then
-      dependency_status "ERROR: timed out waiting for apt/dpkg locks. Let the process above finish, then rerun this step."
+      dependency_status "ERROR: timed out waiting for apt/dpkg locks."
+      dependency_log "Inspect the lock holder(s), then run the recovery commands only if they are stuck:"
+      dependency_log "  sudo ps -fp $(printf '%s' "$holders" | paste -sd, -)"
+      dependency_log "  sudo systemctl status unattended-upgrades apt-daily.service apt-daily-upgrade.service --no-pager"
+      dependency_log "  sudo journalctl -u unattended-upgrades -n 80 --no-pager"
+      dependency_log "  sudo systemctl stop unattended-upgrades apt-daily.service apt-daily-upgrade.service"
+      dependency_log "  sudo dpkg --configure -a"
+      dependency_log "  sudo apt-get --fix-broken install -y"
+      dependency_log "After recovery, rerun this quickstart step."
       return 1
     fi
     sleep "$apt_lock_poll_s"
