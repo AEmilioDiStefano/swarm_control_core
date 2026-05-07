@@ -15,6 +15,29 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _write_profile_catalogs(workspace: Path) -> tuple[Path, Path]:
+    control_types = workspace / "src" / "swarm_control_core" / "config" / "control_types.yaml"
+    control_interfaces = workspace / "src" / "swarm_control_core" / "config" / "control_interfaces.yaml"
+    _write(
+        control_types,
+        """schema_version: "1.0"
+control_types:
+  diff_drive: {}
+  mecanum_drive: {}
+""",
+    )
+    _write(
+        control_interfaces,
+        """schema_version: "1.0"
+control_interfaces:
+  4wheel_diff_l298n_1: {}
+  mecanum_l298n_2: {}
+  mecanum_tb6612fng_2: {}
+""",
+    )
+    return control_types, control_interfaces
+
+
 def test_parse_source_spec_supports_optional_robot_name() -> None:
     assert _parse_source_spec("robot3=robot3@legion3.local") == ("robot3", "robot3@legion3.local")
     assert _parse_source_spec("robot3@legion3.local") == ("", "robot3@legion3.local")
@@ -51,6 +74,7 @@ def test_merge_imported_robot_entry_updates_runtime_without_dirtying_repo_by_def
     workspace = tmp_path / "ws"
     repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
     runtime_profiles = tmp_path / "runtime" / "robot_instances.yaml"
+    control_types, control_interfaces = _write_profile_catalogs(workspace)
 
     _write(
         repo_profiles,
@@ -69,6 +93,8 @@ robots:
     repo_state, runtime_results = _merge_imported_robot_entry(
         repo_profiles_path=repo_profiles,
         runtime_profiles_paths=[runtime_profiles],
+        control_types_path=control_types,
+        control_interfaces_path=control_interfaces,
         robot_name="robot_new",
         entry={
             "ssh_target": "robot_new@robot-new.local",
@@ -92,6 +118,7 @@ def test_merge_imported_robot_entry_can_update_source_baseline_when_requested(tm
     workspace = tmp_path / "ws"
     repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
     runtime_profiles = tmp_path / "runtime" / "robot_instances.yaml"
+    control_types, control_interfaces = _write_profile_catalogs(workspace)
 
     _write(
         repo_profiles,
@@ -106,6 +133,8 @@ robots: {}
     repo_state, runtime_results = _merge_imported_robot_entry(
         repo_profiles_path=repo_profiles,
         runtime_profiles_paths=[runtime_profiles],
+        control_types_path=control_types,
+        control_interfaces_path=control_interfaces,
         robot_name="robot_new",
         entry={
             "ssh_target": "robot_new@robot-new.local",

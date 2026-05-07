@@ -38,6 +38,14 @@ Workspace selection below is handled by the Step 0 terminal-bootstrap helper.
 After that, use `WS` for the workspace root and `SC` for
 `"$WS/src/swarm_control_core"`.
 
+Trust/verification rule:
+- Every robot you intend to control must be registered/approved on the control
+  machine before the FPV UI starts.
+- The required success signal is:
+  `[OK] Registered/approved robots are ready for QUICKSTART handoff.`
+- If a robot is visible over ROS but missing from the control machine's trusted
+  registry, the UI keeps it read-only by design.
+
 ### IF switching between `swarm_control_core` and `swarm_control_pro`
 
 Go to [Alternative Step A.1](#ref-a-1), then return to [Step 0](#step-0).
@@ -192,7 +200,54 @@ Go to [Fix Step 2.5](#ref-2-5), then return to [Step 2](#step-2).
 
 For multi-robot sessions:
 - keep each robot SSH terminal running.
-- proceed to Step 3 after each robot terminal shows all bringup nodes started and camera first-frame logs.
+- proceed to Step 2.5 after each robot terminal shows all bringup nodes started and camera first-frame logs.
+
+Proceed to Step 2.5.
+
+<a id="step-2-5"></a>
+## Step 2.5: Register/Verify Trusted Robots (Control Machine)
+
+Run this after each robot has completed Step 2 at least once. This is the trust
+gate for drive/autonomy control.
+
+### CONTROL MACHINE:
+
+```bash
+cd "$WS"
+set +u
+source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
+source "$WS/install/setup.bash"
+set -u || true
+
+ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
+```
+
+The wizard prints the robots already registered/trusted on the control machine.
+If every robot you intend to control is already listed, press Enter. If one is
+missing, enter the exact source printed by the affected robot in Step 2. Repeat
+for multiple missing robots, then press Enter on a blank line.
+
+What this confirms or repairs:
+- imports the robot's generated local profile into the control machine's
+  runtime trust registry
+- refreshes the control machine runtime `control_types.yaml` and
+  `control_interfaces.yaml`
+- repairs stale runtime entries that still reference removed profile names, when
+  a current baseline entry exists for that robot
+- validates that the control machine can load the trusted robot registry before
+  the UI starts
+
+Expected success output ends with:
+
+```text
+[OK] Control-machine robot registration/approval complete.
+[OK] Registered/approved robots are ready for QUICKSTART handoff.
+[NEXT] Restart the FPV UI so it reloads the trusted robot registry before driving.
+```
+
+### IF registration/verification fails
+
+Go to [Fix Step 3.2](#ref-3-2), then return to [Step 2.5](#step-2-5).
 
 Proceed to Step 3.
 
@@ -201,6 +256,8 @@ Proceed to Step 3.
 
 Prerequisite (required):
 - Do not start Step 3 until every robot terminal has completed Step 2 and each robot bringup is running.
+- Do not start Step 3 until Step 2.5 prints
+  `[OK] Registered/approved robots are ready for QUICKSTART handoff.`
 
 ### CONTROL MACHINE:
 
@@ -515,8 +572,9 @@ Then return to [Step 3](#step-3).
 If the UI logs `trusted_robots=<none>` or says a robot is unknown/read-only, the
 control machine either does not have that robot in its trusted runtime registry
 or could not load the registry. If the UI log includes `Failed to load profile
-registry`, rerun [Step 1](#step-1) on the control machine and restart
-[Step 3](#step-3) first.
+registry`, run the sync command below for the robot you intend to control; it
+refreshes the split profile catalogs and validates the registry load before the
+UI starts.
 
 ### CONTROL MACHINE:
 
@@ -530,9 +588,10 @@ set -u || true
 ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
 ```
 
-When prompted, enter the exact source strings printed by `add_robot_core` or
-`robot_doctor_core` on each robot, then press Enter on a blank line. Accepted
-source forms:
+The wizard prints the robots already registered/trusted on the control machine.
+If every robot you intend to control is already listed, press Enter. If one is
+missing, enter the exact source strings printed by `add_robot_core` or
+`robot_doctor_core` on each robot. Accepted source forms:
 
 - `robot_user@robot_host.local`
 - `robot_name=robot_user@robot_host.local`

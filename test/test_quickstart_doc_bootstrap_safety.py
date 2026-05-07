@@ -80,5 +80,7 @@ def test_quickstart_uses_drp_top_and_bottom_sections():
     assert "[`DRP_guide_format.md`](./DRP_guide_format.md)" in text
     assert "# Quickstart Path:" in text
     assert "# Alternative/Debug/Fix" in text
+    assert "## Step 2.5: Register/Verify Trusted Robots (Control Machine)" in text
+    assert "Registered/approved robots are ready for QUICKSTART handoff" in text
     assert "### IF robots are visible but read-only/untrusted" in text
     assert "## Fix Step 3.2: Robots Are Visible but Read-Only/Untrusted" in text

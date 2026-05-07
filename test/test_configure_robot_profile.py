@@ -105,6 +105,82 @@ control_interfaces:
     assert "ssh_target: robot_new@robot-new-pi.local" in runtime_text
 
 
+def test_ensure_robot_entry_repairs_stale_runtime_entries_from_baseline(tmp_path: Path) -> None:
+    workspace = tmp_path / "ws"
+    repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
+    control_types = workspace / "src" / "swarm_control_core" / "config" / "control_types.yaml"
+    control_interfaces = workspace / "src" / "swarm_control_core" / "config" / "control_interfaces.yaml"
+    runtime_profiles = tmp_path / "runtime" / "robot_instances.yaml"
+
+    _write(
+        repo_profiles,
+        """schema_version: "1.0"
+defaults:
+  control_type: diff_drive
+  control_interface: 4wheel_diff_l298n_1
+robots:
+  robot1:
+    ssh_target: robot1@legion1.local
+    control_type: diff_drive
+    control_interface: 4wheel_diff_tb6612fng_2
+  robot4:
+    ssh_target: robot4@legion4.local
+    control_type: diff_drive
+    control_interface: 4wheel_diff_l298n_2
+""",
+    )
+    _write(
+        control_types,
+        """schema_version: "1.0"
+control_types:
+  diff_drive: {}
+""",
+    )
+    _write(
+        control_interfaces,
+        """schema_version: "1.0"
+control_interfaces:
+  4wheel_diff_l298n_1: {}
+  4wheel_diff_l298n_2: {}
+  4wheel_diff_tb6612fng_2: {}
+""",
+    )
+    _write(
+        runtime_profiles,
+        """schema_version: "1.0"
+defaults:
+  control_type: diff_drive
+  control_interface: l298n_diff
+robots:
+  robot1:
+    ssh_target: robot1@legion1.local
+    control_type: diff_drive
+    control_interface: dual_tb6612_diff
+  robot4:
+    ssh_target: robot4@legion4.local
+    control_type: diff_drive
+    control_interface: 4wheel_diff_l298n_2
+""",
+    )
+
+    _, created, sync_results = ensure_robot_entry(
+        repo_profiles_path=repo_profiles,
+        runtime_profiles_paths=[runtime_profiles],
+        control_types_path=control_types,
+        control_interfaces_path=control_interfaces,
+        robot_name="robot4",
+        prompt_input=None,
+    )
+
+    assert created is False
+    assert sync_results[0]["state"] == "already_synced"
+    assert sync_results[0]["repaired_invalid_entries"] == ["robot1"]
+    runtime_text = runtime_profiles.read_text(encoding="utf-8")
+    assert "control_interface: 4wheel_diff_tb6612fng_2" in runtime_text
+    assert "dual_tb6612_diff" not in runtime_text
+    assert "l298n_diff" not in runtime_text
+
+
 def test_ensure_robot_entry_can_update_source_baseline_when_requested(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"

@@ -170,6 +170,64 @@ def wiring_doc_for_interface(control_interfaces_path: Path, control_interface: s
     return ""
 
 
+def repair_invalid_runtime_robot_entries(
+    *,
+    runtime_registry: Dict[str, Any],
+    repo_registry: Dict[str, Any],
+    control_types_path: Path,
+    control_interfaces_path: Path,
+    skip_robot_names: Sequence[str] = (),
+) -> List[str]:
+    control_types = _load_named_mapping(
+        control_types_path,
+        "control_types",
+        _FALLBACK_CONTROL_TYPES,
+    )
+    control_interfaces = _load_named_mapping(
+        control_interfaces_path,
+        "control_interfaces",
+        _FALLBACK_CONTROL_INTERFACES,
+    )
+    repo_robots = repo_registry.get("robots", {}) or {}
+    runtime_robots = runtime_registry.get("robots", {}) or {}
+    if not isinstance(repo_robots, dict) or not isinstance(runtime_robots, dict):
+        return []
+
+    skip_names = {str(name).strip() for name in skip_robot_names if str(name).strip()}
+    repaired: List[str] = []
+    for robot_name, runtime_entry in list(runtime_robots.items()):
+        if str(robot_name).strip() in skip_names:
+            continue
+        if not isinstance(runtime_entry, dict):
+            continue
+        baseline_entry = repo_robots.get(robot_name)
+        if not isinstance(baseline_entry, dict):
+            continue
+
+        control_type_name = canonical_profile_name(
+            control_types,
+            str(runtime_entry.get("control_type") or runtime_registry.get("defaults", {}).get("control_type") or ""),
+        )
+        control_interface_name = canonical_profile_name(
+            control_interfaces,
+            str(
+                runtime_entry.get("control_interface")
+                or runtime_entry.get("hardware_profile")
+                or runtime_registry.get("defaults", {}).get("control_interface")
+                or ""
+            ),
+        )
+        if control_type_name in control_types and control_interface_name in control_interfaces:
+            continue
+
+        runtime_robots[robot_name] = dict(baseline_entry)
+        repaired.append(str(robot_name))
+
+    if repaired:
+        runtime_registry["robots"] = runtime_robots
+    return repaired
+
+
 def refresh_runtime_core_profiles(workspace_root: Path, runtime_profiles_paths: Sequence[Path]) -> List[RuntimeSyncResult]:
     """
     Refresh reusable core profile files next to runtime robot_instances.yaml.
@@ -462,6 +520,13 @@ def ensure_robot_entry(
         runtime_registry = _load_robot_registry(runtime_path)
         runtime_registry["schema_version"] = repo_registry.get("schema_version", "1.0")
         runtime_registry["defaults"] = dict(repo_registry.get("defaults", {}) or {})
+        repaired_invalid_entries = repair_invalid_runtime_robot_entries(
+            runtime_registry=runtime_registry,
+            repo_registry=repo_registry,
+            control_types_path=control_types_path,
+            control_interfaces_path=control_interfaces_path,
+            skip_robot_names=(robot_name,),
+        )
         runtime_robots = runtime_registry.get("robots", {}) or {}
         if not isinstance(runtime_robots, dict):
             runtime_robots = {}
@@ -478,6 +543,7 @@ def ensure_robot_entry(
         if sync_state != "already_synced":
             runtime_robots[robot_name] = dict(entry)
             runtime_registry["robots"] = runtime_robots
+        if sync_state != "already_synced" or repaired_invalid_entries:
             _write_yaml(runtime_path, runtime_registry)
 
         sync_results.append(
@@ -485,6 +551,7 @@ def ensure_robot_entry(
                 "path": runtime_path,
                 "state": sync_state,
                 "repaired": sync_state != "already_synced",
+                "repaired_invalid_entries": repaired_invalid_entries,
             }
         )
 
@@ -703,6 +770,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"[ROBOT PROFILE] Runtime robot entry repaired successfully at {runtime_path}.")
         else:
             print(f"[ROBOT PROFILE] Runtime robot entry already matched baseline at {runtime_path}.")
+        repaired_invalid_entries = result.get("repaired_invalid_entries", []) or []
+        if repaired_invalid_entries:
+            names = ", ".join(sorted(str(name) for name in repaired_invalid_entries))
+            print(
+                f"[ROBOT PROFILE] Repaired stale/invalid runtime entries from baseline at {runtime_path}: {names}"
+            )
     for result in core_profile_results:
         path = result["path"]
         state = str(result.get("state", "")).strip()
