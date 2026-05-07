@@ -250,7 +250,6 @@ Expected success output ends with:
 ```text
 [OK] Control-machine robot registration/approval complete.
 [OK] Registered/approved robots are ready for QUICKSTART handoff.
-[NEXT] Restart the FPV UI so it reloads the trusted robot registry before driving.
 ```
 
 ### IF registration/verification fails
@@ -610,7 +609,6 @@ Expected success output ends with:
 ```text
 [OK] Control-machine robot registration/approval complete.
 [OK] Registered/approved robots are ready for QUICKSTART handoff.
-[NEXT] Restart the FPV UI so it reloads the trusted robot registry before driving.
 ```
 
 The sync command updates the control machine's runtime trust registry by

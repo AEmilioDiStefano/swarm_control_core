@@ -377,7 +377,6 @@ Expected success output ends with:
 ```text
 [OK] Control-machine robot registration/approval complete.
 [OK] Registered/approved robots are ready for QUICKSTART handoff.
-[NEXT] Restart the FPV UI so it reloads the trusted robot registry before driving.
 ```
 
 Only after this step should a new robot be considered added/approved for

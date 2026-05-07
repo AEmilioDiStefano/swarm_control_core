@@ -688,7 +688,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     print("[OK] Control-machine robot registration/approval complete.")
     print("[OK] Registered/approved robots are ready for QUICKSTART handoff.")
-    print("[NEXT] Restart the FPV UI so it reloads the trusted robot registry before driving.")
     return 0
 
 
