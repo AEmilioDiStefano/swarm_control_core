@@ -245,12 +245,9 @@ What this confirms or repairs:
 - validates that the same trusted robot registry used by the UI can load before
   the UI starts
 
-Expected success output ends with:
-
-```text
-[OK] Control-machine robot registration/approval complete.
-[OK] Registered/approved robots are ready for QUICKSTART handoff.
-```
+Expected success output ends with
+`[OK] Control-machine robot registration/approval complete.` and
+`[OK] Registered/approved robots are ready for QUICKSTART handoff.`
 
 ### IF registration/verification fails
 
@@ -604,12 +601,9 @@ robot. Accepted source forms:
 - `robot_user@robot_host.local`
 - `robot_name=robot_user@robot_host.local`
 
-Expected success output ends with:
-
-```text
-[OK] Control-machine robot registration/approval complete.
-[OK] Registered/approved robots are ready for QUICKSTART handoff.
-```
+Expected success output ends with
+`[OK] Control-machine robot registration/approval complete.` and
+`[OK] Registered/approved robots are ready for QUICKSTART handoff.`
 
 The sync command updates the control machine's runtime trust registry by
 default. It should not dirty the source-tree `config/robot_instances.yaml`

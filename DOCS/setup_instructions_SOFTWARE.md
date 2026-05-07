@@ -372,12 +372,9 @@ Accepted source forms:
 - `robot_user@robot_host.local`
 - `robot_name=robot_user@robot_host.local`
 
-Expected success output ends with:
-
-```text
-[OK] Control-machine robot registration/approval complete.
-[OK] Registered/approved robots are ready for QUICKSTART handoff.
-```
+Expected success output ends with
+`[OK] Control-machine robot registration/approval complete.` and
+`[OK] Registered/approved robots are ready for QUICKSTART handoff.`
 
 Only after this step should a new robot be considered added/approved for
 control-machine FPV UI control.
@@ -698,12 +695,9 @@ What to do here:
 - keep robot setup runtime-local by default; this step should not dirty the
   robot's git checkout
 
-Expected success output includes:
-
-```text
-[OK] Local robot profile is prepared on this robot.
-[NEXT] Register/approve this robot on the control machine with sync_robot_entries_core before expecting FPV UI drive/autonomy control.
-```
+Expected success output includes
+`[OK] Local robot profile is prepared on this robot.` and
+`[NEXT] Register/approve this robot on the control machine with sync_robot_entries_core before expecting FPV UI drive/autonomy control.`
 
 This is a local robot-profile step only. The robot is not approved for FPV UI
 drive/autonomy control until Step 4 registers it on the control machine.
@@ -743,12 +737,9 @@ Return to [Step 0](#setup-step-0).
 ## Fix: First-Boot Ubuntu Updates Hold the Apt Lock
 
 On freshly imaged Ubuntu, `unattended-upgrades` may run automatically in the
-background. If setup output repeats a line like this, the package manager is
-busy, not permanently broken:
-
-```text
-Waiting for cache lock: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process ... (unattended-upgr)
-```
+background. If setup output repeats a line like
+`Waiting for cache lock: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process ... (unattended-upgr)`,
+the package manager is busy, not permanently broken.
 
 Do not remove apt lock files. Wait for the background update to finish, then
 repair any partially configured packages before rerunning the setup step. Do
@@ -909,12 +900,9 @@ If `apt` reports unmet dependencies for ROS packages such as
 database is already in a broken or partially configured state. Let
 `apt --fix-broken install` complete first, then rerun [Step 2](#setup-step-2) or [Fallback C](#setup-ref-fallback-robot-prep).
 
-If `apt --fix-broken install` fails with an overwrite error like:
-
-```text
-trying to overwrite '/usr/lib/python3/dist-packages/catkin_pkg/__init__.py',
-which is also in package python3-catkin-pkg
-```
+If `apt --fix-broken install` fails with an overwrite error like
+`trying to overwrite '/usr/lib/python3/dist-packages/catkin_pkg/__init__.py',`
+followed by `which is also in package python3-catkin-pkg`,
 
 remove the older conflicting package, repair the package database, then rerun
 the dependency check.
