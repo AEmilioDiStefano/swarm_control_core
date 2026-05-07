@@ -141,6 +141,56 @@ def test_robot_instance_can_override_gpio_map(tmp_path: Path) -> None:
     assert prof["gpio"]["invert_fr"] is True
 
 
+def test_invalid_robot_entry_does_not_poison_valid_robots(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "control_types.yaml",
+        """
+        schema_version: "1.0"
+        defaults:
+          control_type: diff_drive
+        control_types:
+          diff_drive:
+            type: diff_drive
+            params: {}
+        """,
+    )
+    _write(
+        tmp_path / "control_interfaces.yaml",
+        """
+        schema_version: "1.0"
+        defaults:
+          control_interface: test_gpio
+        control_interfaces:
+          test_gpio:
+            gpio: {}
+            params: {}
+        """,
+    )
+    _write(
+        tmp_path / "robot_instances.yaml",
+        """
+        schema_version: "1.0"
+        defaults:
+          control_type: diff_drive
+          control_interface: test_gpio
+        robots:
+          good_bot:
+            control_type: diff_drive
+            control_interface: test_gpio
+          stale_bot:
+            control_type: diff_drive
+            control_interface: removed_gpio
+        """,
+    )
+
+    reg = load_profile_registry(str(tmp_path / "robot_instances.yaml"))
+
+    assert sorted(reg["robots"].keys()) == ["good_bot"]
+    assert "stale_bot" in reg["invalid_robots"]
+    assert "removed_gpio" in reg["invalid_robots"]["stale_bot"]
+    assert resolve_robot_profile(reg, "good_bot")["control_interface"] == "test_gpio"
+
+
 def test_seed_runtime_config_requires_only_minimal_core_files(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     src_config = workspace / "src" / "swarm_control_core" / "config"

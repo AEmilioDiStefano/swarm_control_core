@@ -216,12 +216,12 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
         )
 
     robots: Dict[str, Any] = {}
+    invalid_robots: Dict[str, str] = {}
     for robot_name, raw_entry in robots_raw.items():
         entry = raw_entry or {}
         if not isinstance(entry, dict):
-            raise ValueError(
-                f"robots.{robot_name} must be a mapping in {entry_path}"
-            )
+            invalid_robots[str(robot_name)] = f"robots.{robot_name} must be a mapping in {entry_path}"
+            continue
         control_type_name = (
             entry.get("control_type")
             or entry.get("drive_profile")
@@ -242,27 +242,30 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
             entry.get("adapter_profile")
             or default_adapter_profile
         )
-
+        invalid_reasons = []
         if control_type_name and control_type_name not in control_types:
-            raise KeyError(
-                f"robots.{robot_name}.control_type '{control_type_name}' not found in control_types.yaml"
+            invalid_reasons.append(
+                f"control_type '{control_type_name}' not found in control_types.yaml"
             )
         if control_interface_name and control_interface_name not in control_interfaces:
-            raise KeyError(
-                f"robots.{robot_name}.control_interface '{control_interface_name}' not found in control_interfaces.yaml"
+            invalid_reasons.append(
+                f"control_interface '{control_interface_name}' not found in control_interfaces.yaml"
             )
         if (
             capability_profiles_path is not None
             and capability_name
             and capability_name not in capability_profiles
         ):
-            raise KeyError(
-                f"robots.{robot_name}.capability_profile '{capability_name}' not found in capability_profiles.yaml"
+            invalid_reasons.append(
+                f"capability_profile '{capability_name}' not found in capability_profiles.yaml"
             )
         if adapter_name and adapter_name not in adapter_profiles:
-            raise KeyError(
-                f"robots.{robot_name}.adapter_profile '{adapter_name}' not found in adapter_profiles.yaml"
+            invalid_reasons.append(
+                f"adapter_profile '{adapter_name}' not found in adapter_profiles.yaml"
             )
+        if invalid_reasons:
+            invalid_robots[str(robot_name)] = "; ".join(invalid_reasons)
+            continue
 
         robots[str(robot_name)] = {
             **entry,
@@ -295,6 +298,7 @@ def _load_split_registry(entry_path: Path, instances_data: Dict[str, Any]) -> Di
         "control_interfaces": control_interfaces,
         "capability_profiles": capability_profiles,
         "adapter_profiles": adapter_profiles,
+        "invalid_robots": invalid_robots,
         "source_files": {
             "robot_instances": str(entry_path),
             "control_types": str(control_types_path),

@@ -2,12 +2,15 @@ from unittest.mock import patch
 
 from io import StringIO
 from pathlib import Path
+import yaml
 
 from swarm_control_core.sync_robot_entries import (
     _collect_sources,
     _detect_likely_local_robot_source,
+    _loadable_runtime_robot_names,
     _merge_imported_robot_entry,
     _parse_source_spec,
+    _repair_runtime_registries_before_prompt,
     _select_robot_entry_from_registry,
 )
 
@@ -47,11 +50,11 @@ def test_parse_source_spec_supports_optional_robot_name() -> None:
 
 def test_collect_sources_prints_registered_robots_one_per_line_before_prompt(capsys) -> None:
     with patch("swarm_control_core.sync_robot_entries._acquire_prompt_input", return_value=StringIO("\n")):
-        sources = _collect_sources([], existing_robot_names=["robot2", "robot1"])
+        sources = _collect_sources([], ready_robot_names=["robot2", "robot1"])
 
     output = capsys.readouterr().out
     assert sources == []
-    assert "[SYNC] Registered/trusted robots:\n[SYNC]   robot1\n[SYNC]   robot2\n" in output
+    assert "[SYNC] Ready registered/trusted robots:\n[SYNC]   robot1\n[SYNC]   robot2\n" in output
     assert output.index("[SYNC]   robot2") < output.index("Missing robot source")
     assert "robot1@legion1.local" not in output
 
@@ -88,6 +91,8 @@ def test_merge_imported_robot_entry_updates_runtime_without_dirtying_repo_by_def
     repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
     runtime_profiles = tmp_path / "runtime" / "robot_instances.yaml"
     control_types, control_interfaces = _write_profile_catalogs(workspace)
+    _write(tmp_path / "runtime" / "control_types.yaml", control_types.read_text(encoding="utf-8"))
+    _write(tmp_path / "runtime" / "control_interfaces.yaml", control_interfaces.read_text(encoding="utf-8"))
 
     _write(
         repo_profiles,
@@ -132,6 +137,8 @@ def test_merge_imported_robot_entry_can_update_source_baseline_when_requested(tm
     repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
     runtime_profiles = tmp_path / "runtime" / "robot_instances.yaml"
     control_types, control_interfaces = _write_profile_catalogs(workspace)
+    _write(tmp_path / "runtime" / "control_types.yaml", control_types.read_text(encoding="utf-8"))
+    _write(tmp_path / "runtime" / "control_interfaces.yaml", control_interfaces.read_text(encoding="utf-8"))
 
     _write(
         repo_profiles,
@@ -161,6 +168,62 @@ robots: {}
     assert runtime_results[0]["state"] == "missing_file"
     assert "robot_new:" in repo_profiles.read_text(encoding="utf-8")
     assert "robot_new:" in runtime_profiles.read_text(encoding="utf-8")
+
+
+def test_repair_before_prompt_only_lists_loadable_ready_robots(tmp_path: Path) -> None:
+    workspace = tmp_path / "ws"
+    repo_profiles = workspace / "src" / "swarm_control_core" / "config" / "robot_instances.yaml"
+    runtime_profiles = tmp_path / "runtime" / "robot_instances.yaml"
+    control_types, control_interfaces = _write_profile_catalogs(workspace)
+    runtime_profiles.parent.mkdir(parents=True, exist_ok=True)
+    (runtime_profiles.parent / "control_types.yaml").write_text(control_types.read_text(encoding="utf-8"), encoding="utf-8")
+    (runtime_profiles.parent / "control_interfaces.yaml").write_text(
+        control_interfaces.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    _write(
+        repo_profiles,
+        """schema_version: "1.0"
+defaults:
+  control_type: diff_drive
+  control_interface: 4wheel_diff_l298n_1
+robots:
+  robot_ready:
+    ssh_target: robot_ready@ready.local
+    control_type: diff_drive
+    control_interface: 4wheel_diff_l298n_1
+""",
+    )
+    _write(
+        runtime_profiles,
+        """schema_version: "1.0"
+defaults:
+  control_type: diff_drive
+  control_interface: removed_default
+robots:
+  robot_ready:
+    ssh_target: robot_ready@ready.local
+    control_type: diff_drive
+    control_interface: 4wheel_diff_l298n_1
+  robot_stale:
+    ssh_target: robot_stale@stale.local
+    control_type: diff_drive
+    control_interface: removed_interface
+""",
+    )
+
+    _repair_runtime_registries_before_prompt(
+        repo_profiles_path=repo_profiles,
+        runtime_profiles_paths=[runtime_profiles],
+        control_types_path=control_types,
+        control_interfaces_path=control_interfaces,
+    )
+
+    assert _loadable_runtime_robot_names([runtime_profiles]) == ["robot_ready"]
+    data = yaml.safe_load(runtime_profiles.read_text(encoding="utf-8"))
+    assert "robot_stale" not in data["robots"]
+    assert "robot_stale" in data["quarantined_robots"]
 
 
 def test_detect_likely_local_robot_source_from_runtime_registry(tmp_path: Path) -> None:

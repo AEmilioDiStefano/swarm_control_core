@@ -21,6 +21,7 @@ from .configure_robot_profile import (
     _repo_robot_instances_path,
     _runtime_robot_instances_paths,
     _write_yaml,
+    quarantine_invalid_runtime_robot_entries,
     repair_invalid_runtime_robot_entries,
     refresh_runtime_core_profiles,
 )
@@ -166,7 +167,7 @@ def _select_robot_entry_from_registry(
     )
 
 
-def _collect_sources(initial_specs: Sequence[str], *, existing_robot_names: Sequence[str]) -> List[str]:
+def _collect_sources(initial_specs: Sequence[str], *, ready_robot_names: Sequence[str]) -> List[str]:
     specs = [str(spec).strip() for spec in initial_specs if str(spec).strip()]
     if specs:
         return specs
@@ -186,8 +187,8 @@ def _collect_sources(initial_specs: Sequence[str], *, existing_robot_names: Sequ
         "username@hostname.local or robot_name=username@hostname.local."
     )
     print("[SYNC] Press Enter on a blank line when finished.")
-    print("[SYNC] Registered/trusted robots:")
-    names = sorted(str(name) for name in existing_robot_names if str(name).strip())
+    print("[SYNC] Ready registered/trusted robots:")
+    names = sorted(str(name) for name in ready_robot_names if str(name).strip())
     if names:
         for name in names:
             print(f"[SYNC]   {name}")
@@ -226,6 +227,40 @@ def _known_runtime_robot_names(runtime_profiles_paths: Sequence[Path]) -> List[s
             if str(name).strip():
                 names.add(str(name).strip())
     return sorted(names)
+
+
+def _loadable_runtime_robot_names(runtime_profiles_paths: Sequence[Path]) -> List[str]:
+    names: set[str] = set()
+    for path in runtime_profiles_paths:
+        try:
+            registry = load_profile_registry(str(path))
+        except Exception:
+            continue
+        robots = registry.get("robots", {}) or {}
+        if not isinstance(robots, dict):
+            continue
+        for name in robots.keys():
+            if str(name).strip():
+                names.add(str(name).strip())
+    return sorted(names)
+
+
+def _print_profile_wizard_hint(robot_name: str = "") -> None:
+    prefix = f" for '{robot_name}'" if robot_name else ""
+    print(
+        f"[SYNC] If the missing robot has no local profile yet{prefix}, run this on that robot first:",
+        file=sys.stderr,
+    )
+    print(
+        "[SYNC]   export SWARM_CORE_ROBOT_NAME=\"${SWARM_CORE_ROBOT_NAME:-$(id -un)}\"",
+        file=sys.stderr,
+    )
+    print("[SYNC]   export ROBOT_NAME=\"${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}\"", file=sys.stderr)
+    print("[SYNC]   \"$SC/scripts/swarm_core_quickstart_step2.sh\"", file=sys.stderr)
+    print(
+        "[SYNC] Then rerun this control-machine sync step and enter the source printed by the robot.",
+        file=sys.stderr,
+    )
 
 
 def _fetch_remote_registry(target: str) -> Dict[str, Any]:
@@ -301,6 +336,12 @@ def _merge_imported_robot_entry(
             control_types_path=control_types_path,
             control_interfaces_path=control_interfaces_path,
         )
+        quarantined_invalid_entries = quarantine_invalid_runtime_robot_entries(
+            runtime_registry=runtime_registry,
+            control_types_path=control_types_path,
+            control_interfaces_path=control_interfaces_path,
+            skip_robot_names=(robot_name,),
+        )
         runtime_robots = runtime_registry.get("robots", {}) or {}
         if not isinstance(runtime_robots, dict):
             runtime_robots = {}
@@ -318,7 +359,7 @@ def _merge_imported_robot_entry(
         if sync_state != "already_synced":
             runtime_robots[robot_name] = dict(entry)
             runtime_registry["robots"] = runtime_robots
-        if sync_state != "already_synced" or repaired_invalid_entries:
+        if sync_state != "already_synced" or repaired_invalid_entries or quarantined_invalid_entries:
             _write_yaml(runtime_path, runtime_registry)
 
         runtime_results.append(
@@ -327,6 +368,7 @@ def _merge_imported_robot_entry(
                 "state": sync_state,
                 "repaired": sync_state != "already_synced",
                 "repaired_invalid_entries": repaired_invalid_entries,
+                "quarantined_invalid_entries": quarantined_invalid_entries,
             }
         )
 
@@ -351,6 +393,58 @@ def _print_sync_result(result: SyncResult, *, robot_name: str, prefix: str) -> N
     if repaired_invalid_entries:
         names = ", ".join(sorted(str(name) for name in repaired_invalid_entries))
         print(f"[SYNC] Repaired stale/invalid runtime entries from baseline at {path}: {names}")
+    quarantined_invalid_entries = result.get("quarantined_invalid_entries", []) or []
+    if quarantined_invalid_entries:
+        names = ", ".join(sorted(str(name) for name in quarantined_invalid_entries))
+        print(f"[SYNC] Quarantined invalid runtime entries that are not in the current baseline at {path}: {names}")
+
+
+def _repair_runtime_registries_before_prompt(
+    *,
+    repo_profiles_path: Path,
+    runtime_profiles_paths: Sequence[Path],
+    control_types_path: Path,
+    control_interfaces_path: Path,
+) -> None:
+    repo_registry = _load_robot_registry(repo_profiles_path)
+    for runtime_path in runtime_profiles_paths:
+        runtime_registry = _load_robot_registry(runtime_path)
+        changed = False
+        repo_defaults = dict(repo_registry.get("defaults", {}) or {})
+        if runtime_registry.get("schema_version") != repo_registry.get("schema_version", "1.0"):
+            runtime_registry["schema_version"] = repo_registry.get("schema_version", "1.0")
+            changed = True
+        if runtime_registry.get("defaults", {}) != repo_defaults:
+            runtime_registry["defaults"] = repo_defaults
+            changed = True
+        repaired_invalid_entries = repair_invalid_runtime_robot_entries(
+            runtime_registry=runtime_registry,
+            repo_registry=repo_registry,
+            control_types_path=control_types_path,
+            control_interfaces_path=control_interfaces_path,
+        )
+        if repaired_invalid_entries:
+            names = ", ".join(sorted(str(name) for name in repaired_invalid_entries))
+            print(f"[SYNC] Repaired stale/invalid runtime entries from baseline at {runtime_path}: {names}")
+            changed = True
+        quarantined_invalid_entries = quarantine_invalid_runtime_robot_entries(
+            runtime_registry=runtime_registry,
+            control_types_path=control_types_path,
+            control_interfaces_path=control_interfaces_path,
+        )
+        if quarantined_invalid_entries:
+            names = ", ".join(sorted(str(name) for name in quarantined_invalid_entries))
+            print(
+                f"[SYNC] Quarantined invalid runtime entries that are not in the current baseline at "
+                f"{runtime_path}: {names}"
+            )
+            print(
+                "[SYNC] Quarantined robots are not ready for control until their local profile is regenerated "
+                "on the robot and synced again."
+            )
+            changed = True
+        if changed:
+            _write_yaml(runtime_path, runtime_registry)
 
 
 def _print_core_profile_result(result: SyncResult) -> None:
@@ -449,6 +543,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not runtime_profiles_paths:
         runtime_profiles_paths = [_config_dir() / "robot_instances.yaml"]
 
+    refresh_runtime_core_profiles(workspace_root, runtime_profiles_paths)
+    _repair_runtime_registries_before_prompt(
+        repo_profiles_path=repo_profiles_path,
+        runtime_profiles_paths=runtime_profiles_paths,
+        control_types_path=control_types_path,
+        control_interfaces_path=control_interfaces_path,
+    )
+
     if not args.source:
         local_robot_hint = _detect_likely_local_robot_source(
             repo_profiles_path=repo_profiles_path,
@@ -473,7 +575,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         source_specs = _collect_sources(
             args.source,
-            existing_robot_names=_known_runtime_robot_names(runtime_profiles_paths),
+            ready_robot_names=_loadable_runtime_robot_names(runtime_profiles_paths),
         )
     except RuntimeError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
@@ -500,6 +602,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         except Exception as exc:
             print(f"[ERROR] {exc}", file=sys.stderr)
+            _print_profile_wizard_hint(requested_robot_name)
             return 2
 
         if robot_name in seen_robot_names:
@@ -541,29 +644,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("[SYNC] Imported robot entry:")
         print(textwrap.indent(json.dumps({robot_name: entry}, indent=2, sort_keys=False), "  "))
 
-    repo_registry = _load_robot_registry(repo_profiles_path)
-    for runtime_path in runtime_profiles_paths:
-        runtime_registry = _load_robot_registry(runtime_path)
-        changed = False
-        repo_defaults = dict(repo_registry.get("defaults", {}) or {})
-        if runtime_registry.get("schema_version") != repo_registry.get("schema_version", "1.0"):
-            runtime_registry["schema_version"] = repo_registry.get("schema_version", "1.0")
-            changed = True
-        if runtime_registry.get("defaults", {}) != repo_defaults:
-            runtime_registry["defaults"] = repo_defaults
-            changed = True
-        repaired_invalid_entries = repair_invalid_runtime_robot_entries(
-            runtime_registry=runtime_registry,
-            repo_registry=repo_registry,
-            control_types_path=control_types_path,
-            control_interfaces_path=control_interfaces_path,
-        )
-        if repaired_invalid_entries:
-            names = ", ".join(sorted(str(name) for name in repaired_invalid_entries))
-            print(f"[SYNC] Repaired stale/invalid runtime entries from baseline at {runtime_path}: {names}")
-            changed = True
-        if changed:
-            _write_yaml(runtime_path, runtime_registry)
+    _repair_runtime_registries_before_prompt(
+        repo_profiles_path=repo_profiles_path,
+        runtime_profiles_paths=runtime_profiles_paths,
+        control_types_path=control_types_path,
+        control_interfaces_path=control_interfaces_path,
+    )
 
     core_results = refresh_runtime_core_profiles(workspace_root, runtime_profiles_paths)
     for result in core_results:
@@ -576,8 +662,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"[ERROR] Control-machine runtime registry is not loadable at {runtime_path}: {exc}", file=sys.stderr)
             return 2
         robots = registry.get("robots", {}) or {}
-        known = ", ".join(sorted(str(name) for name in robots.keys())) or "<none>"
-        print(f"[SYNC] Control-machine trusted robot registry load check OK: {known}")
+        known = sorted(str(name) for name in robots.keys())
+        print("[SYNC] Control-machine trusted robot registry load check OK:")
+        if known:
+            for name in known:
+                print(f"[SYNC]   {name}")
+        else:
+            print("[SYNC]   <none>")
 
     print("[OK] Control-machine robot registration/approval complete.")
     print("[OK] Registered/approved robots are ready for QUICKSTART handoff.")

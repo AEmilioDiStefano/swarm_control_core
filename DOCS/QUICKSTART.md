@@ -222,11 +222,17 @@ set -u || true
 ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
 ```
 
-The wizard prints instructions, then ends its initial output with the robots
-already registered/trusted on the control machine, one robot per line. Check
-that list visually. If every robot you intend to control is listed, press
-Enter. If one is missing, enter the exact source printed by the affected robot
-in Step 2. Repeat for multiple missing robots, then press Enter on a blank line.
+The wizard first repairs/quarantines stale runtime entries that would prevent
+the UI from loading the trusted registry. It then ends its initial output with
+the ready registered/trusted robots, one robot per line. Check that list
+visually. If every robot you intend to control is listed, press Enter. If one is
+missing, enter the exact source printed by the affected robot in Step 2. Repeat
+for multiple missing robots, then press Enter on a blank line.
+
+When you enter a missing robot source, the sync step pulls that robot's saved
+profile from the robot over SSH and imports it into the control machine runtime
+registry. If the robot does not have a saved local profile yet, the command
+prints the robot-side quickstart/profile wizard command to run first.
 
 What this confirms or repairs:
 - imports the robot's generated local profile into the control machine's
@@ -235,7 +241,7 @@ What this confirms or repairs:
   `control_interfaces.yaml`
 - repairs stale runtime entries that still reference removed profile names, when
   a current baseline entry exists for that robot
-- validates that the control machine can load the trusted robot registry before
+- validates that the same trusted robot registry used by the UI can load before
   the UI starts
 
 Expected success output ends with:
@@ -589,10 +595,11 @@ set -u || true
 ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
 ```
 
-The wizard prints the robots already registered/trusted on the control machine.
-If every robot you intend to control is already listed, press Enter. If one is
-missing, enter the exact source strings printed by `add_robot_core` or
-`robot_doctor_core` on each robot. Accepted source forms:
+The wizard repairs/quarantines stale runtime entries, then prints only ready
+registered/trusted robots from a registry the UI can load. If every robot you
+intend to control is already listed, press Enter. If one is missing, enter the
+exact source strings printed by `add_robot_core` or `robot_doctor_core` on each
+robot. Accepted source forms:
 
 - `robot_user@robot_host.local`
 - `robot_name=robot_user@robot_host.local`
