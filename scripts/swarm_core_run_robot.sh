@@ -45,7 +45,9 @@ if [[ "${SWARM_CORE_TERMINATE_EXISTING_PROCESSES:-1}" == "1" ]]; then
 fi
 
 if [[ -x "${SCRIPT_DIR}/swarm_core_seed_runtime_config.sh" ]]; then
-  "${SCRIPT_DIR}/swarm_core_seed_runtime_config.sh" --workspace "$WS" || true
+  "${SCRIPT_DIR}/swarm_core_seed_runtime_config.sh" \
+    --workspace "$WS" \
+    --overwrite-core-profiles || true
 fi
 
 runtime_cfg_dir="${SWARM_CORE_CONFIG_DIR:-$HOME/.config/swarm_control_core}"

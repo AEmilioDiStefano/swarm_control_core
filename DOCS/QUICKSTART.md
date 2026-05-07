@@ -513,7 +513,10 @@ Then return to [Step 3](#step-3).
 ## Fix Step 3.2: Robots Are Visible but Read-Only/Untrusted
 
 If the UI logs `trusted_robots=<none>` or says a robot is unknown/read-only, the
-control machine does not have that robot in its trusted runtime registry.
+control machine either does not have that robot in its trusted runtime registry
+or could not load the registry. If the UI log includes `Failed to load profile
+registry`, rerun [Step 1](#step-1) on the control machine and restart
+[Step 3](#step-3) first.
 
 ### CONTROL MACHINE:
 

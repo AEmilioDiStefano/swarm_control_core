@@ -401,7 +401,8 @@ run_bootstrap_step_with_subprogress 55 "Installing dependencies" \
 current_step="seed-runtime-config"
 run_bootstrap_step 8 "Seeding runtime configuration" \
   "${target_pkg_dir}/scripts/swarm_core_seed_runtime_config.sh" \
-  --workspace "$workspace"
+  --workspace "$workspace" \
+  --overwrite-core-profiles
 
 if [[ "$machine_role" == "robot" && "$skip_gpio" != "1" ]]; then
   current_step="gpio-setup"
