@@ -19,6 +19,7 @@ Active ADRs:
 - [ADR-0009: Transport Resource Isolation And Optional Discovery Modes](./ADR-0009-transport-resource-isolation-and-discovery-modes.md)
 - [ADR-0010: Canonical Robot Registry and Generated Runtime Profiles](./ADR-0010-canonical-robot-registry.md)
 - [ADR-0011: Metadata-Driven Control Interfaces](./ADR-0011-metadata-driven-control-interfaces.md)
+- [ADR-0012: Portable GPIO Backends for Raspberry Pi and SBC Robots](./ADR-0012-portable-gpio-backends.md)
 
 Companion validation doc:
 - [LOW_LATENCY_VALIDATION.md](../LOW_LATENCY_VALIDATION.md)

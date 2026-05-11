@@ -27,6 +27,9 @@ When you finish this guide:
 - the control machine will have registered/approved those robot entries for UI
   trust, metadata, and per-robot tuning
 - GPIO access will be prepared on each robot
+- GPIO motor control prefers the gpiochip-based `lgpio` backend for Raspberry
+  Pi 5 compatibility, can use `gpiozero` when available, and still falls back to
+  `RPi.GPIO`/`rpi-lgpio` on older working installs
 - each robot will have a saved camera profile
 - the UI will only allow control of robots that are present in the trusted
   control-machine `robot_instances.yaml`

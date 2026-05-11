@@ -562,7 +562,7 @@ progress_total_weight=55
 if [[ "$machine_role" == "control" ]]; then
   progress_total_weight=$(( progress_total_weight + 12 ))
 else
-  progress_total_weight=$(( progress_total_weight + 26 ))
+  progress_total_weight=$(( progress_total_weight + 28 ))
 fi
 progress_init
 
@@ -593,7 +593,8 @@ if [[ "$machine_role" == "control" ]]; then
 fi
 
 if [[ "$machine_role" == "robot" ]]; then
-  run_progress_step 2 "Checking dependency: python3-rpi.gpio" check_apt_package_dependency "python3-rpi.gpio" "python3-rpi.gpio" || true
+  run_progress_step 2 "Checking dependency: python3-lgpio" check_apt_package_dependency "python3-lgpio" "python3-lgpio" || true
+  run_progress_step 2 "Checking dependency: python3-gpiozero" check_apt_package_dependency "python3-gpiozero" "python3-gpiozero" || true
   run_progress_step 12 "Checking dependency: python3-opencv" check_apt_package_dependency "python3-opencv" "python3-opencv" || true
   run_progress_step 2 "Checking dependency: v4l2-ctl (v4l-utils)" check_cmd_dependency "v4l2-ctl (v4l-utils)" "v4l2-ctl" v4l-utils || true
   run_progress_step 6 "Checking dependency: ros-${ros_distro}-cv-bridge" check_apt_package_dependency "ros-${ros_distro}-cv-bridge" "ros-${ros_distro}-cv-bridge" || true

@@ -6,7 +6,9 @@ Thin hardware abstraction layer for motor outputs.
 
 Goals:
 - Provide a consistent API for setting motor directions and PWM duty
-- Allow a safe mock implementation when RPi.GPIO is not available (desktop)
+- Prefer gpiochip/lgpio GPIO on modern Raspberry Pi boards, including Pi 5
+- Fall back to gpiozero or RPi.GPIO/rpi-lgpio when needed
+- Allow a safe mock implementation when GPIO is not available (desktop)
 - Keep behavior simple and well-documented for new engineers
 
 Usage:
@@ -35,9 +37,14 @@ import logging
 import time
 
 try:
-    import RPi.GPIO as GPIO  # type: ignore
-    GPIO_AVAILABLE = True
-except Exception:
+    from .gpio_backend import select_gpio_backend
+
+    GPIO, GPIO_BACKEND_NAME, GPIO_BACKEND_ERRORS = select_gpio_backend()
+    GPIO_AVAILABLE = GPIO is not None
+except Exception as exc:
+    GPIO = None
+    GPIO_BACKEND_NAME = "mock"
+    GPIO_BACKEND_ERRORS = [str(exc)]
     GPIO_AVAILABLE = False
 
 LOG = logging.getLogger("hardware_interface")
@@ -78,7 +85,7 @@ class HardwareInterface:
         if GPIO_AVAILABLE and self.gpio_map:
             try:
                 self._setup_gpio()
-                LOG.info("GPIO hardware interface initialized")
+                LOG.info("GPIO hardware interface initialized using backend=%s", GPIO_BACKEND_NAME)
                 LOG.info(
                     "GPIO map keys: %s; invert_left=%s invert_right=%s invert_fl=%s invert_rl=%s invert_fr=%s invert_rr=%s",
                     list(self.gpio_map.keys()),
@@ -121,11 +128,15 @@ class HardwareInterface:
         """
         self._mock = True
         if not GPIO_AVAILABLE:
-            LOG.warning("RPi.GPIO not available - using mock hardware interface")
+            LOG.warning("No GPIO backend available - using mock hardware interface")
+            if GPIO_BACKEND_ERRORS:
+                LOG.debug("GPIO backend selection errors: %s", "; ".join(GPIO_BACKEND_ERRORS))
         else:
             LOG.warning("GPIO map empty - using mock hardware interface")
 
     def _setup_gpio(self):
+        if GPIO is None:
+            raise RuntimeError("No GPIO backend selected")
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
 
