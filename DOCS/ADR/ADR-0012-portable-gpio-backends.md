@@ -16,7 +16,7 @@ need to preserve working Raspberry Pi 4 robots and avoid making every existing
 motor profile or wheel-test workflow change at once.
 
 The swarm should also be allowed to contain mixed robot hardware:
- 
+
 - Raspberry Pi 4 robots
 - Raspberry Pi 5 robots
 - future Pi-class boards
