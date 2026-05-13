@@ -1,17 +1,21 @@
 # Git Workflow (`WS` Source Of Truth + Branch Sync)
 
-Use this workflow from:
+# Direct Run Path
+
+## Step 0: Bootstrap Workspace Shell
+
+### CONTROL MACHINE / ROBOT(S):
 
 ```bash
 SWARM_CORE_BOOTSTRAP_ENV="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
 if [[ -z "${SWARM_CORE_BOOTSTRAP_ENV:-}" ]]; then
   echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-  return 1 2>/dev/null || exit 1
-fi
-source "$SWARM_CORE_BOOTSTRAP_ENV" --interactive
-unset SWARM_CORE_BOOTSTRAP_ENV
+else
+  source "$SWARM_CORE_BOOTSTRAP_ENV" --interactive
+  unset SWARM_CORE_BOOTSTRAP_ENV
 
-cd "$WS/src/swarm_control_core"
+  cd "$WS/src/swarm_control_core"
+fi
 ```
 
 This bootstrap exports `WS`, `WS_DEV`, `SC`, and `SWARM_CORE_WORKSPACE_ROOT`.
@@ -23,14 +27,16 @@ If this workspace also contains `swarm_control_pro`, use the paired workflow in 
 
 Every Git command block below ends with an explicit rebuild on purpose. These are ROS 2 packages, so do not stop at `git pull` or branch sync; rebuild the overlay before you trust runtime behavior.
 
-## Model
+## Step 1: Choose The Workflow
 
 - Develop in `WS/src/swarm_control_core` (usually `main` + feature branches).
 - Publish normal work to `main`.
 - When needed, mirror all local branches to GitHub so the remote branch
   structure matches this workspace.
 
-## 1) Normal Development Push (`main`)
+## Step 2: Normal Development Push (`main`)
+
+### CONTROL MACHINE / ROBOT(S):
 
 ```bash
 cd "$WS/src/swarm_control_core"
@@ -52,9 +58,11 @@ source "$WS/install/setup.bash"
 set -u || true
 ```
 
-## 2) Normal Development Pull (`main`)
+## Step 3: Normal Development Pull (`main`)
 
 Use this on other machines to fast-forward local `main` to GitHub `main`.
+
+### CONTROL MACHINE / ROBOT(S):
 
 ```bash
 cd "$WS/src/swarm_control_core"
@@ -74,11 +82,13 @@ source "$WS/install/setup.bash"
 set -u || true
 ```
 
-## 3) Mirror All Local Branches To GitHub
+## Step 4: Mirror All Local Branches To GitHub
 
 Use this when the local branch structure is the source of truth and GitHub
 should match it. This pushes every local branch and prunes GitHub branches that
 do not exist locally. It does not mirror tags.
+
+### CONTROL MACHINE / ROBOT(S):
 
 ```bash
 cd "$WS/src/swarm_control_core"
@@ -98,3 +108,9 @@ fi
 source "$WS/install/setup.bash"
 set -u || true
 ```
+
+# Alternative/Debug/Fix Reference
+
+No separate fix steps are needed for this compact workflow. If a Git command or
+rebuild fails, fix the reported Git conflict, authentication issue, or build
+error, then return to the step that failed.

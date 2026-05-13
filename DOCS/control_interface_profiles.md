@@ -5,7 +5,9 @@ GPIO pins, motor-controller model, wheel-channel layout, safety parameters, and
 the wiring guide. They are selected from `robot_instances.yaml` through the
 `control_interface` field.
 
-## Naming Convention
+# Direct Run Path
+
+## Step 0: Confirm Naming Convention
 
 Canonical profile IDs use lowercase snake case:
 
@@ -19,7 +21,7 @@ that pattern.
 Robot entries should use the canonical lowercase names. The profile registry no
 longer carries duplicate mixed-case or shortened profile IDs.
 
-## Required Metadata
+## Step 1: Confirm Required Metadata
 
 Every `config/control_interfaces.yaml` entry should include:
 
@@ -34,10 +36,12 @@ Every `config/control_interfaces.yaml` entry should include:
 This lets the add-robot wizard expose compatible hardware profiles without
 hardcoded Python name checks.
 
-## Add a New Interface
+## Step 2: Add a New Interface
 
 Preferred scaffold command shape (change the name, model, and pins for the new
 hardware):
+
+### CONTROL MACHINE:
 
 ```bash
 "$WS/src/swarm_control_core/scripts/swarm_core_add_control_interface.sh" \
@@ -56,6 +60,8 @@ hardware):
 
 Then refresh the generated source pointer:
 
+### CONTROL MACHINE:
+
 ```bash
 ros2 run swarm_control_core generate_profile_docs_core \
   --control-interfaces "$WS/src/swarm_control_core/config/control_interfaces.yaml" \
@@ -63,6 +69,8 @@ ros2 run swarm_control_core generate_profile_docs_core \
 ```
 
 Validate profiles:
+
+### CONTROL MACHINE:
 
 ```bash
 ros2 run swarm_control_core validate_profiles_core \
@@ -72,7 +80,9 @@ ros2 run swarm_control_core validate_profiles_core \
   --check-docs-exist
 ```
 
-## When Python Changes Are Still Needed
+# Alternative/Debug/Fix Reference
+
+## Optional: When Python Changes Are Still Needed
 
 Adding a new motor-controller wiring profile should not require Python changes.
 

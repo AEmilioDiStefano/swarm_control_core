@@ -50,7 +50,7 @@ Trust/verification rule:
 
 Go to [Alternative Step A.1](#ref-a-1), then return to [Step 0](#step-0).
 
-# Quickstart Path:
+# Direct Run Path
 
 <a id="apt-lock-preflight"></a>
 ## Before Step 0: Apt/Dpkg Lock Preflight
@@ -369,7 +369,7 @@ Proceed to Step 5.
 <a id="step-5"></a>
 ## Step 5: Terminal Control Smoke Test (Control Machine)
 
-Terminal teleop:
+### CONTROL MACHINE:
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step5.sh" --tool teleop
@@ -381,7 +381,7 @@ Go to [Fix Step 5.1](#ref-5-1), then return to [Step 5](#step-5).
 
 Quickstart complete.
 
-# Alternative/Debug/Fix
+# Alternative/Debug/Fix Reference
 
 <a id="ref-a-1"></a>
 ## Alternative Step A.1: Mode Handoff Checklist (core <-> pro)
@@ -405,7 +405,7 @@ From core session mode back to pro persistent mode:
 - reboot is still acceptable if you want a full clean restart of robot state
   before returning to pro
 
-Quick sanity checks on a robot:
+### ROBOT(S):
 
 ```bash
 sudo systemctl is-enabled swarm-robot.service || true
@@ -417,7 +417,7 @@ Then return to [Step 0](#step-0).
 <a id="ref-0-1"></a>
 ## Fix Step 0.1: Dependency install/check fails
 
-Run:
+### CONTROL MACHINE / ROBOT(S):
 
 ```bash
 sudo apt-get update
@@ -430,7 +430,7 @@ Then return to [Step 0](#step-0).
 <a id="ref-1-1"></a>
 ## Fix Step 1.1: Build/source fails
 
-Run clean rebuild:
+### CONTROL MACHINE / ROBOT(S):
 
 ```bash
 cd "$WS"
@@ -468,14 +468,18 @@ Then return to [Step 2](#step-2).
 ## Alternative Step 2.2: Skip Camera Menu or Preselect Hardware
 
 If you already trust the saved camera profile and want to skip the interactive
-camera menu, run Step 2 like this:
+camera menu, run Step 2 like this.
+
+### ROBOT(S):
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step2.sh" --skip-camera-profile
 ```
 
 If this is a new robot with a known hardware profile, preselect it. Example for
-a differential dual-L298N robot:
+a differential dual-L298N robot.
+
+### ROBOT(S):
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step2.sh" \
@@ -483,7 +487,9 @@ a differential dual-L298N robot:
   --control-interface 4wheel_diff_l298n_2
 ```
 
-For a mecanum robot using two L298N boards:
+For a mecanum robot using two L298N boards.
+
+### ROBOT(S):
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step2.sh" \
@@ -512,7 +518,9 @@ Then return to [Step 2](#step-2).
 ## Fix Step 2.3: Wheel Direction or Wheel Order Is Wrong
 
 For a robot that already has bringup running, open a second SSH terminal to that
-same robot and run:
+same robot and run.
+
+### SECOND ROBOT SSH TERMINAL:
 
 ```bash
 export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
@@ -537,7 +545,7 @@ Step 2 terminal with `Ctrl-C`, then return to [Step 2](#step-2).
 
 If the camera image is inverted after camera configuration, use the interactive
 camera flipper tool to save software orientation in that robot's camera profile.
-Run this on the affected robot, not the control machine.
+### AFFECTED ROBOT:
 
 ```bash
 export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
@@ -569,7 +577,9 @@ terminal with `Ctrl-C`, then return to [Step 2](#step-2).
 ## Fix Step 2.5: Dark Camera or Laggy Video/Control
 
 If one robot feed is much darker than others while transport/control are
-healthy, validate camera controls on that robot:
+healthy, validate camera controls on that robot.
+
+### AFFECTED ROBOT:
 
 ```bash
 v4l2-ctl --device /dev/v4l/by-id/<your-camera> --list-ctrls
@@ -579,7 +589,9 @@ This is typically per-camera exposure/gain behavior, not DDS/WebRTC transport
 behavior.
 
 If teleop/video feels laggy while motors are receiving frequent commands,
-reduce cmd_vel audit overhead for this session:
+reduce cmd_vel audit overhead for this session.
+
+### ROBOT(S):
 
 ```bash
 export SWARM_CORE_AUDIT_CMD_VEL_MIN_PERIOD_S=2.0
@@ -603,7 +615,9 @@ export ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
 "$WS/src/swarm_control_core/scripts/swarm_core_run_local_ui.sh"
 ```
 
-If LAN access is needed, set:
+If LAN access is needed, set the bind override.
+
+### CONTROL MACHINE:
 
 ```bash
 export SWARM_CORE_ALLOW_LAN_BIND=1
@@ -659,27 +673,35 @@ Then return to [Step 3](#step-3).
 <a id="ref-3-3"></a>
 ## Alternative Step 3.3: Fleet, Switching, Streaming, or LAN Bind Modes
 
-Balanced fleet profile:
+Balanced fleet profile.
+
+### CONTROL MACHINE:
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step3.sh" --balanced-fleet
 ```
 
 If rapid back-and-forth switching still feels sticky in `active_only` mode, use
-the switch-heavy profile:
+the switch-heavy profile.
+
+### CONTROL MACHINE:
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step3.sh" --switch-heavy
 ```
 
-To keep all robot camera streams subscribed continuously, at higher load:
+To keep all robot camera streams subscribed continuously, at higher load.
+
+### CONTROL MACHINE:
 
 ```bash
 export SWARM_CORE_IMAGE_SUBSCRIPTION_MODE=all
 "$SC/scripts/swarm_core_quickstart_step3.sh"
 ```
 
-For private-LAN browser access:
+For private-LAN browser access.
+
+### CONTROL MACHINE:
 
 ```bash
 "$SC/scripts/swarm_core_quickstart_step3.sh" --allow-lan-bind
@@ -690,7 +712,9 @@ Then return to [Step 3](#step-3).
 <a id="ref-4-1"></a>
 ## Fix Step 4.1: Robots missing in UI/topics
 
-Check domain and source consistency on control + robots:
+Check domain and source consistency on control + robots.
+
+### CONTROL MACHINE / ROBOT(S):
 
 ```bash
 echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID (target=${SWARM_CORE_ROS_DOMAIN_ID:-17})"
@@ -707,7 +731,9 @@ Keep compat defaults and rerun [Step 2](#step-2) on robots + [Step 3](#step-3) o
 If the UI sees a robot but logs it as unknown/read-only, go to
 [Fix Step 3.2](#ref-3-2), then return to [Step 4](#step-4).
 
-If you previously forced firewall preservation, remove that override:
+If you previously forced firewall preservation, remove that override.
+
+### CONTROL MACHINE / ROBOT(S):
 
 ```bash
 unset SWARM_CORE_COMPAT_STOP_UFW
@@ -719,14 +745,18 @@ Run on each machine:
 If `git pull --ff-only` is blocked by local changes to
 `config/robot_instances.yaml` after running robot setup, the runtime profile is
 already stored under `~/.config/swarm_control_core/robot_instances.yaml`. Restore
-the generated source-file edit before pulling:
+the generated source-file edit before pulling.
+
+### CONTROL MACHINE / ROBOT(S):
 
 ```bash
 cd "$WS/src/swarm_control_core"
 git restore config/robot_instances.yaml
 ```
 
-Then rerun the update/build block:
+Then rerun the update/build block.
+
+### CONTROL MACHINE / ROBOT(S):
 
 ```bash
 cd "$WS/src/swarm_control_core"

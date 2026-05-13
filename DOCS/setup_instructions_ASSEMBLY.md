@@ -11,7 +11,9 @@ your control machine on the same LAN.
 If you already have compatible robot hardware, skip to
 [setup_instructions_SOFTWARE.md](./setup_instructions_SOFTWARE.md).
 
-## Scope
+# Direct Run Path
+
+## Step 0: Confirm Scope
 
 This assembly guide is for a Raspberry Pi based differential-drive robot using:
 
@@ -22,14 +24,14 @@ This assembly guide is for a Raspberry Pi based differential-drive robot using:
 If you are building a different robot type, change the physical assembly and
 match your local runtime config to that hardware before bringup.
 
-## Assumptions
+## Step 1: Confirm Assumptions
 
 - Ubuntu 24.04 will be installed on the robot computer
 - ROS 2 Jazzy is the target ROS distribution
 - `swarm_control_core` will be used in local/LAN mode only
 - the reference software setup will use `ROS_DOMAIN_ID=17`
 
-## Materials
+## Step 2: Gather Materials
 
 - One Raspberry Pi 4 or newer Pi-class board with accessible GPIO
 - One L298N motor controller
@@ -43,14 +45,14 @@ match your local runtime config to that hardware before bringup.
 - One differential-drive chassis with two driven sides
 - Mounting hardware and cable management supplies
 
-## Tools
+## Step 3: Gather Tools
 
 - Small screwdriver set
 - Wire stripper or equivalent
 - Tweezers
 - Hot glue, standoffs, or equivalent mounting hardware
 
-## 1. Prepare the Raspberry Pi SD Card
+## Step 4: Prepare the Raspberry Pi SD Card
 
 Flash Ubuntu 24.04 to the Pi SD card, enable the user/SSH settings you want,
 and insert the card into the Pi.
@@ -61,7 +63,7 @@ Recommended:
 - enable SSH during imaging so the robot can be reached remotely after first boot
 - keep the robot on the same private LAN as the control machine
 
-## 2. Wire the Pi to the L298N Controller
+## Step 5: Wire the Pi to the L298N Controller
 
 Connect Pi ground to motor-controller ground first and keep that common ground
 through the whole build.
@@ -88,7 +90,7 @@ Important notes:
   old wiring diagrams.
 - Do not power the drivetrain motors from the Pi 5V rail.
 
-## 3. Connect the Motors to the Controller
+## Step 6: Connect the Motors to the Controller
 
 Connect one side of the drivetrain to one L298N output channel and the other
 side to the other output channel.
@@ -112,7 +114,7 @@ can be corrected by:
 - swapping that side's motor leads, or
 - using a local polarity inversion in the runtime config
 
-## 4. Complete Power and Mechanical Assembly
+## Step 7: Complete Power and Mechanical Assembly
 
 Finish the robot so it is electrically safe and mechanically stable before
 software bringup.
@@ -137,3 +139,13 @@ Before moving on to software, verify:
 Next step:
 
 - Continue to [setup_instructions_SOFTWARE.md](./setup_instructions_SOFTWARE.md)
+
+# Alternative/Debug/Fix Reference
+
+## Optional: Different Chassis Or Motor Controller
+
+If you are building a robot that does not match this reference chassis, use the
+matching GPIO wiring guide under [GPIO/](./GPIO/) and make the runtime
+`control_interface` match the hardware before software bringup.
+
+Then return to the software setup guide.
