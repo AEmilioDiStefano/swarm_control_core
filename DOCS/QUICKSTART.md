@@ -97,6 +97,10 @@ unset SWARM_APT_LOCK_HOLDERS SWARM_APT_LOCK_WAIT_DEADLINE SWARM_APT_LOCK_WAIT_FA
 <a id="step-0"></a>
 ## Step 0: Workspace Bootstrap + Dependency Readiness
 
+The dependency flow inside this step is idempotent: it checks what is already
+installed and installs only what is missing or outdated, so this step is safe
+to re-run at any time (fresh machine or existing machine).
+
 ### CONTROL MACHINE:
 
 ```bash

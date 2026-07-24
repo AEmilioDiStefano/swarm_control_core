@@ -32,6 +32,9 @@ This bootstrap exports `WS`, `WS_DEV`, and `SC` for the commands below.
 
 ## Step 1: Install Dependencies
 
+This gate is idempotent: it checks what is already installed and installs only
+what is missing or outdated, so it is safe to re-run at any time.
+
 ### CONTROL MACHINE:
 
 ```bash

@@ -30,7 +30,7 @@ Example:
      2) rotate(left, 5s)
 
 This matches DIU's public framing of converting natural language intent into
-machine execution across heterogeneous platforms. :contentReference[oaicite:11]{index=11}
+machine execution across heterogeneous platforms.
 """
 
 from __future__ import annotations

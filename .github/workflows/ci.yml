@@ -1,0 +1,46 @@
+# Required CI check for protected main (see DOCS/git_workflow.md).
+# Job name "build-and-test" is the name branch protection must require.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-24.04
+    container:
+      image: ros:jazzy-ros-base
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build/test dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            git ripgrep \
+            python3-colcon-common-extensions \
+            python3-pytest python3-flake8 python3-yaml python3-numpy \
+            python3-pil python3-aiohttp python3-opencv \
+            ros-jazzy-ament-flake8 ros-jazzy-ament-pep257 \
+            ros-jazzy-cv-bridge ros-jazzy-image-transport
+
+      - name: Build (colcon)
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon build --packages-select swarm_control_core
+
+      - name: Test (pytest)
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          python3 -m pytest -q test
+
+      - name: Release gate
+        shell: bash
+        run: ./scripts/swarm_core_release_gate.sh
