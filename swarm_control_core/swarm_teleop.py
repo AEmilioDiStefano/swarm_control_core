@@ -56,6 +56,7 @@ from geometry_msgs.msg import Twist
 from std_msgs.msg import String
 
 from .audit_logger import AuditLogger
+from .path_defaults import default_audit_log_path
 from .drive_profiles import load_profile_registry, resolve_robot_profile
 from .runtime_env import ensure_ros_domain_id
 
@@ -109,8 +110,10 @@ class SwarmTeleop(Node):
     def __init__(self):
         super().__init__("swarm_control_core_teleop")
 
-        # Initialize audit logger
-        self.audit = AuditLogger(self, "teleop", log_file_path="/tmp/teleop_audit.jsonl")
+        # Initialize audit logger (SWARM_CORE_AUDIT_LOG_DIR overrides the directory)
+        self.audit = AuditLogger(
+            self, "teleop", log_file_path=default_audit_log_path("teleop_audit.jsonl")
+        )
 
         # Optional parameters
         self.declare_parameter("allow_cmd_vel_switching", True)

@@ -48,7 +48,7 @@ from .playbook_helpers import TimedTwistPlan, run_timed_twist
 from .playbook_contract import validate_and_normalize
 from .playbook_strategies import compile_transit_xy_plans
 from .audit_logger import AuditLogger
-from .path_defaults import default_robot_name
+from .path_defaults import default_audit_log_path, default_robot_name
 from .playbook_action_compat import ExecutePlaybook, HAS_PLAYBOOK_ACTION
 from .runtime_env import ensure_ros_domain_id
 
@@ -74,7 +74,6 @@ class UnitExecutor(Node):
         configured_robot_name = str(self.get_parameter("robot_name").value).strip()
         self.robot = configured_robot_name or default_robot_name()
 
-        profiles_path = str(self.get_parameter("profiles_path").value).strip() or None
         profiles_path = str(self.get_parameter("profiles_path").value).strip() or None
 
         prof = None
@@ -183,7 +182,9 @@ class UnitExecutor(Node):
         self._active_goals = {}
 
         # Audit logging for DIU compliance
-        audit_log_path = os.environ.get("ROBOT_AUDIT_LOG_PATH") or f"/tmp/robot_{self.robot}_audit.jsonl"
+        audit_log_path = os.environ.get("ROBOT_AUDIT_LOG_PATH") or default_audit_log_path(
+            f"robot_{self.robot}_audit.jsonl"
+        )
         self.audit = AuditLogger(self, "unit_executor", audit_log_path)
 
         self.get_logger().info(f"[{self.robot}] UnitExecutor ready")
@@ -663,7 +664,7 @@ class UnitExecutor(Node):
         """
         Execute a validated goal by publishing a timed Twist.
         """
-        if not HAS_FLEET_ACTION:
+        if not HAS_PLAYBOOK_ACTION:
             # Defensive guard: action callback should not be active without action type.
             return None
         goal = goal_handle.request

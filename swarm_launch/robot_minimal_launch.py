@@ -23,9 +23,27 @@ from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+from swarm_control_core.path_defaults import sanitize_ros_name
+
 
 def _default_ros_domain_id() -> str:
     return str(os.environ.get("ROS_DOMAIN_ID", "17")).strip() or "17"
+
+
+def _default_robot_name() -> str:
+    """Resolve the robot identity from env, mirroring node-side resolution.
+
+    Uses the same environment variables and sanitization as
+    path_defaults.default_robot_name so the launch-level namespace matches the
+    identity the nodes resolve for themselves. Returns "" when no identity is
+    configured; in that case the nodes fail fast at startup with a clear
+    MissingConfigError, exactly as before.
+    """
+    for env_name in ("SWARM_CORE_ROBOT_NAME", "ROBOT_NAME"):
+        candidate = sanitize_ros_name(str(os.environ.get(env_name, "")))
+        if candidate:
+            return candidate
+    return ""
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -37,7 +55,7 @@ def generate_launch_description() -> LaunchDescription:
 
     robot_name_arg = DeclareLaunchArgument(
         "robot_name",
-        default_value="",
+        default_value=_default_robot_name(),
         description="Robot identity name. Set explicitly or via SWARM_CORE_ROBOT_NAME/ROBOT_NAME.",
     )
 
@@ -52,10 +70,13 @@ def generate_launch_description() -> LaunchDescription:
         {"profiles_path": LaunchConfiguration("profiles_path")},
     ]
 
+    # Namespace matches swarm_bringup.launch.py so node names stay per-robot
+    # unique in multi-robot fleets (topics are absolute and unaffected).
     motor_driver = Node(
         package="swarm_control_core",
         executable="motor_driver_node_core",
         name="motor_driver_node",
+        namespace=LaunchConfiguration("robot_name"),
         output="screen",
         parameters=common_params,
     )
@@ -64,6 +85,7 @@ def generate_launch_description() -> LaunchDescription:
         package="swarm_control_core",
         executable="heartbeat_node_core",
         name="heartbeat_node",
+        namespace=LaunchConfiguration("robot_name"),
         output="screen",
         parameters=common_params,
     )

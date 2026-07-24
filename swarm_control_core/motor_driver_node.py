@@ -14,6 +14,7 @@ from .drive_profiles import load_profile_registry, resolve_robot_profile
 from .hardware_interface import HardwareInterface
 from .drive_types import get_drive_type
 from .audit_logger import AuditLogger
+from .path_defaults import default_audit_log_path
 from .path_defaults import default_robot_name
 from .runtime_env import ensure_ros_domain_id
 
@@ -25,6 +26,21 @@ CMD_VEL_QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
     durability=DurabilityPolicy.VOLATILE,
 )
+
+
+def _resolve_rotate_bypass_default(hw_params) -> bool:
+    """Resolve the profile default for the in-place-rotate safety bypass.
+
+    Bypassing ramp/deadband on rotate skips the slew and deadband protections,
+    so it is opt-in: a profile that wants it must declare
+    allow_rotate_bypass_safety: true explicitly. An absent key means False.
+    (Historical default was True; flipped as a safety hardening — see
+    PROGRESS.md BLS-07.)
+    """
+    raw = hw_params.get("allow_rotate_bypass_safety")
+    if raw is None:
+        return False
+    return bool(raw)
 
 
 class MotorDriverNode(Node):
@@ -96,11 +112,7 @@ class MotorDriverNode(Node):
             cleaned = [x.strip() for x in strict_exempt_default_raw.split(",") if x.strip()]
             if cleaned:
                 strict_exempt_default = cleaned
-        rotate_bypass_default_raw = hw_params.get("allow_rotate_bypass_safety")
-        if rotate_bypass_default_raw is None:
-            rotate_bypass_default = True
-        else:
-            rotate_bypass_default = bool(rotate_bypass_default_raw)
+        rotate_bypass_default = _resolve_rotate_bypass_default(hw_params)
         motor_diag_hz_default = hw_params.get("motor_diagnostics_hz") or 2.0
 
         self.declare_parameter("wheel_separation", float(wheel_sep_default))   # meters
@@ -199,7 +211,9 @@ class MotorDriverNode(Node):
         self.create_timer(1.0 / self.motor_diag_hz, self._publish_motor_diag)
 
         # Audit logging for DIU compliance
-        audit_log_path = os.environ.get("ROBOT_AUDIT_LOG_PATH") or f"/tmp/robot_{self.robot_name}_audit.jsonl"
+        audit_log_path = os.environ.get("ROBOT_AUDIT_LOG_PATH") or default_audit_log_path(
+            f"robot_{self.robot_name}_audit.jsonl"
+        )
         self.audit = AuditLogger(self, "motor_driver", audit_log_path)
         # High-rate cmd_vel can flood logs and add latency on constrained robots.
         # Keep audit traceability but throttle repetitive "received" events.

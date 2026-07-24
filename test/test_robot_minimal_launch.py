@@ -376,3 +376,67 @@ def test_default_ros_domain_id_whitespace_only(monkeypatch):
     monkeypatch.setenv("ROS_DOMAIN_ID", "  ")
     result = _default_ros_domain_id()
     assert result == "17"
+
+
+# Namespace parity with swarm_bringup.launch.py (BLS-02):
+# bringup namespaces every robot-side node by robot_name so node names stay
+# per-robot unique in multi-robot fleets. The minimal launch must match.
+def test_nodes_are_namespaced_by_robot_name():
+    """Both nodes carry a robot_name-driven namespace like swarm_bringup.launch.py."""
+    from launch import LaunchContext
+
+    ld = generate_launch_description()
+    nodes = _find_action(ld.entities, Node)
+    assert len(nodes) == 2
+
+    for node in nodes:
+        raw_ns = getattr(node, '_Node__node_namespace', None)
+        assert raw_ns is not None, (
+            "Node is missing a namespace; robot_minimal_launch must namespace "
+            "nodes by robot_name to match swarm_bringup.launch.py"
+        )
+
+        subs = raw_ns if isinstance(raw_ns, (list, tuple)) else [raw_ns]
+        ctx = LaunchContext()
+        ctx.launch_configurations['robot_name'] = 'ctx_robot'
+        resolved = "".join(
+            sub.perform(ctx) if hasattr(sub, 'perform') else str(sub)
+            for sub in subs
+        )
+        # launch_ros may normalize the namespace with a leading slash.
+        assert resolved.lstrip('/') == 'ctx_robot', (
+            f"Namespace should resolve from the robot_name launch config, got {resolved!r}"
+        )
+
+
+def test_robot_name_default_prefers_primary_env(monkeypatch):
+    """robot_name arg default resolves from SWARM_CORE_ROBOT_NAME when set."""
+    monkeypatch.setenv("SWARM_CORE_ROBOT_NAME", "env_bot")
+    monkeypatch.setenv("ROBOT_NAME", "legacy_bot")
+    ld = generate_launch_description()
+    args_by_name = {a.name: a for a in _find_action(ld.entities, DeclareLaunchArgument)}
+    default_subs = args_by_name["robot_name"].default_value
+    default_text = "".join(getattr(sub, 'text', '') for sub in default_subs)
+    assert default_text == "env_bot"
+
+
+def test_robot_name_default_falls_back_to_legacy_env(monkeypatch):
+    """robot_name arg default falls back to ROBOT_NAME, matching node resolution."""
+    monkeypatch.delenv("SWARM_CORE_ROBOT_NAME", raising=False)
+    monkeypatch.setenv("ROBOT_NAME", "legacy_bot")
+    ld = generate_launch_description()
+    args_by_name = {a.name: a for a in _find_action(ld.entities, DeclareLaunchArgument)}
+    default_subs = args_by_name["robot_name"].default_value
+    default_text = "".join(getattr(sub, 'text', '') for sub in default_subs)
+    assert default_text == "legacy_bot"
+
+
+def test_robot_name_default_empty_without_env(monkeypatch):
+    """Without identity env vars the default stays empty (nodes fail fast, as before)."""
+    monkeypatch.delenv("SWARM_CORE_ROBOT_NAME", raising=False)
+    monkeypatch.delenv("ROBOT_NAME", raising=False)
+    ld = generate_launch_description()
+    args_by_name = {a.name: a for a in _find_action(ld.entities, DeclareLaunchArgument)}
+    default_subs = args_by_name["robot_name"].default_value
+    default_text = "".join(getattr(sub, 'text', '') for sub in default_subs)
+    assert default_text == ""

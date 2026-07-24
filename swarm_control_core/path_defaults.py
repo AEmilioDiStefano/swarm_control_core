@@ -198,3 +198,25 @@ def default_robot_name() -> str:
         "Missing robot identity. Set SWARM_CORE_ROBOT_NAME (or ROBOT_NAME), "
         "or pass robot_name explicitly."
     )
+
+
+def default_audit_log_path(file_name: str) -> str:
+    """Resolve an audit JSONL path in a durable, config-owned directory.
+
+    Precedence: SWARM_CORE_AUDIT_LOG_DIR, else
+    ~/.local/state/swarm_control_core/audit. Audit records are DIU-traceability
+    evidence, so they must not default to /tmp (world-readable, lost on
+    reboot). The directory is created when missing so audit sinks can open the
+    file in append mode; if creation fails, AuditLogger degrades to
+    ROS-log-only exactly as before.
+    """
+    base = str(os.environ.get("SWARM_CORE_AUDIT_LOG_DIR", "")).strip()
+    if base:
+        audit_dir = Path(base).expanduser()
+    else:
+        audit_dir = Path.home() / ".local" / "state" / "swarm_control_core" / "audit"
+    try:
+        audit_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return str(audit_dir / file_name)
