@@ -23,7 +23,7 @@ Options:
   --workspace <path>  Workspace root. Defaults to SWARM_CORE_WORKSPACE_ROOT,
                       WS, detected workspace, or ~/ros2_ws_dev.
   --repo-url <url>    swarm_control_pro clone URL.
-                      Default: https://github.com/AEmilioDiStefano/swarm_control_pro.git
+                      Default: https://github.com/Vitruvian-Systems/swarm_control_pro.git
   -h, --help          Show this help.
 
 Behavior:
@@ -34,7 +34,7 @@ USAGE
 }
 
 workspace="${SWARM_CORE_WORKSPACE_ROOT:-${WS:-}}"
-repo_url="${SWARM_PRO_REPO_URL:-https://github.com/AEmilioDiStefano/swarm_control_pro.git}"
+repo_url="${SWARM_PRO_REPO_URL:-https://github.com/Vitruvian-Systems/swarm_control_pro.git}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
