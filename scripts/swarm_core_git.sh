@@ -166,21 +166,36 @@ cmd_publish() {
     return 0
   fi
 
+  # All gh calls run from the repo root so they resolve the right repository
+  # regardless of the caller's cwd.
   local pr_number
-  pr_number="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number' 2>/dev/null || true)"
+  pr_number="$( (cd "$REPO_ROOT" && gh pr list --head "$branch" --state open --json number --jq '.[0].number') 2>/dev/null || true)"
   if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
-    run gh pr create --base main --head "$branch" \
+    (cd "$REPO_ROOT" && run gh pr create --base main --head "$branch" \
       --title "$(git -C "$REPO_ROOT" log -1 --format=%s)" \
-      --body "Published via swarm_core_git.sh (protected-main workflow)."
+      --body "Published via swarm_core_git.sh (protected-main workflow).")
   else
     note "reusing open PR #$pr_number for $branch."
   fi
-  gh pr ready "$branch" >/dev/null 2>&1 || true
+  (cd "$REPO_ROOT" && gh pr ready "$branch" >/dev/null 2>&1) || true
 
   note "waiting for required checks..."
-  run gh pr checks "$branch" --watch
+  # Newly created PRs can take a few seconds before checks register; watching
+  # too early exits with "no checks reported". Wait for registration first.
+  local reg_tries=0 checks_out
+  while true; do
+    if checks_out="$( (cd "$REPO_ROOT" && gh pr checks "$branch" 2>&1) )"; then
+      break  # already all green
+    fi
+    [[ "$checks_out" == *"no checks reported"* ]] || break  # registered (pending/failed)
+    reg_tries=$((reg_tries + 1))
+    [[ $reg_tries -lt 20 ]] || fail "no checks registered after ~5 minutes."
+    note "checks not registered yet (attempt $reg_tries/20); retrying in 15s..."
+    sleep 15
+  done
+  (cd "$REPO_ROOT" && run gh pr checks "$branch" --watch)
 
-  run gh pr merge "$branch" --merge --match-head-commit "$head"
+  (cd "$REPO_ROOT" && run gh pr merge "$branch" --merge --match-head-commit "$head")
 
   run git -C "$REPO_ROOT" switch main
   run git -C "$REPO_ROOT" pull --ff-only origin main
