@@ -22,5 +22,5 @@ movement behavior is genuinely new.
 Use `control_types.yaml` and `control_interfaces.yaml` as the profile catalog.
 Use the setup guide and YAML `docs.wiring` fields for examples and wiring maps:
 
-- `DOCS/setup_instructions_SOFTWARE.md`
+- `DOCS/ADD_robot_pi.md`
 - `DOCS/GPIO/CONTROL_INTERFACE_INDEX.md`

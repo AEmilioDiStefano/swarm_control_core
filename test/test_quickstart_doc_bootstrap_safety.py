@@ -28,24 +28,20 @@ def test_quickstart_docs_keep_shell_open_on_bootstrap_failure():
         assert "swarm_core_bootstrap_terminal() {" in text
 
 
-def test_setup_instructions_use_idempotent_setup_bootstrap():
-    path = CORE_ROOT / "DOCS" / "setup_instructions_SOFTWARE.md"
+def test_add_robot_guide_uses_idempotent_setup_bootstrap():
+    path = CORE_ROOT / "DOCS" / "ADD_robot_pi.md"
     text = path.read_text(encoding="utf-8")
 
     assert DANGEROUS_SNIPPET not in text
     assert "swarm_core_setup_bootstrap.sh" in text
-    assert "## 1. Workspace Creation / Checkout" not in text
-    assert "## 2. Workspace Bootstrap in Each Terminal" not in text
+    assert "git clone https://github.com/AEmilioDiStefano/swarm_control_core.git" in text
     assert "# Direct Run Path" in text
     assert "# Alternative/Debug/Fix Reference" in text
-    assert "## Step 2: Prepare Each Robot and Add Its Local Profile" in text
-    assert "## Step 4: Register and Approve Robots on the Control Machine" in text
-    assert "registration/approval step confirms" in text
-    assert "This is a local robot-profile step only" in text
-    assert "Do not expect the robot SSH terminals to print the final Quickstart-ready" in text
-    assert "message appears in the control-machine terminal" in text
+    assert "## Step 3: Onboard With One Command" in text
+    assert "swarm_core_new_robot.sh" in text
+    assert "Raspberry Pi Imager" in text
+    assert "approved for FPV UI control until" in text
     assert "Registered/approved robots are ready for QUICKSTART handoff" in text
-    assert "After Step 4 registration/approval and Step 5 verification succeed" in text
 
 
 def test_quickstart_ready_message_lives_after_control_machine_registration():
@@ -56,8 +52,8 @@ def test_quickstart_ready_message_lives_after_control_machine_registration():
     assert "Registered/approved robots are ready for QUICKSTART handoff" in sync_text
 
 
-def test_setup_instructions_label_every_bash_block_with_machine_type():
-    path = CORE_ROOT / "DOCS" / "setup_instructions_SOFTWARE.md"
+def test_add_robot_guide_labels_every_bash_block_with_machine_type():
+    path = CORE_ROOT / "DOCS" / "ADD_robot_pi.md"
     lines = path.read_text(encoding="utf-8").splitlines()
     allowed_labels = {"### CONTROL MACHINE:", "### ROBOT(S):"}
 
@@ -78,7 +74,7 @@ def test_setup_instructions_label_every_bash_block_with_machine_type():
 def test_core_operator_guides_follow_drp_structure():
     docs = [
         CORE_ROOT / "DOCS" / "QUICKSTART.md",
-        CORE_ROOT / "DOCS" / "setup_instructions_SOFTWARE.md",
+        CORE_ROOT / "DOCS" / "ADD_robot_pi.md",
         CORE_ROOT / "DOCS" / "setup_instructions_ASSEMBLY.md",
         CORE_ROOT / "DOCS" / "LOCAL_FPV_runbook.md",
         CORE_ROOT / "DOCS" / "control_interface_profiles.md",

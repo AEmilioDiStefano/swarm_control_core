@@ -18,7 +18,7 @@ For a live local FPV/control session, use [DOCS/QUICKSTART.md](./DOCS/QUICKSTART
 If you are building and preparing the reference robot from scratch, start with:
 
 1. [DOCS/setup_instructions_ASSEMBLY.md](./DOCS/setup_instructions_ASSEMBLY.md)
-2. [DOCS/setup_instructions_SOFTWARE.md](./DOCS/setup_instructions_SOFTWARE.md)
+2. [DOCS/ADD_robot_pi.md](./DOCS/ADD_robot_pi.md)
 3. [DOCS/QUICKSTART.md](./DOCS/QUICKSTART.md)
 
 ## Supported Environment
@@ -39,10 +39,9 @@ If you are building and preparing the reference robot from scratch, start with:
 ## Documentation
 
 - Quickstart: [DOCS/QUICKSTART.md](./DOCS/QUICKSTART.md)
-- Add/update robots: [DOCS/add_robots.md](./DOCS/add_robots.md)
+- Add/update robots: [DOCS/ADD_robot_pi.md](./DOCS/ADD_robot_pi.md)
 - Control interface profiles: [DOCS/control_interface_profiles.md](./DOCS/control_interface_profiles.md)
 - Assembly setup: [DOCS/setup_instructions_ASSEMBLY.md](./DOCS/setup_instructions_ASSEMBLY.md)
-- Software setup: [DOCS/setup_instructions_SOFTWARE.md](./DOCS/setup_instructions_SOFTWARE.md)
 - GPIO wiring guides: [DOCS/GPIO/README.md](./DOCS/GPIO/README.md)
 - Architecture: [DOCS/ARCHITECTURE.md](./DOCS/ARCHITECTURE.md)
 - ADR index: [DOCS/ADR/README.md](./DOCS/ADR/README.md)

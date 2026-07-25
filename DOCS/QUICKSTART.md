@@ -6,10 +6,11 @@ Use this for the shortest path to local robot FPV + control.
 For full detail and extended troubleshooting, use:
 - [`LOCAL_FPV_runbook.md`](LOCAL_FPV_runbook.md)
 
-If you are still assembling the reference robot or doing first-time machine
-setup, start with:
-- [`setup_instructions_ASSEMBLY.md`](setup_instructions_ASSEMBLY.md)
-- [`setup_instructions_SOFTWARE.md`](setup_instructions_SOFTWARE.md)
+If robot setup has not already been done for the robot(s) you want to
+control, you must first follow one of the ADD_robots guide docs (for
+example, [`ADD_robot_pi.md`](ADD_robot_pi.md) for Raspberry Pi robots).
+If you are still assembling the robot hardware, start with
+[`setup_instructions_ASSEMBLY.md`](setup_instructions_ASSEMBLY.md).
 
 This runbook is split into two parts:
 1. **Quickstart Path** at the top.
