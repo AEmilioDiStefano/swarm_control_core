@@ -284,7 +284,7 @@ if [[ "$imager_checklist" == "1" ]]; then
     checklist_cmd="  ~/.local/bin/swarmc new-robot \\
     ${checklist_name}@${checklist_host}.local"
   fi
-  pub_key="$(cat "${ssh_private_key}.pub")"
+  pub_key="$(trim "$(cat "${ssh_private_key}.pub")")"
   cat <<CHECKLIST
 
 Raspberry Pi Imager settings for the new robot
