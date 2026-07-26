@@ -457,5 +457,8 @@ fi
 runtime_cfg_dir="${SWARM_CORE_CONFIG_DIR:-$HOME/.config/swarm_control_core}"
 print_current_setup_summary "$runtime_cfg_dir" "$build_status" "$gpio_status" "$service_status"
 
+"${script_dir}/swarm_core_install_launchers.sh" --workspace "$workspace" || \
+  log "WARNING: launcher shim install failed; guides still work via full script paths."
+
 current_step="complete"
 log "Bootstrap complete."

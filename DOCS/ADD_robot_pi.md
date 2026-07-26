@@ -3,8 +3,9 @@
 This guide takes a Raspberry Pi robot from a blank SD card to a fully
 onboarded, registered/approved swarm robot **without ever opening a manual SSH
 session on the robot**. Every command in the direct path runs on the control
-machine; the robot side is provisioned over SSH automatically by
-`scripts/swarm_core_new_robot.sh`.
+machine; the robot side is provisioned over SSH automatically. Each step is
+one short command: the heavy lifting lives in repository scripts behind the
+`swarmc` launcher (which wraps `scripts/swarm_core_new_robot.sh` and friends).
 
 This guide is also the correct path for **re-imaging an existing robot** (for
 example after a lost password): the flow clears the stale SSH host key and
@@ -12,7 +13,8 @@ re-enrolls the robot from scratch.
 
 A robot is not considered ready for live FPV/control until it has a local
 robot profile, has been registered/approved on the control machine, and has
-passed the verification steps below.
+passed the verification steps below. A robot is not approved for FPV UI
+control until registration/approval has completed on the control machine.
 
 This guide follows the DRP guide format
 ([`DRP_guide_format.md`](./DRP_guide_format.md)):
@@ -32,12 +34,16 @@ Prerequisites:
 When you finish this guide:
 
 - `swarm_control_core` will be checked out and built on the control machine
-  and the robot
+  and the robot, with the `swarmc` launcher installed on both
 - the robot will have a local `robot_instances.yaml` entry describing its own
   drive type, hardware interface, and SSH target
 - the control machine will have registered/approved the robot for UI trust
 - GPIO access and a camera profile will be prepared on the robot
 - you can continue with [QUICKSTART.md](./QUICKSTART.md)
+
+Command style note: this guide calls the launcher as `~/.local/bin/swarmc` so
+every command works in any terminal, even before `~/.local/bin` is on your
+PATH. In terminals opened after Step 0, plain `swarmc` works too.
 
 # Direct Run Path
 
@@ -45,53 +51,22 @@ When you finish this guide:
 ## Step 0: Prepare the Control Machine
 
 Run this once in a control-machine terminal. It is safe to rerun; if the
-control machine is already set up, it finishes quickly.
+control machine is already set up, it finishes quickly. It fetches the
+first-contact bootstrap (`scripts/swarm_core_first_contact.sh`), which finds
+or clones the workspace, installs the `swarmc` launcher, and runs full
+control-machine setup (dependencies + build).
 
 ### CONTROL MACHINE:
 
 ```bash
-SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_WORKSPACE_ROOT:-${WS:-$HOME/ros2_ws_dev}}"
-SWARM_CORE_SETUP_WORKSPACE="${SWARM_CORE_SETUP_WORKSPACE%/}"
-SWARM_CORE_SETUP_HELPER="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_setup_bootstrap.sh" 2>/dev/null | sort | head -n1)"
-
-if [[ -z "${SWARM_CORE_SETUP_HELPER:-}" ]]; then
-  command -v git >/dev/null 2>&1 || {
-    sudo apt-get -o DPkg::Lock::Timeout=1800 update
-    sudo apt-get -o DPkg::Lock::Timeout=1800 install -y git
-  }
-
-  SWARM_CORE_SETUP_PKG="${SWARM_CORE_SETUP_WORKSPACE}/src/swarm_control_core"
-  install -d "${SWARM_CORE_SETUP_WORKSPACE}/src"
-  if [[ ! -d "${SWARM_CORE_SETUP_PKG}/.git" ]]; then
-    git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$SWARM_CORE_SETUP_PKG"
-  fi
-  SWARM_CORE_SETUP_HELPER="${SWARM_CORE_SETUP_PKG}/scripts/swarm_core_setup_bootstrap.sh"
-fi
-
-eval "$("$SWARM_CORE_SETUP_HELPER" \
-  --workspace "$SWARM_CORE_SETUP_WORKSPACE" \
-  --emit-shell)"
-
-unset SWARM_CORE_SETUP_WORKSPACE SWARM_CORE_SETUP_HELPER SWARM_CORE_SETUP_PKG
-export SWARM_CORE_ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
-
-"$SC/scripts/swarm_core_bootstrap_machine.sh" \
-  --machine-role control \
-  --workspace "$WS" \
-  --domain-id "$SWARM_CORE_ROS_DOMAIN_ID"
-
-source "$SC/scripts/swarm_core_reset_env.sh" \
-  --scope deep \
-  --machine-role control \
-  --compat-mode \
-  --domain-id "$SWARM_CORE_ROS_DOMAIN_ID"
+wget -qO- https://raw.githubusercontent.com/AEmilioDiStefano/swarm_control_core/main/scripts/swarm_core_first_contact.sh | bash -s -- --setup control
 ```
 
 Expected success signals:
 
-- the control machine has `WS` and `SC` exported
 - dependency output ends with `All dependencies are installed and up to date.`
 - bootstrap summary shows `BUILD_STATUS = completed`
+- the final lines report `[OK] First contact complete.` and the launcher path
 
 ### IF dependency installation, build, or source setup fails
 
@@ -108,8 +83,7 @@ this control machine's SSH public key (generated now if missing).
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_new_robot.sh" --imager-checklist \
-  --robot-name robot4 --robot-hostname legion4
+~/.local/bin/swarmc imager-checklist --robot-name robot4 --robot-hostname legion4
 ```
 
 Expected success signals:
@@ -130,22 +104,21 @@ In Raspberry Pi Imager, choose **Ubuntu Server 24.04 LTS (64-bit)**, open
 
 Write the card, insert it into the Pi, and power on. First boot takes a few
 minutes while cloud-init provisions the user and network; the onboarding
-command in Step 3 waits for it automatically.
+command in Step 3 waits for it automatically. Leave the robot powered on and
+ready to connect.
 
 <a id="add-step-3"></a>
 ## Step 3: Onboard With One Command
 
-Run this in the prepared control-machine terminal from Step 0. Add
-`--control-type` and `--control-interface` to preselect the drive and
-hardware profiles; omit them to answer the profile prompts interactively in
-this terminal (the prompts still run here, never on the robot).
+Run this in a control-machine terminal. Add `--control-type` and
+`--control-interface` to preselect the drive and hardware profiles; omit them
+to answer the profile prompts interactively in this terminal (the prompts
+still run here, never on the robot).
 
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_new_robot.sh" robot4@legion4.local \
-  --control-type diff_drive \
-  --control-interface 4wheel_diff_l298n_2
+~/.local/bin/swarmc new-robot robot4@legion4.local --control-type diff_drive --control-interface 4wheel_diff_l298n_2
 ```
 
 The command waits for the robot to appear on the network, waits for
@@ -209,48 +182,14 @@ Go to [Alternative: Manual Per-Robot Setup](#add-ref-manual), then return to
 <a id="add-step-4"></a>
 ## Step 4: Verify Control-Machine Recognition
 
-Run this in the control-machine terminal. It prints every robot currently in
+Run this in a control-machine terminal. It prints every robot currently in
 the control machine's registered/approved runtime registry, then checks each
 one with `robot_doctor_core`.
 
 ### CONTROL MACHINE:
 
 ```bash
-cd "$WS"
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
-REGISTERED_ROBOTS="$(
-python3 - <<'PY'
-from pathlib import Path
-import os
-import yaml
-
-default_config_dir = Path.home() / ".config" / "swarm_control_core"
-config_dir = Path(os.environ.get("SWARM_CORE_CONFIG_DIR", str(default_config_dir)))
-path = config_dir / "robot_instances.yaml"
-data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-robots = data.get("robots", {}) if isinstance(data, dict) else {}
-for name in sorted(robots):
-    print(name)
-PY
-)"
-
-if [[ -z "${REGISTERED_ROBOTS//[[:space:]]/}" ]]; then
-  echo "[FAIL] No registered/approved robots found in the control-machine runtime registry." >&2
-  echo "[NEXT] Return to Step 3 and onboard at least one robot." >&2
-else
-  echo "[OK] Registered/approved robots:"
-  printf '  %s\n' $REGISTERED_ROBOTS
-
-  for robot in $REGISTERED_ROBOTS; do
-    echo
-    echo "[CHECK] robot_doctor_core --robot ${robot}"
-    ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot "$robot"
-  done
-fi
+~/.local/bin/swarmc verify-robots
 ```
 
 Expected success signals for each robot:
@@ -280,40 +219,47 @@ then return to [Step 4](#add-step-4).
 
 Go to [Optional: Robot Service Mode](#add-ref-optional-service-mode).
 
+<a id="add-step-5"></a>
+## Step 5: Prepare for Additional Control Machines (Recommended)
+
+The robots you just onboarded keep their drive/hardware/camera profiles
+locally, so another control machine can operate this same swarm without
+re-provisioning any robot. When you want a second machine (or a replacement
+machine), follow [ADD_control_machine.md](./ADD_control_machine.md).
+
+Setup on this control machine is complete. Continue with
+[QUICKSTART.md](./QUICKSTART.md).
+
 # Alternative/Debug/Fix Reference
 
 <a id="add-ref-0-1"></a>
 ## Fix: Control Bootstrap or Build Fails
 
-Run this in the control-machine terminal.
+Run these in the control-machine terminal, in order. The first two repair
+interrupted package operations; the third waits for background Ubuntu
+updates; the last reruns machine setup.
 
 If `apt` reports `Conflicting values set for option Signed-By` for
 `packages.ros.org/ros2/ubuntu`, the control machine has duplicate ROS apt
-source entries. The dependency script disables duplicate ROS entries under
-`/etc/apt/sources.list.d` and rewrites the canonical
-`/etc/apt/sources.list.d/ros2.list` entry before it refreshes apt.
+source entries; the dependency flow inside setup repairs this on its next
+run.
 
 ### CONTROL MACHINE:
 
 ```bash
 sudo dpkg --configure -a
-"$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role control
 sudo apt-get --fix-broken install -y
-"$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role control
-cd "$WS"
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-colcon build --base-paths "$WS/src/swarm_control_core" --packages-select swarm_control_core --event-handlers console_direct+
-source "$WS/install/setup.bash"
-set -u || true
+~/.local/bin/swarmc apt-wait
+~/.local/bin/swarmc setup --role control
 ```
 
-Then return to [Step 0](#add-step-0).
+If `swarmc` itself is missing (first contact never completed), rerun the
+Step 0 one-liner instead. Then return to [Step 0](#add-step-0).
 
 <a id="add-ref-3-1"></a>
 ## Fix: Robot Never Appears on the Network
 
-Use when `swarm_core_new_robot.sh` times out waiting for SSH.
+Use when onboarding times out waiting for SSH.
 
 - confirm the Pi has power and the SD card is seated
 - confirm the Wi-Fi SSID/password typed into the Imager are correct for the
@@ -435,7 +381,7 @@ Then return to [Step 3](#add-step-3).
 ## Alternative: Non-Default Names or Hardware Profiles
 
 If you want the runtime robot name to be something other than the Pi's Linux
-username, pass `--robot-name <name>` to `swarm_core_new_robot.sh` and keep
+username, pass `--robot-name <name>` to the onboarding command and keep
 using that value later in quickstart terminals.
 
 Known hardware profile combinations for `--control-type` /
@@ -460,7 +406,7 @@ enabled:
 ### CONTROL MACHINE:
 
 ```bash
-ssh -tt robot4@legion4.local "export SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK=1; cd ~/ros2_ws_dev && source /opt/ros/jazzy/setup.bash && source install/setup.bash && ros2 run swarm_control_core add_robot_core --workspace ~/ros2_ws_dev --name robot4"
+ssh -tt robot4@legion4.local "SWARM_CORE_CAMERA_ALLOW_PROBE_FALLBACK=1 ~/.local/bin/swarmc add-robot --name robot4"
 ```
 
 Then return to [Step 3](#add-step-3).
@@ -468,19 +414,12 @@ Then return to [Step 3](#add-step-3).
 <a id="add-ref-4-1"></a>
 ## Fix: Control Machine Does Not Recognize an Approved Robot
 
-Inspect the control-machine runtime registry.
+First list what the control machine actually has:
 
 ### CONTROL MACHINE:
 
 ```bash
-python3 - <<'PY'
-from pathlib import Path
-import yaml
-path = Path.home() / ".config/swarm_control_core/robot_instances.yaml"
-print(path)
-data = yaml.safe_load(path.read_text()) if path.exists() else {}
-print(sorted((data or {}).get("robots", {}).keys()))
-PY
+~/.local/bin/swarmc verify-robots
 ```
 
 If the robot is missing, re-run the registration directly with an explicit
@@ -489,15 +428,7 @@ source:
 ### CONTROL MACHINE:
 
 ```bash
-cd "$WS"
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
-ros2 run swarm_control_core sync_robot_entries_core \
-  --workspace "$WS" \
-  --source "robot4=robot4@legion4.local"
+~/.local/bin/swarmc register --source "robot4=robot4@legion4.local"
 ```
 
 If the robot is present but the UI still says read-only, restart the FPV UI
@@ -509,30 +440,13 @@ so it reloads the trusted registry. Then return to [Step 4](#add-step-4).
 Use only when you explicitly want to run the setup on the robot yourself
 (for example on non-Pi hardware, or while developing the robot stack). SSH
 into the robot and run the same stages the onboarding command automates:
+first contact + machine setup, then the robot-local profile tool.
 
 ### ROBOT(S):
 
 ```bash
-sudo apt-get -o DPkg::Lock::Timeout=1800 update
-sudo apt-get -o DPkg::Lock::Timeout=1800 install -y git
-install -d "$HOME/ros2_ws_dev/src"
-test -d "$HOME/ros2_ws_dev/src/swarm_control_core/.git" || \
-  git clone https://github.com/AEmilioDiStefano/swarm_control_core.git "$HOME/ros2_ws_dev/src/swarm_control_core"
-
-"$HOME/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_bootstrap_machine.sh" \
-  --machine-role robot \
-  --workspace "$HOME/ros2_ws_dev" \
-  --domain-id "${SWARM_CORE_ROS_DOMAIN_ID:-17}"
-
-cd "$HOME/ros2_ws_dev"
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$HOME/ros2_ws_dev/install/setup.bash"
-set -u || true
-
-ros2 run swarm_control_core add_robot_core \
-  --workspace "$HOME/ros2_ws_dev" \
-  --name "$(id -un)"
+wget -qO- https://raw.githubusercontent.com/AEmilioDiStefano/swarm_control_core/main/scripts/swarm_core_first_contact.sh | bash -s -- --setup robot
+~/.local/bin/swarmc add-robot --name "$(id -un)"
 ```
 
 Expected success output includes
@@ -544,13 +458,7 @@ machine:
 ### CONTROL MACHINE:
 
 ```bash
-cd "$WS"
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
-ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
+~/.local/bin/swarmc register
 ```
 
 When prompted, enter one source per robot (`robot_name=robot_user@host.local`
@@ -569,7 +477,7 @@ same time. It is interactive, so allocate a TTY over SSH:
 ### CONTROL MACHINE:
 
 ```bash
-ssh -tt robot4@legion4.local "~/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_wheel_test.sh --robot robot4"
+ssh -tt robot4@legion4.local "~/.local/bin/swarmc wheel-test --robot robot4"
 ```
 
 The terminal app accepts movement keys and prints the expected wheel
@@ -601,13 +509,13 @@ interactive, so allocate a TTY over SSH:
 ### CONTROL MACHINE:
 
 ```bash
-ssh -tt robot4@legion4.local "cd ~/ros2_ws_dev && source /opt/ros/jazzy/setup.bash && source install/setup.bash && ros2 run swarm_control_core camera_flipper_core --robot robot4"
+ssh -tt robot4@legion4.local "~/.local/bin/swarmc camera-flip --robot robot4"
 ```
 
 Use the interactive menu to choose horizontal flip, vertical flip, clear all
 flips, show status, or exit.
 
-`camera_flipper_core` refuses to save a flip when the currently plugged-in
+The camera flipper refuses to save a flip when the currently plugged-in
 camera does not match the saved profile unless `--force` is used. That
 prevents one camera's correction from silently applying to a different
 replacement camera. Restart that robot's quickstart bringup after saving.
@@ -625,7 +533,7 @@ machine:
 ### CONTROL MACHINE:
 
 ```bash
-ssh -tt robot4@legion4.local "~/ros2_ws_dev/src/swarm_control_core/scripts/swarm_core_bootstrap_machine.sh --machine-role robot --workspace ~/ros2_ws_dev --domain-id ${SWARM_CORE_ROS_DOMAIN_ID:-17} --enable-service-now"
+ssh -tt robot4@legion4.local "~/.local/bin/swarmc setup --role robot --enable-service-now"
 ```
 
 For the full live-session startup and expanded fix paths, use

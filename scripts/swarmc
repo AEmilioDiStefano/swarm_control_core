@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+
+# swarmc — the swarm_control_core operator launcher.
+#
+# One short command per guide step. This file lives in the repo so it updates
+# with git pull; ~/.local/bin/swarmc is a tiny shim that locates and execs it.
+# Every subcommand resolves the workspace and ROS environment internally, so
+# guide documents never need to export WS/SC or source setup files.
+
+set -euo pipefail
+
+SWARMC_SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SWARMC_SELF")" && pwd)"
+SC="$(cd "${SCRIPT_DIR}/.." && pwd)"
+WS="$(cd "${SC}/../.." && pwd)"
+export WS SC
+export SWARM_CORE_ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  swarmc <subcommand> [args]
+
+Machine setup:
+  setup [--role control|robot] [...]   Bootstrap/build this machine (idempotent)
+  ensure-pro                           Add the swarm_control_pro checkout + build
+  apt-wait                             Wait for apt/dpkg locks with readable status
+  rebuild [--clean]                    Rebuild swarm_control_core in this workspace
+
+Robot onboarding:
+  imager-checklist --robot-name <n> --robot-hostname <h>
+                                       Print Raspberry Pi Imager flash settings
+  new-robot <user@host> [...]          Zero-touch onboard a freshly flashed robot
+  add-robot [...]                      Robot-side local profile setup (manual path)
+  register [...]                       Register/approve robots on this control machine
+  verify-robots                        List approved robots and doctor-check each
+
+Quickstart steps:
+  step0 --machine-role control|robot   Dependency readiness
+  step1 --machine-role control|robot   Sync/build/source gate
+  step2 [...]                          Robot bringup (robot terminals only)
+  step3 [...]                          Local FPV UI (alias: ui)
+  step4                                Fleet readiness check
+  step5 --tool teleop                  Terminal control smoke test
+
+Diagnostics and tools:
+  doctor [...]                         Robot/profile/runtime state doctor
+  wheel-test [...]                     Interactive wheel direction/order test
+  camera-flip [--robot <n>]            Interactive camera orientation fix
+  env                                  Print eval-able workspace/ROS environment
+  help                                 Show this help
+
+Run 'swarmc <subcommand> --help' for the flags of the underlying step.
+USAGE
+}
+
+fail() {
+  echo "[swarmc] ERROR: $*" >&2
+  exit 1
+}
+
+source_ros_env() {
+  local ros_setup="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
+  [[ -f "$ros_setup" ]] || fail "ROS setup file not found: ${ros_setup}. Run: ~/.local/bin/swarmc setup"
+  set +u
+  # shellcheck disable=SC1090
+  source "$ros_setup"
+  if [[ -f "${WS}/install/setup.bash" ]]; then
+    # shellcheck disable=SC1090
+    source "${WS}/install/setup.bash"
+  else
+    set -u
+    fail "Workspace overlay not built yet (${WS}/install/setup.bash missing). Run: ~/.local/bin/swarmc setup"
+  fi
+  set -u
+  export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-$SWARM_CORE_ROS_DOMAIN_ID}"
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  setup)
+    role="control"
+    passthrough=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --role|--machine-role)
+          shift
+          role="${1:-control}"
+          ;;
+        *)
+          passthrough+=("$1")
+          ;;
+      esac
+      shift || true
+    done
+    exec "${SCRIPT_DIR}/swarm_core_bootstrap_machine.sh" \
+      --machine-role "$role" \
+      --workspace "$WS" \
+      --domain-id "$SWARM_CORE_ROS_DOMAIN_ID" \
+      "${passthrough[@]+"${passthrough[@]}"}"
+    ;;
+  ensure-pro)
+    "${SCRIPT_DIR}/swarm_core_ensure_pro_checkout.sh" --workspace "$WS"
+    [[ -d "${WS}/src/swarm_control_pro" ]] || fail "swarm_control_pro checkout is missing after ensure-pro."
+    cd "$WS"
+    set +u
+    # shellcheck disable=SC1091
+    source "/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
+    set -u
+    colcon build \
+      --base-paths "$SC" "${WS}/src/swarm_control_pro" \
+      --packages-up-to swarm_control_pro
+    exec "${SCRIPT_DIR}/swarm_core_install_launchers.sh" --workspace "$WS"
+    ;;
+  apt-wait)
+    exec "${SCRIPT_DIR}/swarm_core_apt_lock_wait.sh" "$@"
+    ;;
+  rebuild)
+    clean="0"
+    [[ "${1:-}" == "--clean" ]] && clean="1"
+    cd "$WS"
+    if [[ "$clean" == "1" ]]; then
+      rm -rf build/swarm_control_core install/swarm_control_core log/latest_build/swarm_control_core
+    fi
+    set +u
+    # shellcheck disable=SC1091
+    source "/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
+    set -u
+    exec colcon build --base-paths "$SC" --packages-select swarm_control_core --event-handlers console_direct+
+    ;;
+  imager-checklist)
+    exec "${SCRIPT_DIR}/swarm_core_new_robot.sh" --imager-checklist "$@"
+    ;;
+  new-robot)
+    exec "${SCRIPT_DIR}/swarm_core_new_robot.sh" "$@"
+    ;;
+  add-robot)
+    source_ros_env
+    exec ros2 run swarm_control_core add_robot_core --workspace "$WS" "$@"
+    ;;
+  register)
+    source_ros_env
+    exec ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS" "$@"
+    ;;
+  verify-robots)
+    exec "${SCRIPT_DIR}/swarm_core_verify_robots.sh" "$@"
+    ;;
+  step0|step1|step2|step3|step4|step5)
+    exec "${SCRIPT_DIR}/swarm_core_quickstart_${cmd}.sh" "$@"
+    ;;
+  ui)
+    exec "${SCRIPT_DIR}/swarm_core_quickstart_step3.sh" "$@"
+    ;;
+  doctor)
+    exec "${SCRIPT_DIR}/swarm_core_robot_doctor.sh" "$@"
+    ;;
+  free-ui-port)
+    exec "${SCRIPT_DIR}/swarm_core_free_ui_port.sh" "$@"
+    ;;
+  git)
+    exec "${SCRIPT_DIR}/swarm_core_git.sh" "$@"
+    ;;
+  wheel-test)
+    exec "${SCRIPT_DIR}/swarm_core_wheel_test.sh" "$@"
+    ;;
+  camera-flip)
+    source_ros_env
+    if [[ $# -eq 0 ]]; then
+      exec ros2 run swarm_control_core camera_flipper_core --robot "$(id -un)"
+    fi
+    exec ros2 run swarm_control_core camera_flipper_core "$@"
+    ;;
+  env)
+    echo "export WS=\"${WS}\""
+    echo "export WS_DEV=\"${WS}\""
+    echo "export SC=\"${SC}\""
+    echo "export SWARM_CORE_ROS_DOMAIN_ID=\"${SWARM_CORE_ROS_DOMAIN_ID}\""
+    echo "export ROS_DOMAIN_ID=\"\${ROS_DOMAIN_ID:-${SWARM_CORE_ROS_DOMAIN_ID}}\""
+    echo "set +u"
+    echo "source \"/opt/ros/\${ROS_DISTRO:-jazzy}/setup.bash\""
+    echo "[[ -f \"${WS}/install/setup.bash\" ]] && source \"${WS}/install/setup.bash\""
+    echo "set -u || true"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    usage >&2
+    fail "Unknown subcommand: ${cmd}"
+    ;;
+esac

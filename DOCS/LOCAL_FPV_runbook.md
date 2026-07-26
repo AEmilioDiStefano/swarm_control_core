@@ -1,34 +1,25 @@
 # Local FPV Runbook (DRP-First)
 
-This runbook is for local/LAN operation of `swarm_control_core`.
+This runbook is for local/LAN operation of `swarm_control_core`. It is the
+raw, low-level companion to [QUICKSTART.md](./QUICKSTART.md): the quickstart
+wraps these stages in `swarmc step*` commands, while this runbook runs the
+underlying launch files and tools directly for debugging and development.
 
 # Direct Run Path
 
 ## Step 0: Bootstrap Workspace Shell
 
+Load the workspace environment into this shell. This exports `WS`, `WS_DEV`,
+and `SC`, and sources the ROS + workspace overlays for the raw commands
+below. If the launcher is missing, the command prints a failure message and
+leaves this shell open; install it via the first-contact bootstrap in
+[ADD_robot_pi.md](./ADD_robot_pi.md) Step 0.
+
 ### CONTROL MACHINE / ROBOT(S):
 
 ```bash
-swarm_core_bootstrap_terminal() {
-  local helper=""
-  helper="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
-  if [[ -z "${helper:-}" ]]; then
-    echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-    return 1
-  fi
-  if ! source "$helper" --interactive; then
-    echo "[FAIL] swarm_control_core terminal bootstrap failed; keeping this shell open for inspection." >&2
-    return 1
-  fi
-}
-
-if swarm_core_bootstrap_terminal; then
-  :
-fi
-unset -f swarm_core_bootstrap_terminal
+eval "$(~/.local/bin/swarmc env)"
 ```
-
-This bootstrap exports `WS`, `WS_DEV`, and `SC` for the commands below.
 
 ## Step 1: Install Dependencies
 
@@ -38,15 +29,13 @@ what is missing or outdated, so it is safe to re-run at any time.
 ### CONTROL MACHINE:
 
 ```bash
-"$WS_DEV/src/swarm_control_core/scripts/swarm_core_check_install_dependencies.sh" \
-  --machine-role control
+"$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role control
 ```
 
 ### ROBOT(S):
 
 ```bash
-"$WS_DEV/src/swarm_control_core/scripts/swarm_core_check_install_dependencies.sh" \
-  --machine-role robot
+"$SC/scripts/swarm_core_check_install_dependencies.sh" --machine-role robot
 ```
 
 ### IF dependency installation fails
@@ -58,13 +47,11 @@ Go to [Fix Step 1.1](#ref-1-1), then return to [Step 1](#step-1-install-dependen
 ### CONTROL MACHINE / ROBOT(S):
 
 ```bash
-cd "$WS_DEV"
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-colcon build --packages-select swarm_control_core
-source "$WS_DEV/install/setup.bash"
-set -u || true
+~/.local/bin/swarmc rebuild
+eval "$(~/.local/bin/swarmc env)"
 ```
+
+The second line reloads the freshly built overlay into this shell.
 
 ### IF build fails
 
@@ -75,15 +62,9 @@ Go to [Fix Step 2.1](#ref-2-1), then return to [Step 2](#step-2-build-the-packag
 ### ROBOT(S):
 
 ```bash
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-17}"
 ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
-"$WS_DEV/src/swarm_control_core/scripts/swarm_core_terminate_existing_robot_processes.sh"
-
-ros2 launch swarm_control_core swarm_bringup.launch.py \
-  robot_name:="$ROBOT_NAME" \
-  ros_domain_id:="$ROS_DOMAIN_ID" \
-  use_camera:=true \
-  camera_pipeline:=adapter
+"$SC/scripts/swarm_core_terminate_existing_robot_processes.sh"
+ros2 launch swarm_control_core swarm_bringup.launch.py robot_name:="$ROBOT_NAME" ros_domain_id:="$ROS_DOMAIN_ID" use_camera:=true camera_pipeline:=adapter
 ```
 
 ### IF camera or motion nodes do not come up
@@ -95,7 +76,6 @@ Go to [Fix Step 3.1](#ref-3-1), then return to [Step 3](#step-3-start-robot-brin
 ### CONTROL MACHINE:
 
 ```bash
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-17}"
 ros2 launch swarm_control_core swarm_fpv_ui.launch.py ros_domain_id:="$ROS_DOMAIN_ID"
 ```
 
@@ -116,7 +96,6 @@ Go to [Alternative Step 4.2](#ref-4-2), then return to [Step 4](#step-4-start-co
 ### CONTROL MACHINE:
 
 ```bash
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-17}"
 ros2 run swarm_control_core swarm_teleop_core
 ```
 
@@ -145,13 +124,8 @@ Then return to [Step 1](#step-1-install-dependencies).
 ### CONTROL MACHINE / ROBOT(S):
 
 ```bash
-cd "$WS_DEV"
-rm -rf build/swarm_control_core install/swarm_control_core log/latest_build/swarm_control_core
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-colcon build --packages-select swarm_control_core --event-handlers console_direct+
-source "$WS_DEV/install/setup.bash"
-set -u || true
+~/.local/bin/swarmc rebuild --clean
+eval "$(~/.local/bin/swarmc env)"
 ```
 
 Then return to [Step 2](#step-2-build-the-package).
@@ -162,7 +136,7 @@ Then return to [Step 2](#step-2-build-the-package).
 ### ROBOT(S):
 
 ```bash
-source "$WS_DEV/install/setup.bash"
+eval "$(~/.local/bin/swarmc env)"
 ROBOT_NAME="${ROBOT_NAME:-$(id -un)}"
 ros2 node list
 ros2 topic list | rg "/${ROBOT_NAME}/(cmd_vel|heartbeat|camera)"
@@ -183,7 +157,7 @@ Then return to [Step 3](#step-3-start-robot-bringup).
 ### CONTROL MACHINE:
 
 ```bash
-source "$WS_DEV/install/setup.bash"
+eval "$(~/.local/bin/swarmc env)"
 ros2 topic list | rg "/.*/(heartbeat|camera/image_raw|cmd_vel)"
 ```
 
@@ -210,7 +184,7 @@ Then return to [Step 4](#step-4-start-control-ui).
 ### CONTROL MACHINE:
 
 ```bash
-source "$WS_DEV/install/setup.bash"
+eval "$(~/.local/bin/swarmc env)"
 ros2 topic list | rg "/.*/cmd_vel"
 ros2 action list | rg "/.*/execute_playbook"
 ```
@@ -225,8 +199,8 @@ Then return to [Step 5](#step-5-optional-terminal-control-smoke-test).
 ### ROBOT(S):
 
 ```bash
-"$WS_DEV/src/swarm_control_core/scripts/swarm_core_switch_robot_mode.sh" status
-"$WS_DEV/src/swarm_control_core/scripts/swarm_core_switch_robot_mode.sh" activate --install-if-missing
+"$SC/scripts/swarm_core_switch_robot_mode.sh" status
+"$SC/scripts/swarm_core_switch_robot_mode.sh" activate --install-if-missing
 ```
 
 Then return to the step you were running.
