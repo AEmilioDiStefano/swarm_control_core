@@ -237,8 +237,13 @@ locally, so another control machine can operate this same swarm without
 re-provisioning any robot. When you want a second machine (or a replacement
 machine), follow [ADD_control_machine.md](./ADD_control_machine.md).
 
-Setup on this control machine is complete. Continue with
-[QUICKSTART.md](./QUICKSTART.md).
+Setup on this control machine is complete. Robots onboarded by this guide
+are ready for either core operating document — pick by need:
+
+- [QUICKSTART.md](./QUICKSTART.md) — the guided path: one `swarmc` command
+  per step, trust-gated, recommended for every normal session.
+- [LOCAL_FPV_runbook.md](./LOCAL_FPV_runbook.md) — the raw path: direct
+  launch files and tools for debugging and development.
 
 # Alternative/Debug/Fix Reference
 

@@ -47,7 +47,8 @@ If you are building and preparing the reference robot from scratch, start with:
 - Architecture: [DOCS/ARCHITECTURE.md](./DOCS/ARCHITECTURE.md)
 - ADR index: [DOCS/ADR/README.md](./DOCS/ADR/README.md)
 - Low-latency validation: [DOCS/LOW_LATENCY_VALIDATION.md](./DOCS/LOW_LATENCY_VALIDATION.md)
-- Security policy: [DOCS/SECURITY.md](./DOCS/SECURITY.md)
+- Security model and reporting: [DOCS/SECURITY.md](./DOCS/SECURITY.md)
+  (release tags embed `first_contact_sha256=` for verifying the bootstrap one-liner)
 - Code of conduct: [DOCS/CODE_OF_CONDUCT.md](./DOCS/CODE_OF_CONDUCT.md)
 
 ## Repository Layout
