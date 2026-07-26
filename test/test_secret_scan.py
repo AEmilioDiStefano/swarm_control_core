@@ -54,12 +54,38 @@ ALLOWLISTED_FILES = {
 }
 
 
+def _candidate_relpaths():
+    """
+    Return repo-relative paths to scan.
+
+    Prefer git-tracked files (precise "committed secret" semantics). Fall back
+    to a filesystem walk when git is unavailable or refuses to run — e.g. CI
+    containers where `git ls-files` exits 128 on dubious-ownership — so the
+    gate never silently no-ops.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-files"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.splitlines()
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    walked = []
+    for path in REPO_ROOT.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(REPO_ROOT)
+        if set(rel.parts) & SKIP_PATH_PARTS:
+            continue
+        walked.append(str(rel))
+    return walked
+
+
 def _tracked_files():
-    out = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files"],
-        capture_output=True, text=True, check=True,
-    ).stdout.splitlines()
-    for rel in out:
+    for rel in _candidate_relpaths():
         p = REPO_ROOT / rel
         if p.suffix.lower() in SKIP_SUFFIXES:
             continue
