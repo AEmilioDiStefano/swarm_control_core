@@ -82,9 +82,12 @@ Go to [Fix: Control Bootstrap or Build Fails](#add-ref-0-1), then return to
 ## Step 1: Print the Imager Checklist
 
 The script asks for this robot's Linux username, then its hostname (the
-house convention is user `robotN` on host `legionN`), and only then prints
-the exact flash settings for those values, including this control machine's
-SSH public key (generated now if missing). On a terminal it always asks —
+house convention is user `robotN` on host `legionN`), then the drive
+(control) type and its hardware interface — menus built from the profile
+catalogs (`config/control_types.yaml`, `config/control_interfaces.yaml`),
+so profiles added there appear automatically — and only then prints the
+exact flash settings for those values, including this control machine's SSH
+public key (generated now if missing). On a terminal it always asks —
 values are never reused from a previous robot.
 
 ### CONTROL MACHINE:
