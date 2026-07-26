@@ -240,14 +240,11 @@ ${pub_key}
 
 After first boot
 (give it a few minutes on first power-up),
+
 RUN ON THE CONTROL MACHINE:
 
   ~/.local/bin/swarmc new-robot \\
     ${checklist_name}@${checklist_host}.local
-
-(add --control-type and --control-interface
-to preselect the drive/hardware profiles, or
-answer the prompts interactively there)
 CHECKLIST
   exit 0
 fi
