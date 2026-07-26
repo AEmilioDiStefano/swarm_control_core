@@ -34,11 +34,14 @@ Purpose:
   password prompt for ssh-copy-id, typed here on the control machine.
 
 Options:
-  --imager-checklist             Print Raspberry Pi Imager settings and exit
-                                 (prompts for username/hostname when the
-                                 flags below are omitted)
-  --robot-name <name>            Robot name (default: user part of target)
-  --robot-hostname <host>        Hostname to show in the checklist (default: legionN)
+  --imager-checklist             Ask for the robot's Linux username and
+                                 hostname, print the Imager settings, and exit
+  --robot-name <name>            Robot name (onboarding: default is the user
+                                 part of the target; checklist: used only for
+                                 non-interactive runs — a terminal always
+                                 prompts)
+  --robot-hostname <host>        Checklist hostname for non-interactive runs
+                                 (a terminal always prompts)
   --control-type <type>          Preselect control_type (e.g. diff_drive,
                                  mecanum_drive); omit to answer the profile
                                  prompts here in the control terminal
@@ -56,8 +59,8 @@ Options:
   -h, --help                     Show this help
 
 Examples:
-  # 1) before flashing the SD card (prompts for the robot's
-  #    Linux username and hostname; flags skip the prompts):
+  # 1) before flashing the SD card (asks for the robot's
+  #    Linux username and hostname, then prints the settings):
   swarm_core_new_robot.sh --imager-checklist
 
   # 2) after the Pi boots (also correct for re-imaged robots):
@@ -187,62 +190,57 @@ ensure_ssh_key() {
 }
 
 if [[ "$imager_checklist" == "1" ]]; then
-  # Identity wizard: prompt for any value not given via flags. Interactive
-  # terminals only; scripts and CI keep the flag/placeholder behavior.
-  if [[ -z "$robot_name" && -t 0 ]]; then
+  # The checklist is per-robot: always ask for the identity on a terminal,
+  # so values recalled from shell history can never silently reuse a name.
+  if [[ -t 0 ]]; then
     while :; do
-      read -r -p "Linux username for the robot (house convention robotN, e.g. robot4): " robot_name
+      read -r -p "Enter the Linux username for this robot (then press Enter): " robot_name
       robot_name="$(trim "$robot_name")"
       [[ "$robot_name" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && break
       echo "Invalid Linux username: lowercase letters, digits, '-', '_'; start with a letter." >&2
     done
-  fi
-  if [[ -z "$robot_hostname" && -t 0 ]]; then
     while :; do
-      read -r -p "Hostname for the robot (house convention legionN, e.g. legion4): " robot_hostname
+      read -r -p "Enter the hostname for this robot (then press Enter): " robot_hostname
       robot_hostname="$(trim "$robot_hostname")"
       [[ "$robot_hostname" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] && break
       echo "Invalid hostname: lowercase letters, digits, hyphens; start with a letter or digit." >&2
     done
+  else
+    [[ -n "$robot_name" && -n "$robot_hostname" ]] || \
+      fail "--imager-checklist without a terminal requires --robot-name and --robot-hostname."
   fi
   ensure_ssh_key
-  checklist_name="${robot_name:-robotN}"
-  checklist_host="${robot_hostname:-legionN}"
+  checklist_name="$robot_name"
+  checklist_host="$robot_hostname"
   pub_key="$(cat "${ssh_private_key}.pub")"
   cat <<CHECKLIST
 
 Raspberry Pi Imager settings for the new robot
 (open "Edit Settings" before writing the card):
 
-  OS:
-    Ubuntu Server 24.04 LTS (64-bit)
+  OS: Ubuntu Server 24.04 LTS (64-bit)
 
-  [General]
-  Hostname:
-    ${checklist_host}
-  Username:
-    ${checklist_name}
-  Password:
-    choose one and record it (fallback only;
-    the SSH key below makes normal onboarding
-    password-free)
-  Wi-Fi:
-    your robot LAN SSID + password
-    (skip if using Ethernet)
-  Locale/timezone:
-    as appropriate
+  Username: ${checklist_name}
 
-  [Services]
-  Enable SSH:
-    YES
+  Hostname: ${checklist_host}
+
+  Password: choose one and record it
+  (fallback only; the SSH key below makes
+  normal onboarding password-free)
+
+  Wi-Fi: your robot LAN SSID + password
+  (skip if using Ethernet)
+
+  Enable SSH: YES
   Allow public-key authentication only.
-  Paste the key below into the Imager as ONE
-  line (it may wrap visually in this window):
+  Paste the key below into the Imager as
+  ONE line (it may wrap in this window):
 
 ${pub_key}
 
-After first boot (give it a few minutes on
-first power-up), run on the control machine:
+After first boot
+(give it a few minutes on first power-up),
+RUN ON THE CONTROL MACHINE:
 
   ~/.local/bin/swarmc new-robot \\
     ${checklist_name}@${checklist_host}.local
