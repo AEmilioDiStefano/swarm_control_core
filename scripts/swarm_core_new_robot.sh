@@ -209,7 +209,7 @@ ${pub_key}
 After first boot (give it a few minutes on first power-up), run on the control
 machine:
 
-  swarm_core_new_robot.sh ${checklist_name}@${checklist_host}.local
+  ~/.local/bin/swarmc new-robot ${checklist_name}@${checklist_host}.local
 
 (add --control-type/--control-interface to preselect the drive/hardware
 profiles, or answer the prompts interactively in this terminal)
