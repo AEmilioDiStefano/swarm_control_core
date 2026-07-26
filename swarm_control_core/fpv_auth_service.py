@@ -18,6 +18,7 @@ from .fpv_auth_models import (
     AUTH_MODE_DEV,
     AUTH_MODE_OIDC,
     AUTH_MODE_OFF,
+    AUTH_MODE_SESSION,
     AuthConfig,
     AuthDecision,
     Principal,
@@ -26,6 +27,7 @@ from .fpv_auth_models import (
     anonymous_principal,
     principal_from_claims,
 )
+from .fpv_session_auth import SessionAuthError, verify_session_token
 
 
 def _extract_bearer_token(request: Any) -> str:
@@ -175,6 +177,37 @@ class DevAuthService(AuthService):
         return _enforce_scope(principal, required_scope)
 
 
+class SessionAuthService(AuthService):
+    """
+    Signed server-issued session tokens (ADR-0010).
+
+    Verifies HMAC signature and expiry statelessly; the UI server additionally
+    enforces live-session registry membership for revocation.
+    """
+
+    def __init__(self, config: AuthConfig, session_secret: bytes):
+        super().__init__(config)
+        self._secret = bytes(session_secret or b"")
+
+    def authorize_http(self, request: Any, required_scope: str = "") -> AuthDecision:
+        required_scope = str(required_scope or "").strip()
+        if not self._secret:
+            # Defensive: a running service must never degrade to anonymous.
+            return AuthDecision.deny("Session auth verifier is unavailable", http_status=503)
+
+        token = _extract_bearer_token(request)
+        if not token:
+            if self.config.allow_readonly_anonymous and required_scope in ("", SWARM_SCOPE_READ):
+                return AuthDecision.allow(anonymous_principal(readonly=True))
+            return AuthDecision.deny("Missing bearer token", http_status=401)
+
+        try:
+            claims = verify_session_token(self._secret, token)
+        except SessionAuthError as exc:
+            return AuthDecision.deny(f"Invalid session token: {exc}", http_status=401)
+        return _enforce_scope(principal_from_claims(claims), required_scope)
+
+
 class OidcAuthService(AuthService):
     """
     OIDC scaffold for Phase 1.
@@ -191,11 +224,15 @@ class OidcAuthService(AuthService):
         )
 
 
-def build_auth_service(config: AuthConfig) -> AuthService:
+def build_auth_service(config: AuthConfig, session_secret: bytes = b"") -> AuthService:
     cfg = config.normalized()
     cfg.validate()
     if cfg.mode in (AUTH_MODE_OFF, AUTH_MODE_DEV):
         return DevAuthService(cfg)
+    if cfg.mode == AUTH_MODE_SESSION:
+        if not session_secret:
+            raise ValueError("Session auth mode requires a non-empty session secret")
+        return SessionAuthService(cfg, session_secret)
     if cfg.mode == AUTH_MODE_OIDC:
         return OidcAuthService(cfg)
     # Defensive fallback (validate() should already prevent this path).
