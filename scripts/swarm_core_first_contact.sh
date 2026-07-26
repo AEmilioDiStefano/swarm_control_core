@@ -79,10 +79,18 @@ if [[ -n "$existing" ]]; then
 else
   pkg_dir="${workspace}/src/swarm_control_core"
   install -d "${workspace}/src"
-  if [[ ! -d "${pkg_dir}/.git" ]]; then
-    log "cloning swarm_control_core into ${pkg_dir}"
-    git clone "$repo_url" "$pkg_dir"
-  fi
+fi
+
+# An interrupted earlier clone can leave a directory that looks present but
+# is not a usable git repo; quarantine it instead of trusting or deleting it.
+if [[ -d "$pkg_dir" ]] && ! git -C "$pkg_dir" rev-parse --git-dir >/dev/null 2>&1; then
+  quarantine="${pkg_dir}.corrupt.$(date +%Y%m%d_%H%M%S)"
+  log "Existing checkout at ${pkg_dir} is not a valid git repo; moving it to ${quarantine}"
+  mv "$pkg_dir" "$quarantine"
+fi
+if [[ ! -d "${pkg_dir}/.git" ]]; then
+  log "cloning swarm_control_core into ${pkg_dir}"
+  git clone "$repo_url" "$pkg_dir"
 fi
 
 "${pkg_dir}/scripts/swarm_core_install_launchers.sh" --workspace "$workspace"

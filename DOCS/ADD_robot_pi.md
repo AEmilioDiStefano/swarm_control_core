@@ -23,6 +23,11 @@ This guide follows the DRP guide format
 2. **Alternative/Debug/Fix Reference**: all conditional branches live at the
    bottom and are referenced from the run path with `### IF...` callouts.
 
+If your swarm uses `swarm_control_pro`, use the pro package's version of
+this guide instead (`swarm_control_pro/DOCS/ADD_robot_pi.md`): it adds the
+`swarm-robot` service, roster, and swarm trust setup on top of this flow.
+This core guide is for core-only (local/LAN) swarms.
+
 Prerequisites:
 
 - the robot is assembled and wired
@@ -101,6 +106,11 @@ In Raspberry Pi Imager, choose **Ubuntu Server 24.04 LTS (64-bit)**, open
 - hostname `legionN`, username `robotN`, a recorded fallback password
 - Wi-Fi credentials for the robot LAN (or use Ethernet)
 - Services: enable SSH and paste the public key from Step 1
+
+Every robot needs a unique hostname: flashing two cards with the same
+hostname makes `.local` name resolution ambiguous on the LAN and onboarding
+will target the wrong robot. Reuse a hostname only when re-imaging that same
+robot.
 
 Write the card, insert it into the Pi, and power on. First boot takes a few
 minutes while cloud-init provisions the user and network; the onboarding
