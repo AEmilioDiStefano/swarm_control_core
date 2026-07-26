@@ -231,12 +231,14 @@ core_pick_from_list() {
     {
       echo
       echo "$title"
+      echo
       local i
       for i in "${!options[@]}"; do
         printf '  %d) %s\n' $((i + 1)) "${options[$i]}"
       done
+      echo
     } >&2
-    read -r -p "Select [1-${count}] (then press Enter): " choice || fail "Input closed before a value was entered."
+    read -r -p "Select [1-${count}]: " choice || fail "Input closed before a value was entered."
     choice="$(trim "$choice")"
     if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= count )); then
       printf '%s' "${options[$((choice - 1))]}"
@@ -251,21 +253,21 @@ if [[ "$imager_checklist" == "1" ]]; then
   # so values recalled from shell history can never silently reuse a name.
   if [[ -t 0 ]]; then
     while :; do
-      read -r -p "Enter the Linux username for this robot (then press Enter): " robot_name || fail "Input closed before a value was entered."
+      read -r -p "Linux username for this robot: " robot_name || fail "Input closed before a value was entered."
       robot_name="$(trim "$robot_name")"
       [[ "$robot_name" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && break
       echo "Invalid Linux username: lowercase letters, digits, '-', '_'; start with a letter." >&2
     done
     while :; do
-      read -r -p "Enter the hostname for this robot (then press Enter): " robot_hostname || fail "Input closed before a value was entered."
+      read -r -p "Linux hostname for this robot: " robot_hostname || fail "Input closed before a value was entered."
       robot_hostname="$(trim "$robot_hostname")"
       [[ "$robot_hostname" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] && break
       echo "Invalid hostname: lowercase letters, digits, hyphens; start with a letter or digit." >&2
     done
     mapfile -t available_control_types < <(core_list_control_types)
-    control_type="$(core_pick_from_list "Select the drive (control) type for this robot (from config/control_types.yaml):" "${available_control_types[@]}")"
+    control_type="$(core_pick_from_list "Select the control type for this robot:" "${available_control_types[@]}")"
     mapfile -t available_interfaces < <(core_list_interfaces_for_type "$control_type")
-    control_interface="$(core_pick_from_list "Select the hardware interface for '${control_type}' (motor driver + count, from config/control_interfaces.yaml):" "${available_interfaces[@]}")"
+    control_interface="$(core_pick_from_list "Select the hardware interface for '${control_type}':" "${available_interfaces[@]}")"
   else
     [[ -n "$robot_name" && -n "$robot_hostname" ]] || \
       fail "--imager-checklist without a terminal requires --robot-name and --robot-hostname."
