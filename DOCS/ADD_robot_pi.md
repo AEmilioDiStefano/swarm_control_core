@@ -81,14 +81,15 @@ Go to [Fix: Control Bootstrap or Build Fails](#add-ref-0-1), then return to
 <a id="add-step-1"></a>
 ## Step 1: Print the Imager Checklist
 
-Pick the robot's name and hostname first (the house convention is user
-`robotN` on host `legionN`). This prints the exact flash settings, including
-this control machine's SSH public key (generated now if missing).
+This prompts for the robot's Linux username and hostname (the house
+convention is user `robotN` on host `legionN`), then prints the exact flash
+settings, including this control machine's SSH public key (generated now if
+missing). Pass `--robot-name`/`--robot-hostname` to skip the prompts.
 
 ### CONTROL MACHINE:
 
 ```bash
-~/.local/bin/swarmc imager-checklist --robot-name robot4 --robot-hostname legion4
+~/.local/bin/swarmc imager-checklist
 ```
 
 Expected success signals:
