@@ -326,6 +326,25 @@ def _normalize_webrtc_ice_transport_policy(raw_value: Any) -> str:
     return "all"
 
 
+def _resolve_distribution_webrtc_ice_config(
+    ice_servers_json: Optional[str],
+    ice_transport_policy: Optional[str],
+) -> Tuple[str, str]:
+    """
+    Resolve the process-level WebRTC ICE configuration.
+
+    The community CLI never passes overrides, so it always resolves to the
+    community guardrail defaults (no custom TURN/STUN relay configuration).
+    Distribution editions inject relay ICE configuration through this explicit
+    code seam on ``main()``; environment variables and ROS parameters are
+    intentionally not read here so the community entrypoint stays locked down
+    regardless of process environment.
+    """
+    resolved_json = str(ice_servers_json or "").strip() or "[]"
+    resolved_policy = _normalize_webrtc_ice_transport_policy(ice_transport_policy)
+    return resolved_json, resolved_policy
+
+
 def _parse_webrtc_ice_servers_json(raw_value: str) -> Tuple[List[Dict[str, Any]], str]:
     """
     Parse and sanitize a JSON ICE server list.
@@ -6811,7 +6830,10 @@ def _install_aiohttp_disconnect_exception_filter() -> None:
     loop.set_exception_handler(_handler)
 
 
-async def _run_server():
+async def _run_server(
+    webrtc_ice_servers_json: Optional[str] = None,
+    webrtc_ice_transport_policy: Optional[str] = None,
+):
     _install_aiohttp_disconnect_exception_filter()
     ensure_ros_domain_id()
     rclpy.init(args=None)
@@ -6856,7 +6878,9 @@ async def _run_server():
     # Community edition hard guardrails:
     # - local/LAN operation only
     # - dev auth only (no external auth providers)
-    # - no custom TURN/STUN relay configuration
+    # - no custom TURN/STUN relay configuration via env vars or ROS params;
+    #   distribution editions may inject ICE config only through the explicit
+    #   main()/_run_server() arguments (the community CLI never passes them)
     allow_lan_bind = _community_allow_lan_bind()
     if _is_loopback_host(bind_host):
         pass
@@ -6901,8 +6925,9 @@ async def _run_server():
     if auth_mode != AUTH_MODE_DEV:
         dev_login_enabled = False
         dev_users_json = ""
-    webrtc_ice_servers_json = "[]"
-    webrtc_ice_transport_policy = "all"
+    webrtc_ice_servers_json, webrtc_ice_transport_policy = _resolve_distribution_webrtc_ice_config(
+        webrtc_ice_servers_json, webrtc_ice_transport_policy
+    )
 
     auth_config = AuthConfig(
         mode=auth_mode,
@@ -6984,10 +7009,18 @@ async def _run_server():
         rclpy.shutdown()
 
 
-def main():
+def main(
+    webrtc_ice_servers_json: Optional[str] = None,
+    webrtc_ice_transport_policy: Optional[str] = None,
+):
     if not _print_dependency_preflight():
         return 1
-    asyncio.run(_run_server())
+    asyncio.run(
+        _run_server(
+            webrtc_ice_servers_json=webrtc_ice_servers_json,
+            webrtc_ice_transport_policy=webrtc_ice_transport_policy,
+        )
+    )
     return 0
 
 
