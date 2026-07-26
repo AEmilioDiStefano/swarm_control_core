@@ -35,6 +35,8 @@ Purpose:
 
 Options:
   --imager-checklist             Print Raspberry Pi Imager settings and exit
+                                 (prompts for username/hostname when the
+                                 flags below are omitted)
   --robot-name <name>            Robot name (default: user part of target)
   --robot-hostname <host>        Hostname to show in the checklist (default: legionN)
   --control-type <type>          Preselect control_type (e.g. diff_drive,
@@ -54,8 +56,9 @@ Options:
   -h, --help                     Show this help
 
 Examples:
-  # 1) before flashing the SD card:
-  swarm_core_new_robot.sh --imager-checklist --robot-name robot4 --robot-hostname legion4
+  # 1) before flashing the SD card (prompts for the robot's
+  #    Linux username and hostname; flags skip the prompts):
+  swarm_core_new_robot.sh --imager-checklist
 
   # 2) after the Pi boots (also correct for re-imaged robots):
   swarm_core_new_robot.sh robot4@legion4.local --control-type diff_drive \
@@ -184,35 +187,69 @@ ensure_ssh_key() {
 }
 
 if [[ "$imager_checklist" == "1" ]]; then
+  # Identity wizard: prompt for any value not given via flags. Interactive
+  # terminals only; scripts and CI keep the flag/placeholder behavior.
+  if [[ -z "$robot_name" && -t 0 ]]; then
+    while :; do
+      read -r -p "Linux username for the robot (house convention robotN, e.g. robot4): " robot_name
+      robot_name="$(trim "$robot_name")"
+      [[ "$robot_name" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && break
+      echo "Invalid Linux username: lowercase letters, digits, '-', '_'; start with a letter." >&2
+    done
+  fi
+  if [[ -z "$robot_hostname" && -t 0 ]]; then
+    while :; do
+      read -r -p "Hostname for the robot (house convention legionN, e.g. legion4): " robot_hostname
+      robot_hostname="$(trim "$robot_hostname")"
+      [[ "$robot_hostname" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] && break
+      echo "Invalid hostname: lowercase letters, digits, hyphens; start with a letter or digit." >&2
+    done
+  fi
   ensure_ssh_key
   checklist_name="${robot_name:-robotN}"
   checklist_host="${robot_hostname:-legionN}"
   pub_key="$(cat "${ssh_private_key}.pub")"
   cat <<CHECKLIST
 
-Raspberry Pi Imager settings for the new robot (Edit Settings before writing):
+Raspberry Pi Imager settings for the new robot
+(open "Edit Settings" before writing the card):
 
-  OS:                  Ubuntu Server 24.04 LTS (64-bit)
+  OS:
+    Ubuntu Server 24.04 LTS (64-bit)
+
   [General]
-    Hostname:          ${checklist_host}
-    Username:          ${checklist_name}
-    Password:          choose one and record it (fallback only; the SSH key
-                       below makes normal onboarding password-free)
-    Wi-Fi:             your robot LAN SSID + password (skip if using Ethernet)
-    Locale/timezone:   as appropriate
+  Hostname:
+    ${checklist_host}
+  Username:
+    ${checklist_name}
+  Password:
+    choose one and record it (fallback only;
+    the SSH key below makes normal onboarding
+    password-free)
+  Wi-Fi:
+    your robot LAN SSID + password
+    (skip if using Ethernet)
+  Locale/timezone:
+    as appropriate
+
   [Services]
-    Enable SSH:        YES
-    Allow public-key authentication only, paste this key:
+  Enable SSH:
+    YES
+  Allow public-key authentication only.
+  Paste the key below into the Imager as ONE
+  line (it may wrap visually in this window):
 
 ${pub_key}
 
-After first boot (give it a few minutes on first power-up), run on the control
-machine:
+After first boot (give it a few minutes on
+first power-up), run on the control machine:
 
-  ~/.local/bin/swarmc new-robot ${checklist_name}@${checklist_host}.local
+  ~/.local/bin/swarmc new-robot \\
+    ${checklist_name}@${checklist_host}.local
 
-(add --control-type/--control-interface to preselect the drive/hardware
-profiles, or answer the prompts interactively in this terminal)
+(add --control-type and --control-interface
+to preselect the drive/hardware profiles, or
+answer the prompts interactively there)
 CHECKLIST
   exit 0
 fi
