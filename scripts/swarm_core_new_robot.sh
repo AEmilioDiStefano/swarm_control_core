@@ -189,22 +189,83 @@ ensure_ssh_key() {
   [[ -f "${ssh_private_key}.pub" ]] || fail "Missing public key: ${ssh_private_key}.pub"
 }
 
+# Profile catalogs are the single source of truth for the checklist menus:
+# entries added to these files appear as choices with no script changes.
+control_types_file="${SWARM_CORE_CONTROL_TYPES_FILE:-$SC/config/control_types.yaml}"
+control_interfaces_file="${SWARM_CORE_CONTROL_INTERFACES_FILE:-$SC/config/control_interfaces.yaml}"
+
+core_list_control_types() {
+  python3 - "$control_types_file" <<'PY_TYPES'
+import sys
+import yaml
+
+data = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
+for name in (data.get("control_types", data) or {}):
+    print(name)
+PY_TYPES
+}
+
+core_list_interfaces_for_type() {
+  python3 - "$control_interfaces_file" "$1" <<'PY_IFACES'
+import sys
+import yaml
+
+data = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
+root = data.get("control_interfaces", data) or {}
+for name, entry in root.items():
+    if isinstance(entry, dict) and sys.argv[2] in (entry.get("compatible_control_types") or []):
+        print(name)
+PY_IFACES
+}
+
+core_pick_from_list() {
+  # $1 = prompt title; remaining args = options. Prints the choice. Options
+  # arrive as arguments (not stdin) so the selection prompt reads the
+  # terminal, never an exhausted pipe.
+  local title="$1" choice count
+  shift
+  local options=("$@")
+  count="${#options[@]}"
+  (( count > 0 )) || fail "No options available for: ${title} (check the profile catalogs under $SC/config)."
+  while :; do
+    {
+      echo
+      echo "$title"
+      local i
+      for i in "${!options[@]}"; do
+        printf '  %d) %s\n' $((i + 1)) "${options[$i]}"
+      done
+    } >&2
+    read -r -p "Select [1-${count}] (then press Enter): " choice || fail "Input closed before a value was entered."
+    choice="$(trim "$choice")"
+    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= count )); then
+      printf '%s' "${options[$((choice - 1))]}"
+      return 0
+    fi
+    echo "Invalid selection '${choice}'. Enter a number from the menu." >&2
+  done
+}
+
 if [[ "$imager_checklist" == "1" ]]; then
   # The checklist is per-robot: always ask for the identity on a terminal,
   # so values recalled from shell history can never silently reuse a name.
   if [[ -t 0 ]]; then
     while :; do
-      read -r -p "Enter the Linux username for this robot (then press Enter): " robot_name
+      read -r -p "Enter the Linux username for this robot (then press Enter): " robot_name || fail "Input closed before a value was entered."
       robot_name="$(trim "$robot_name")"
       [[ "$robot_name" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && break
       echo "Invalid Linux username: lowercase letters, digits, '-', '_'; start with a letter." >&2
     done
     while :; do
-      read -r -p "Enter the hostname for this robot (then press Enter): " robot_hostname
+      read -r -p "Enter the hostname for this robot (then press Enter): " robot_hostname || fail "Input closed before a value was entered."
       robot_hostname="$(trim "$robot_hostname")"
       [[ "$robot_hostname" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] && break
       echo "Invalid hostname: lowercase letters, digits, hyphens; start with a letter or digit." >&2
     done
+    mapfile -t available_control_types < <(core_list_control_types)
+    control_type="$(core_pick_from_list "Select the drive (control) type for this robot (from config/control_types.yaml):" "${available_control_types[@]}")"
+    mapfile -t available_interfaces < <(core_list_interfaces_for_type "$control_type")
+    control_interface="$(core_pick_from_list "Select the hardware interface for '${control_type}' (motor driver + count, from config/control_interfaces.yaml):" "${available_interfaces[@]}")"
   else
     [[ -n "$robot_name" && -n "$robot_hostname" ]] || \
       fail "--imager-checklist without a terminal requires --robot-name and --robot-hostname."
@@ -212,6 +273,15 @@ if [[ "$imager_checklist" == "1" ]]; then
   ensure_ssh_key
   checklist_name="$robot_name"
   checklist_host="$robot_hostname"
+  if [[ -n "$control_type" && -n "$control_interface" ]]; then
+    checklist_cmd="  ~/.local/bin/swarmc new-robot \\
+    ${checklist_name}@${checklist_host}.local \\
+    --control-type ${control_type} \\
+    --control-interface ${control_interface}"
+  else
+    checklist_cmd="  ~/.local/bin/swarmc new-robot \\
+    ${checklist_name}@${checklist_host}.local"
+  fi
   pub_key="$(cat "${ssh_private_key}.pub")"
   cat <<CHECKLIST
 
@@ -243,8 +313,7 @@ After first boot
 
 RUN ON THE CONTROL MACHINE:
 
-  ~/.local/bin/swarmc new-robot \\
-    ${checklist_name}@${checklist_host}.local
+${checklist_cmd}
 CHECKLIST
   exit 0
 fi

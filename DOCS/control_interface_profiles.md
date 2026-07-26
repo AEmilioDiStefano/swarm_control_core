@@ -5,6 +5,11 @@ GPIO pins, motor-controller model, wheel-channel layout, safety parameters, and
 the wiring guide. They are selected from `robot_instances.yaml` through the
 `control_interface` field.
 
+A control interface added through this process automatically appears as a
+selectable choice everywhere the catalogs are read — including the
+ADD-robot imager-checklist hardware menu and the quickstart profile
+prompts. No script changes are needed.
+
 # Direct Run Path
 
 ## Step 0: Confirm Naming Convention
