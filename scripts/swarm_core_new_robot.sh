@@ -218,6 +218,16 @@ CHECKLIST
 fi
 
 [[ -n "$target" ]] || { usage >&2; fail "Missing <user@host> target (or use --imager-checklist)."; }
+
+# Onboarding must run ON the control machine, pointed AT the robot. Targeting
+# this machine itself would write robot-side state into the control config.
+target_host_short="${target#*@}"
+target_host_short="${target_host_short%.local}"
+case "$target_host_short" in
+  localhost|127.*|"$(hostname -s 2>/dev/null || hostname)")
+    fail "Target '$target' resolves to this machine. Run this command on the CONTROL machine and point it at the robot's hostname (see DOCS/ADD_robot_pi.md Step 3)."
+    ;;
+esac
 target="$(normalize_target "$target")" || fail "Invalid target: expected user@host"
 user="${target%@*}"
 host="${target#*@}"

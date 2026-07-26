@@ -20,6 +20,7 @@ from .path_defaults import (
     default_robot_name,
     detect_workspace_root,
 )
+from .config_io import atomic_write_text, locked_config
 from .profile_metadata import canonical_profile_name, compatible_interface_names
 from .save_camera_profile import (
     _acquire_prompt_input,
@@ -376,9 +377,8 @@ def _robot_entry_yaml(robot_name: str, entry: RobotEntry) -> str:
 
 
 def _write_yaml(path: Path, data: Dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        yaml.safe_dump(data, handle, sort_keys=False)
+    with locked_config(path):
+        atomic_write_text(path, yaml.safe_dump(data, sort_keys=False))
 
 
 def _append_robot_to_repo_file(
@@ -397,7 +397,8 @@ def _append_robot_to_repo_file(
         parsed = yaml.safe_load(candidate) or {}
         robots = parsed.get("robots", {}) or {}
         if isinstance(parsed, dict) and isinstance(robots, dict) and robot_name in robots:
-            path.write_text(candidate, encoding="utf-8")
+            with locked_config(path):
+                atomic_write_text(path, candidate)
             return
     except Exception:
         pass

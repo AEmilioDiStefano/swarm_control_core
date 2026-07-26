@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
+from .config_io import atomic_write_text, locked_config
 from .path_defaults import MissingConfigError, default_camera_profiles_path, default_robot_name
 from .save_camera_profile import CameraCandidate, _inventory_camera_candidates, _print_wrapped
 
@@ -39,9 +40,8 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
 
 
 def _write_yaml(path: Path, data: Dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=False)
+    with locked_config(path):
+        atomic_write_text(path, yaml.safe_dump(data, sort_keys=False))
 
 
 def _resolved_device_path(device: str) -> str:

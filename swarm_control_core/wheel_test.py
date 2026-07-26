@@ -16,6 +16,7 @@ from typing import Any, Dict, Iterable, Optional
 
 import yaml
 
+from .config_io import atomic_write_text, locked_config
 from .drive_profiles import load_profile_registry, resolve_robot_profile
 from .hardware_interface import HardwareInterface
 from .path_defaults import default_profiles_path, default_robot_name
@@ -467,7 +468,8 @@ def save_gpio_overrides(profiles_path: Path, robot_name: str, pending_gpio: Dict
     entry["gpio"] = existing_gpio
     robots[robot_name] = entry
     data["robots"] = robots
-    profiles_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with locked_config(profiles_path):
+        atomic_write_text(profiles_path, yaml.safe_dump(data, sort_keys=False))
 
 
 def _canonical_wheel(raw: str) -> str:

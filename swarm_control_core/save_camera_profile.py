@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple
 
 import yaml
+from .config_io import atomic_write_text, locked_config
 from .path_defaults import MissingConfigError, default_camera_profiles_path, default_robot_name
 
 
@@ -1493,11 +1494,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("[DRY RUN] No file was written.")
         return 0
 
-    # Create parent directories when missing so first-time setup works without
-    # manual directory creation.
-    profiles_path.parent.mkdir(parents=True, exist_ok=True)
-    with profiles_path.open("w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=False)
+    with locked_config(profiles_path):
+        atomic_write_text(profiles_path, yaml.safe_dump(data, sort_keys=False))
 
     print("[OK] camera profile persisted.")
     print("Next bringup can rely on camera_profiles.yaml without repeating CAMERA_* args.")

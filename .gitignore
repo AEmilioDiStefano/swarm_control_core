@@ -26,3 +26,4 @@ venv/
 # Visual Studio Code
 .vscode
 
+.swarm_config.lock
