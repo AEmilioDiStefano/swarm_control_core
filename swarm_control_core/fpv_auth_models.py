@@ -15,8 +15,9 @@ from typing import Any, FrozenSet, Iterable, Mapping, Optional
 
 AUTH_MODE_OFF = "off"
 AUTH_MODE_DEV = "dev"
+AUTH_MODE_SESSION = "session"
 AUTH_MODE_OIDC = "oidc"
-VALID_AUTH_MODES = frozenset((AUTH_MODE_OFF, AUTH_MODE_DEV, AUTH_MODE_OIDC))
+VALID_AUTH_MODES = frozenset((AUTH_MODE_OFF, AUTH_MODE_DEV, AUTH_MODE_SESSION, AUTH_MODE_OIDC))
 
 SWARM_SCOPE_READ = "swarm:read"
 SWARM_SCOPE_CONTROL = "swarm:control"

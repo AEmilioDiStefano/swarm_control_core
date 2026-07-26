@@ -78,12 +78,22 @@ from .fpv_api_contracts import api_schema_info
 from .fpv_auth_models import (
     AUTH_MODE_DEV,
     AUTH_MODE_OFF,
+    AUTH_MODE_SESSION,
     AuthConfig,
     Principal,
     SWARM_SCOPE_CONTROL,
     SWARM_SCOPE_READ,
 )
 from .fpv_auth_service import build_auth_service
+from .fpv_session_auth import (
+    DEFAULT_SESSION_TTL_S,
+    OperatorRecord,
+    SessionAuthError,
+    load_operator_store,
+    load_or_create_session_secret,
+    mint_session_token,
+    verify_password,
+)
 from .gateway_routes import build_gateway_public, build_local_gateway_routes, gateway_identity_from_env
 from .path_defaults import MissingConfigError, detect_workspace_root
 from .runtime_env import ensure_ros_domain_id
@@ -343,6 +353,52 @@ def _resolve_distribution_webrtc_ice_config(
     resolved_json = str(ice_servers_json or "").strip() or "[]"
     resolved_policy = _normalize_webrtc_ice_transport_policy(ice_transport_policy)
     return resolved_json, resolved_policy
+
+
+def _resolve_distribution_session_auth(
+    distribution_session_auth: Optional[Mapping[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """
+    Resolve distribution-injected session auth (ADR-0010) into runtime state.
+
+    The community CLI never passes this argument, so community processes can
+    never enable session mode: environment variables and ROS parameters are
+    intentionally not read here, mirroring the WebRTC ICE seam. Distribution
+    editions pass ``{"mode": "session", "operators_file": ..., "secret_file":
+    ..., "token_ttl_s": ..., "allow_readonly_anonymous": ...}`` and every
+    load/validation failure raises instead of degrading to weaker auth.
+    """
+    if distribution_session_auth is None:
+        return None
+    mode = str(distribution_session_auth.get("mode") or "").strip().lower()
+    if mode != AUTH_MODE_SESSION:
+        raise RuntimeError(
+            f"Distribution auth seam only supports mode='session' (got '{mode}')"
+        )
+    operators_file = str(distribution_session_auth.get("operators_file") or "").strip()
+    secret_file = str(distribution_session_auth.get("secret_file") or "").strip()
+    if not operators_file or not secret_file:
+        raise RuntimeError(
+            "Distribution session auth requires 'operators_file' and 'secret_file' paths"
+        )
+    try:
+        operators = load_operator_store(operators_file)
+        secret = load_or_create_session_secret(secret_file)
+    except SessionAuthError as exc:
+        raise RuntimeError(
+            f"Refusing to start FPV UI: session auth is misconfigured. {exc}"
+        )
+    try:
+        token_ttl_s = float(distribution_session_auth.get("token_ttl_s") or DEFAULT_SESSION_TTL_S)
+    except Exception:
+        token_ttl_s = float(DEFAULT_SESSION_TTL_S)
+    allow_anon = bool(distribution_session_auth.get("allow_readonly_anonymous", False))
+    return {
+        "operators": operators,
+        "secret": secret,
+        "token_ttl_s": token_ttl_s,
+        "allow_readonly_anonymous": allow_anon,
+    }
 
 
 def _parse_webrtc_ice_servers_json(raw_value: str) -> Tuple[List[Dict[str, Any]], str]:
@@ -1930,12 +1986,21 @@ class BrowserServer:
         dev_users_json: str = "",
         webrtc_ice_servers_json: str = "[]",
         webrtc_ice_transport_policy: str = "all",
+        session_secret: bytes = b"",
+        session_operators: Optional[Dict[str, OperatorRecord]] = None,
+        session_token_ttl_s: float = DEFAULT_SESSION_TTL_S,
     ):
         self.hub = hub
         self.auth_config = auth_config.normalized()
-        self.auth = build_auth_service(self.auth_config)
+        self.session_secret = bytes(session_secret or b"")
+        self.session_operators: Dict[str, OperatorRecord] = dict(session_operators or {})
+        self.session_token_ttl_s = max(60.0, float(session_token_ttl_s or DEFAULT_SESSION_TTL_S))
+        if self.auth_config.mode == AUTH_MODE_SESSION and not self.session_operators:
+            raise SessionAuthError("Session auth mode requires a non-empty operator store")
+        self.auth = build_auth_service(self.auth_config, session_secret=self.session_secret)
         self.site_id = str(site_id or "").strip()
         self.dev_login_enabled = bool(dev_login_enabled)
+        self.login_enabled = bool(dev_login_enabled) or self.auth_config.mode == AUTH_MODE_SESSION
         self._dev_users = self._load_dev_users(dev_users_json)
         self.webrtc_ice_transport_policy = _normalize_webrtc_ice_transport_policy(webrtc_ice_transport_policy)
         self.webrtc_ice_servers, webrtc_ice_err = _parse_webrtc_ice_servers_json(webrtc_ice_servers_json)
@@ -2256,7 +2321,9 @@ class BrowserServer:
         return f"dev|{subject}|{display_name}|{roles_csv}|{scopes_csv}|{tenant_id}|{sess}"
 
     def _managed_dev_session_id(self, principal: Principal) -> str:
-        if self.auth_config.mode != "dev":
+        # Managed login sessions back both dev mode and session mode; the
+        # registry check is what makes session-token revocation immediate.
+        if self.auth_config.mode not in (AUTH_MODE_DEV, AUTH_MODE_SESSION):
             return ""
         sid = str(principal.session_id or "").strip()
         if not sid.startswith("sess_"):
@@ -2555,12 +2622,15 @@ class BrowserServer:
                     "mode": self.auth_config.mode,
                     "allow_anonymous_readonly": bool(self.auth_config.allow_readonly_anonymous),
                     "dev_login_enabled": bool(self.dev_login_enabled),
+                    "login_enabled": bool(self.login_enabled),
                 },
             }
         )
 
-    async def handle_dev_login(self, req: web.Request):
-        if self.auth_config.mode != "dev" or not self.dev_login_enabled:
+    async def handle_login(self, req: web.Request):
+        session_mode = self.auth_config.mode == AUTH_MODE_SESSION
+        dev_mode = self.auth_config.mode == "dev" and self.dev_login_enabled
+        if not session_mode and not dev_mode:
             return web.json_response({"error": "Not found"}, status=404)
         try:
             body = await req.json()
@@ -2572,9 +2642,16 @@ class BrowserServer:
         if not username or not password:
             return web.json_response({"error": "username and password are required"}, status=400)
 
-        user = self._dev_users.get(username)
-        if not user or str(user.get("password") or "") != password:
-            return web.json_response({"error": "Invalid credentials"}, status=401)
+        operator: Optional[OperatorRecord] = None
+        user: Optional[Dict[str, Any]] = None
+        if session_mode:
+            operator = self.session_operators.get(username)
+            if operator is None or not verify_password(password, operator.password_hash):
+                return web.json_response({"error": "Invalid credentials"}, status=401)
+        else:
+            user = self._dev_users.get(username)
+            if not user or str(user.get("password") or "") != password:
+                return web.json_response({"error": "Invalid credentials"}, status=401)
 
         existing_sid = self._dev_session_id_by_username.get(username)
         if existing_sid:
@@ -2595,7 +2672,35 @@ class BrowserServer:
                 await self._close_dev_session(existing_sid, reason="replaced_stale_session", close_ws=True)
 
         session_id = f"sess_{int(time.time() * 1000)}_{secrets.token_hex(3)}"
-        subject = str(user.get("subject") or username).strip()
+        if session_mode:
+            assert operator is not None
+            subject = operator.subject
+            display_name = operator.display_name
+            roles = list(operator.roles)
+            scopes = list(operator.scopes)
+            tenant_id = operator.tenant_id
+            try:
+                token = mint_session_token(
+                    self.session_secret,
+                    subject=subject,
+                    display_name=display_name,
+                    roles=roles,
+                    scopes=scopes,
+                    tenant_id=tenant_id,
+                    session_id=session_id,
+                    ttl_s=self.session_token_ttl_s,
+                )
+            except SessionAuthError as exc:
+                return web.json_response({"error": f"Login unavailable: {exc}"}, status=503)
+        else:
+            assert user is not None
+            subject = str(user.get("subject") or username).strip()
+            display_name = str(user.get("display_name") or subject)
+            roles = [v.strip() for v in str(user.get("roles_csv") or "").split(",") if v.strip()]
+            scopes = [v.strip() for v in str(user.get("scopes_csv") or "").split(",") if v.strip()]
+            tenant_id = str(user.get("tenant_id") or "dev")
+            token = self._build_dev_token(user, session_id)
+
         t_now = now_s()
         self._dev_sessions_by_id[session_id] = DevLoginSession(
             session_id=session_id,
@@ -2606,28 +2711,25 @@ class BrowserServer:
             client_id="",
         )
         self._dev_session_id_by_username[username] = session_id
-        token = self._build_dev_token(user, session_id)
-        roles = [v.strip() for v in str(user.get("roles_csv") or "").split(",") if v.strip()]
-        scopes = [v.strip() for v in str(user.get("scopes_csv") or "").split(",") if v.strip()]
         principal = {
             "subject": subject,
-            "display_name": user.get("display_name"),
+            "display_name": display_name,
             "roles": roles,
             "scopes": scopes,
-            "tenant_id": user.get("tenant_id"),
+            "tenant_id": tenant_id,
             "session_id": session_id,
         }
         return web.json_response(
             {
                 "access_token": token,
                 "token_type": "Bearer",
-                "auth_mode": "dev",
+                "auth_mode": self.auth_config.mode,
                 "principal": principal,
             }
         )
 
-    async def handle_dev_logout(self, req: web.Request):
-        if self.auth_config.mode != "dev" or not self.dev_login_enabled:
+    async def handle_logout(self, req: web.Request):
+        if not self.login_enabled:
             return web.json_response({"ok": True, "session_closed": False})
 
         decision = self.auth.authorize_http(req, required_scope=SWARM_SCOPE_READ)
@@ -2663,6 +2765,7 @@ class BrowserServer:
                     "mode": self.auth_config.mode,
                     "allow_anonymous_readonly": bool(self.auth_config.allow_readonly_anonymous),
                     "dev_login_enabled": bool(self.dev_login_enabled),
+                    "login_enabled": bool(self.login_enabled),
                 },
                 "principal": self._principal_public(principal),
                 "robots": robots,
@@ -3974,7 +4077,7 @@ let fleetPreviewPreset = "scalable_fleet";
 let thumbRobotsPerTick = 1;
 let thumbDriveSuppressedUntilMs = 0;
 let thumbPreviewPolicy = null;
-let authConfig = { mode: "off", allow_anonymous_readonly: true, dev_login_enabled: false };
+let authConfig = { mode: "off", allow_anonymous_readonly: true, dev_login_enabled: false, login_enabled: false };
 let pc = null;
 let mainFallbackTimer = null;
 let mainFallbackInFlight = false;
@@ -4309,7 +4412,7 @@ function sendPageExitLogout(reason){
   if (!token) return;
   pageExitLogoutSent = true;
   const payload = JSON.stringify({ reason: String(reason || "page_close") });
-  const url = withAuthPath("/api/dev/logout");
+  const url = withAuthPath("/api/auth/logout");
   try{
     if (navigator.sendBeacon){
       const blob = new Blob([payload], { type: "application/json" });
@@ -5169,7 +5272,7 @@ async function fetchAuthConfig(){
 }
 
 async function loginDev(username, password){
-  const r = await fetch("/api/dev/login", {
+  const r = await fetch("/api/auth/login", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ username, password }),
@@ -5239,10 +5342,13 @@ function showDevLoginDialog(attempt){
 
 async function ensureDevLoginIfRequired(){
   if (accessToken) return true;
-  if (authConfig.mode !== "dev") return true;
+  if (authConfig.mode !== "dev" && authConfig.mode !== "session") return true;
   if (authConfig.allow_anonymous_readonly) return true;
-  if (!authConfig.dev_login_enabled){
-    setStatus("Authentication required: dev login is disabled.");
+  const loginEnabled = (authConfig.login_enabled !== undefined)
+    ? authConfig.login_enabled
+    : authConfig.dev_login_enabled;
+  if (!loginEnabled){
+    setStatus("Authentication required: login is disabled.");
     return false;
   }
 
@@ -6833,6 +6939,7 @@ def _install_aiohttp_disconnect_exception_filter() -> None:
 async def _run_server(
     webrtc_ice_servers_json: Optional[str] = None,
     webrtc_ice_transport_policy: Optional[str] = None,
+    distribution_session_auth: Optional[Mapping[str, Any]] = None,
 ):
     _install_aiohttp_disconnect_exception_filter()
     ensure_ros_domain_id()
@@ -6893,7 +7000,12 @@ async def _run_server(
         )
         bind_host = "127.0.0.1"
 
-    if auth_mode not in (AUTH_MODE_OFF, AUTH_MODE_DEV):
+    session_auth_runtime = _resolve_distribution_session_auth(distribution_session_auth)
+    if session_auth_runtime is not None:
+        # Distribution seam (ADR-0010): real per-operator session auth. The
+        # env-provided auth_mode is ignored; the seam argument is authoritative.
+        auth_mode = AUTH_MODE_SESSION
+    elif auth_mode not in (AUTH_MODE_OFF, AUTH_MODE_DEV):
         hub.get_logger().warn(
             f"[community] auth_mode '{auth_mode}' is not supported in community edition. "
             "Forcing auth_mode=off."
@@ -6902,6 +7014,12 @@ async def _run_server(
     auth_issuer = ""
     auth_audience = ""
     auth_jwks_url = ""
+
+    if auth_mode == AUTH_MODE_SESSION and _unsafe_allow_weak_auth_non_loopback():
+        hub.get_logger().warn(
+            "SWARM_CORE_UNSAFE_ALLOW_WEAK_AUTH_NON_LOOPBACK is set but auth_mode=session "
+            "ignores it: session auth is always fully enforced."
+        )
 
     weak_auth_exposure_requested = (not _is_loopback_host(bind_host)) or _remote_or_gateway_profile_requested()
     if auth_mode in (AUTH_MODE_OFF, AUTH_MODE_DEV) and weak_auth_exposure_requested:
@@ -6921,6 +7039,8 @@ async def _run_server(
 
     if auth_mode == AUTH_MODE_OFF:
         allow_anon = False
+    if session_auth_runtime is not None:
+        allow_anon = bool(session_auth_runtime["allow_readonly_anonymous"])
     site_id = "community_local"
     if auth_mode != AUTH_MODE_DEV:
         dev_login_enabled = False
@@ -6949,6 +7069,9 @@ async def _run_server(
         dev_users_json=dev_users_json,
         webrtc_ice_servers_json=webrtc_ice_servers_json,
         webrtc_ice_transport_policy=webrtc_ice_transport_policy,
+        session_secret=(session_auth_runtime or {}).get("secret", b""),
+        session_operators=(session_auth_runtime or {}).get("operators"),
+        session_token_ttl_s=(session_auth_runtime or {}).get("token_ttl_s", DEFAULT_SESSION_TTL_S),
     )
     app = web.Application(middlewares=[server.weak_auth_remote_request_guard])
     app.add_routes(
@@ -6958,8 +7081,10 @@ async def _run_server(
             web.get("/app.js", server.handle_js),
             web.get("/manifest.webmanifest", server.handle_manifest),
             web.get("/api/auth/config", server.handle_auth_config),
-            web.post("/api/dev/login", server.handle_dev_login),
-            web.post("/api/dev/logout", server.handle_dev_logout),
+            web.post("/api/auth/login", server.handle_login),
+            web.post("/api/auth/logout", server.handle_logout),
+            web.post("/api/dev/login", server.handle_login),
+            web.post("/api/dev/logout", server.handle_logout),
             web.get("/api/state", server.handle_state),
             web.get("/api/fleet/state", server.handle_fleet_state),
             web.get("/api/jpeg", server.handle_jpeg),
@@ -7012,6 +7137,7 @@ async def _run_server(
 def main(
     webrtc_ice_servers_json: Optional[str] = None,
     webrtc_ice_transport_policy: Optional[str] = None,
+    distribution_session_auth: Optional[Mapping[str, Any]] = None,
 ):
     if not _print_dependency_preflight():
         return 1
@@ -7019,6 +7145,7 @@ def main(
         _run_server(
             webrtc_ice_servers_json=webrtc_ice_servers_json,
             webrtc_ice_transport_policy=webrtc_ice_transport_policy,
+            distribution_session_auth=distribution_session_auth,
         )
     )
     return 0
