@@ -6,10 +6,13 @@ Use this for the shortest path to local robot FPV + control.
 For full detail and extended troubleshooting, use:
 - [`LOCAL_FPV_runbook.md`](LOCAL_FPV_runbook.md)
 
-If you are still assembling the reference robot or doing first-time machine
-setup, start with:
-- [`setup_instructions_ASSEMBLY.md`](setup_instructions_ASSEMBLY.md)
-- [`setup_instructions_SOFTWARE.md`](setup_instructions_SOFTWARE.md)
+If robot setup has not already been done for the robot(s) you want to
+control, you must first follow one of the ADD_robots guide docs (for
+example, [`ADD_robot_pi.md`](ADD_robot_pi.md) for Raspberry Pi robots).
+If you are still assembling the robot hardware, start with
+[`setup_instructions_ASSEMBLY.md`](setup_instructions_ASSEMBLY.md).
+To operate an existing swarm from a new machine, use
+[`ADD_control_machine.md`](ADD_control_machine.md).
 
 This runbook is split into two parts:
 1. **Quickstart Path** at the top.
@@ -29,14 +32,13 @@ Suggested terminal layout on the control machine:
 - `R-<robot-b>`: `ssh <robot_user>@<robot_host>.local`
 - add one terminal per additional robot.
 
-Desktop/SSH usage note:
-- Open the robot SSH session from the Ubuntu desktop first, then run the robot command blocks inside that SSH shell.
-- Source only `swarm_core_bootstrap_env.sh`; run `swarm_core_quickstart_step*.sh` as commands.
-- If bootstrap lookup fails, the shell should stay open so you can inspect the error instead of getting kicked out of SSH.
-
-Workspace selection below is handled by the Step 0 terminal-bootstrap helper.
-After that, use `WS` for the workspace root and `SC` for
-`"$WS/src/swarm_control_core"`.
+Command style note: every step is one short `swarmc` launcher command; the
+heavy lifting lives in `scripts/swarm_core_quickstart_step*.sh`. This guide
+calls the launcher as `~/.local/bin/swarmc` so the commands work in any
+terminal, even before `~/.local/bin` is on your PATH (plain `swarmc` works
+in terminals opened after machine setup). The launcher was installed by the
+ADD-robot guide's machine setup; if it is missing on a machine, see
+[Fix Step 0.0](#ref-0-0).
 
 Trust/verification rule:
 - Every robot you intend to control must be registered/approved on the control
@@ -55,44 +57,18 @@ Go to [Alternative Step A.1](#ref-a-1), then return to [Step 0](#step-0).
 <a id="apt-lock-preflight"></a>
 ## Before Step 0: Apt/Dpkg Lock Preflight
 
-Run this in any control-machine or robot terminal that may install packages. If
-Ubuntu first-boot updates are active, this waits with readable status before the
-quickstart starts dependency installation.
+Run this in any control-machine or robot terminal that may install packages.
+If Ubuntu first-boot updates are active, it waits with readable status
+before the quickstart starts dependency installation.
 
 ### CONTROL MACHINE / ROBOT(S):
 
 ```bash
-swarm_apt_lock_holders() {
-  command -v fuser >/dev/null 2>&1 || return 0
-  sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock /var/lib/apt/lists/lock 2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -nu
-}
-
-SWARM_APT_LOCK_WAIT_DEADLINE=$((SECONDS + ${SWARM_APT_LOCK_MAX_WAIT:-1800}))
-SWARM_APT_LOCK_WAIT_FAILED=0
-while SWARM_APT_LOCK_HOLDERS="$(swarm_apt_lock_holders)" && [[ -n "${SWARM_APT_LOCK_HOLDERS//[[:space:]]/}" ]]; do
-  echo "[WAIT] apt/dpkg lock holder is still running:"
-  ps -o pid,ppid,etime,stat,comm,args -p "$(printf '%s' "$SWARM_APT_LOCK_HOLDERS" | paste -sd, -)" || true
-  if (( SECONDS >= SWARM_APT_LOCK_WAIT_DEADLINE )); then
-    echo "[STOP] Timed out waiting for apt/dpkg locks. Inspect the process above, then run these only if it is stuck:" >&2
-    echo "  sudo ps -fp $(printf '%s' "$SWARM_APT_LOCK_HOLDERS" | paste -sd, -)" >&2
-    echo "  sudo systemctl status unattended-upgrades apt-daily.service apt-daily-upgrade.service --no-pager" >&2
-    echo "  sudo journalctl -u unattended-upgrades -n 80 --no-pager" >&2
-    echo "  sudo systemctl stop unattended-upgrades apt-daily.service apt-daily-upgrade.service" >&2
-    echo "  sudo dpkg --configure -a" >&2
-    echo "  sudo apt-get --fix-broken install -y" >&2
-    SWARM_APT_LOCK_WAIT_FAILED=1
-    break
-  fi
-  sleep 10
-done
-unset -f swarm_apt_lock_holders
-if (( SWARM_APT_LOCK_WAIT_FAILED )); then
-  echo "[STOP] apt/dpkg locks did not clear. Run the recovery commands above, then rerun this block." >&2
-else
-  echo "[OK] apt/dpkg locks are clear."
-fi
-unset SWARM_APT_LOCK_HOLDERS SWARM_APT_LOCK_WAIT_DEADLINE SWARM_APT_LOCK_WAIT_FAILED
+~/.local/bin/swarmc apt-wait
 ```
+
+Expected output ends with `[OK] apt/dpkg locks are clear.` If it times out,
+it prints the exact recovery commands to inspect the lock holder.
 
 <a id="step-0"></a>
 ## Step 0: Workspace Bootstrap + Dependency Readiness
@@ -104,45 +80,13 @@ to re-run at any time (fresh machine or existing machine).
 ### CONTROL MACHINE:
 
 ```bash
-swarm_core_bootstrap_terminal() {
-  local helper=""
-  helper="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
-  if [[ -z "${helper:-}" ]]; then
-    echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-    return 1
-  fi
-  if ! source "$helper" --interactive; then
-    echo "[FAIL] swarm_control_core terminal bootstrap failed; keeping this shell open for inspection." >&2
-    return 1
-  fi
-}
-
-if swarm_core_bootstrap_terminal; then
-  "$SC/scripts/swarm_core_quickstart_step0.sh" --machine-role control
-fi
-unset -f swarm_core_bootstrap_terminal
+~/.local/bin/swarmc step0 --machine-role control
 ```
 
 ### ROBOT(S):
 
 ```bash
-swarm_core_bootstrap_terminal() {
-  local helper=""
-  helper="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
-  if [[ -z "${helper:-}" ]]; then
-    echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-    return 1
-  fi
-  if ! source "$helper" --interactive; then
-    echo "[FAIL] swarm_control_core terminal bootstrap failed; keeping this shell open for inspection." >&2
-    return 1
-  fi
-}
-
-if swarm_core_bootstrap_terminal; then
-  "$SC/scripts/swarm_core_quickstart_step0.sh" --machine-role robot
-fi
-unset -f swarm_core_bootstrap_terminal
+~/.local/bin/swarmc step0 --machine-role robot
 ```
 
 ### Verify success
@@ -153,6 +97,10 @@ Expected output ends with:
 
 And includes:
 - `[iw] is already installed and up to date.` (or installed/updated during this step), so Wi-Fi power-save checks are available on robots.
+
+### IF `swarmc` is missing on this machine
+
+Go to [Fix Step 0.0](#ref-0-0), then return to [Step 0](#step-0).
 
 ### IF dependency install/check fails
 
@@ -166,13 +114,13 @@ Proceed to Step 1.
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_quickstart_step1.sh" --machine-role control
+~/.local/bin/swarmc step1 --machine-role control
 ```
 
 ### ROBOT(S):
 
 ```bash
-"$SC/scripts/swarm_core_quickstart_step1.sh" --machine-role robot
+~/.local/bin/swarmc step1 --machine-role robot
 ```
 
 ### Verify success
@@ -197,16 +145,13 @@ Proceed to Step 2.
 ### ROBOT(S):
 
 ```bash
-export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
-export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
-"$SC/scripts/swarm_core_quickstart_step2.sh"
+~/.local/bin/swarmc step2
 ```
 
 Behavior of the step-2 wrapper:
 - applies the robot compat reset
-- defaults `SWARM_CORE_ROBOT_NAME` to the Linux username when not already set
-- leaves `ROBOT_NAME` available in this shell for follow-up diagnostics when
-  you set it before running the wrapper
+- defaults the robot name to the Linux username (pass `--robot-name <name>`
+  to override)
 - checks firewall/power-save state
 - ensures the canonical `robot_instances.yaml` entry exists
 - refreshes runtime `control_types.yaml` and `control_interfaces.yaml` from the
@@ -259,13 +204,7 @@ gate for drive/autonomy control.
 ### CONTROL MACHINE:
 
 ```bash
-cd "$WS"
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
-ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
+~/.local/bin/swarmc register
 ```
 
 The wizard first repairs/quarantines stale runtime entries that would prevent
@@ -312,7 +251,7 @@ Prerequisite (required):
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_quickstart_step3.sh"
+~/.local/bin/swarmc step3
 ```
 
 Terminal usage requirement:
@@ -355,7 +294,7 @@ Proceed to Step 4.
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_quickstart_step4.sh"
+~/.local/bin/swarmc step4
 ```
 
 ### Verify success
@@ -376,7 +315,7 @@ Proceed to Step 5.
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_quickstart_step5.sh" --tool teleop
+~/.local/bin/swarmc step5 --tool teleop
 ```
 
 ### IF terminal control cannot discover robots
@@ -418,6 +357,23 @@ sudo systemctl is-active swarm-robot.service || true
 
 Then return to [Step 0](#step-0).
 
+<a id="ref-0-0"></a>
+## Fix Step 0.0: `swarmc` Is Missing on This Machine
+
+The launcher is installed by machine setup in the ADD-robot guides. On a
+machine that has never been set up, run the first-contact bootstrap
+(`control` on the control machine, `robot` on a robot):
+
+### CONTROL MACHINE / ROBOT(S):
+
+```bash
+wget -qO- https://raw.githubusercontent.com/AEmilioDiStefano/swarm_control_core/main/scripts/swarm_core_first_contact.sh | bash -s -- --setup control
+```
+
+If the machine already has the workspace checkout, this reuses it and only
+installs the launcher + missing dependencies. Then return to
+[Step 0](#step-0).
+
 <a id="ref-0-1"></a>
 ## Fix Step 0.1: Dependency install/check fails
 
@@ -425,25 +381,21 @@ Then return to [Step 0](#step-0).
 
 ```bash
 sudo apt-get update
-"$WS/src/swarm_control_core/scripts/swarm_core_check_install_dependencies.sh" \
-  --machine-role control
+~/.local/bin/swarmc step0 --machine-role control
 ```
 
-Then return to [Step 0](#step-0).
+Use `--machine-role robot` in robot terminals. Then return to
+[Step 0](#step-0).
 
 <a id="ref-1-1"></a>
 ## Fix Step 1.1: Build/source fails
 
+Clean-rebuild the package in this workspace:
+
 ### CONTROL MACHINE / ROBOT(S):
 
 ```bash
-cd "$WS"
-rm -rf build/swarm_control_core install/swarm_control_core log/latest_build/swarm_control_core
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-colcon build --base-paths "$WS/src/swarm_control_core" --packages-select swarm_control_core --event-handlers console_direct+
-source "$WS/install/setup.bash"
-set -u || true
+~/.local/bin/swarmc rebuild --clean
 ```
 
 Then return to [Step 1](#step-1).
@@ -451,22 +403,20 @@ Then return to [Step 1](#step-1).
 <a id="ref-2-1"></a>
 ## Fix Step 2.1: Robot nodes/camera fail to start
 
+Load the workspace environment into this shell, then probe nodes/topics and
+re-save the camera profile:
+
 ### ROBOT (affected):
 
 ```bash
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
-export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
-export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
+eval "$(~/.local/bin/swarmc env)"
 ros2 node list
-ros2 topic list | rg "/${ROBOT_NAME}/(heartbeat|camera/image_raw|cmd_vel)"
-ros2 run swarm_control_core save_camera_profile_core --robot "$ROBOT_NAME"
+ros2 topic list | rg "/$(id -un)/(heartbeat|camera/image_raw|cmd_vel)"
+ros2 run swarm_control_core save_camera_profile_core --robot "$(id -un)"
 ```
 
-Then return to [Step 2](#step-2).
+If the robot runs under a non-default name, replace `$(id -un)` with that
+name. Then return to [Step 2](#step-2).
 
 <a id="ref-2-2"></a>
 ## Alternative Step 2.2: Skip Camera Menu or Preselect Hardware
@@ -477,7 +427,7 @@ camera menu, run Step 2 like this.
 ### ROBOT(S):
 
 ```bash
-"$SC/scripts/swarm_core_quickstart_step2.sh" --skip-camera-profile
+~/.local/bin/swarmc step2 --skip-camera-profile
 ```
 
 If this is a new robot with a known hardware profile, preselect it. Example for
@@ -486,9 +436,7 @@ a differential dual-L298N robot.
 ### ROBOT(S):
 
 ```bash
-"$SC/scripts/swarm_core_quickstart_step2.sh" \
-  --control-type diff_drive \
-  --control-interface 4wheel_diff_l298n_2
+~/.local/bin/swarmc step2 --control-type diff_drive --control-interface 4wheel_diff_l298n_2
 ```
 
 For a mecanum robot using two L298N boards.
@@ -496,9 +444,7 @@ For a mecanum robot using two L298N boards.
 ### ROBOT(S):
 
 ```bash
-"$SC/scripts/swarm_core_quickstart_step2.sh" \
-  --control-type mecanum_drive \
-  --control-interface mecanum_l298n_2
+~/.local/bin/swarmc step2 --control-type mecanum_drive --control-interface mecanum_l298n_2
 ```
 
 For a new hardware profile, add/validate it first with
@@ -514,7 +460,7 @@ Runtime config seeding behavior:
 - Step 2 and `add_robot_core` refresh reusable core profile files while
   preserving `camera_profiles.yaml`.
 - To diagnose stale source/runtime profile state manually, run
-  `"$WS/src/swarm_control_core/scripts/swarm_core_robot_doctor.sh" --robot "$ROBOT_NAME"`.
+  `~/.local/bin/swarmc doctor --robot <robot-name>`.
 
 Then return to [Step 2](#step-2).
 
@@ -527,9 +473,7 @@ same robot and run.
 ### SECOND ROBOT SSH TERMINAL:
 
 ```bash
-export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
-export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
-"$SC/scripts/swarm_core_wheel_test.sh" --robot "$ROBOT_NAME" --mode cmd_vel
+~/.local/bin/swarmc wheel-test --robot "$(id -un)" --mode cmd_vel
 ```
 
 Each movement key uses the same controls as terminal teleop and the Swarm
@@ -549,19 +493,11 @@ Step 2 terminal with `Ctrl-C`, then return to [Step 2](#step-2).
 
 If the camera image is inverted after camera configuration, use the interactive
 camera flipper tool to save software orientation in that robot's camera profile.
+
 ### AFFECTED ROBOT:
 
 ```bash
-export SWARM_CORE_ROBOT_NAME="${SWARM_CORE_ROBOT_NAME:-$(id -un)}"
-export ROBOT_NAME="${ROBOT_NAME:-$SWARM_CORE_ROBOT_NAME}"
-
-cd "$WS"
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
-ros2 run swarm_control_core camera_flipper_core --robot "$ROBOT_NAME"
+~/.local/bin/swarmc camera-flip --robot "$(id -un)"
 ```
 
 Main menu options:
@@ -611,21 +547,21 @@ Then return to [Step 2](#step-2).
 <a id="ref-3-1"></a>
 ## Fix Step 3.1: UI does not load or bind
 
+Free the UI port, then restart the UI step:
+
 ### CONTROL MACHINE:
 
 ```bash
-"$WS/src/swarm_control_core/scripts/swarm_core_free_ui_port.sh" --port 8080
-export ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
-"$WS/src/swarm_control_core/scripts/swarm_core_run_local_ui.sh"
+~/.local/bin/swarmc free-ui-port --port 8080
+~/.local/bin/swarmc step3
 ```
 
-If LAN access is needed, set the bind override.
+If LAN access is needed, restart the UI with the bind override instead:
 
 ### CONTROL MACHINE:
 
 ```bash
-export SWARM_CORE_ALLOW_LAN_BIND=1
-export SWARM_CORE_BIND_HOST=0.0.0.0
+~/.local/bin/swarmc step3 --allow-lan-bind
 ```
 
 Then return to [Step 3](#step-3).
@@ -643,13 +579,7 @@ UI starts.
 ### CONTROL MACHINE:
 
 ```bash
-cd "$WS"
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
-ros2 run swarm_control_core sync_robot_entries_core --workspace "$WS"
+~/.local/bin/swarmc register
 ```
 
 The wizard repairs/quarantines stale runtime entries, then prints only ready
@@ -682,7 +612,7 @@ Balanced fleet profile.
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_quickstart_step3.sh" --balanced-fleet
+~/.local/bin/swarmc step3 --balanced-fleet
 ```
 
 If rapid back-and-forth switching still feels sticky in `active_only` mode, use
@@ -691,7 +621,7 @@ the switch-heavy profile.
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_quickstart_step3.sh" --switch-heavy
+~/.local/bin/swarmc step3 --switch-heavy
 ```
 
 To keep all robot camera streams subscribed continuously, at higher load.
@@ -699,8 +629,7 @@ To keep all robot camera streams subscribed continuously, at higher load.
 ### CONTROL MACHINE:
 
 ```bash
-export SWARM_CORE_IMAGE_SUBSCRIPTION_MODE=all
-"$SC/scripts/swarm_core_quickstart_step3.sh"
+SWARM_CORE_IMAGE_SUBSCRIPTION_MODE=all ~/.local/bin/swarmc step3
 ```
 
 For private-LAN browser access.
@@ -708,7 +637,7 @@ For private-LAN browser access.
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_quickstart_step3.sh" --allow-lan-bind
+~/.local/bin/swarmc step3 --allow-lan-bind
 ```
 
 Then return to [Step 3](#step-3).
@@ -721,6 +650,7 @@ Check domain and source consistency on control + robots.
 ### CONTROL MACHINE / ROBOT(S):
 
 ```bash
+eval "$(~/.local/bin/swarmc env)"
 echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID (target=${SWARM_CORE_ROS_DOMAIN_ID:-17})"
 env | rg -E '^(ROS_DOMAIN_ID|ROS_LOCALHOST_ONLY|ROS_AUTOMATIC_DISCOVERY_RANGE|ROS_STATIC_PEERS|ROS_DISCOVERY_SERVER|RMW_IMPLEMENTATION)=' || true
 ros2 topic list | rg "/.*/heartbeat"
@@ -743,44 +673,33 @@ If you previously forced firewall preservation, remove that override.
 unset SWARM_CORE_COMPAT_STOP_UFW
 ```
 
-If reset script prints `Unknown argument: --machine-role`, your robot/control checkout is stale.
-Run on each machine:
-
-If `git pull --ff-only` is blocked by local changes to
+If a step script prints `Unknown argument: --machine-role`, your robot/control
+checkout is stale. If `git pull --ff-only` is blocked by local changes to
 `config/robot_instances.yaml` after running robot setup, the runtime profile is
-already stored under `~/.config/swarm_control_core/robot_instances.yaml`. Restore
+already stored under `~/.config/swarm_control_core/robot_instances.yaml`; restore
 the generated source-file edit before pulling.
 
 ### CONTROL MACHINE / ROBOT(S):
 
 ```bash
+eval "$(~/.local/bin/swarmc env)"
 cd "$WS/src/swarm_control_core"
 git restore config/robot_instances.yaml
+git fetch origin --prune
+git switch main || git checkout -b main origin/main
+git pull --ff-only origin main
 ```
 
-Then rerun the update/build block.
+Then rerun the sync/build gate on that machine:
 
 ### CONTROL MACHINE / ROBOT(S):
 
 ```bash
-cd "$WS/src/swarm_control_core"
-git fetch origin --prune
-git switch main || git checkout -b main origin/main
-git pull --ff-only origin main
-
-cd "$WS"
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-if [ -d "$WS/src/swarm_control_pro" ]; then
-  colcon build --base-paths src/swarm_control_core src/swarm_control_pro --packages-up-to swarm_control_pro
-else
-  colcon build --base-paths "$WS/src/swarm_control_core" --packages-select swarm_control_core --event-handlers console_direct+
-fi
-source "$WS/install/setup.bash"
-set -u || true
+~/.local/bin/swarmc step1 --machine-role control
 ```
 
-Then return to [Step 4](#step-4).
+Use `--machine-role robot` in robot terminals. Then return to
+[Step 4](#step-4).
 
 <a id="ref-5-1"></a>
 ## Fix Step 5.1: Terminal control cannot discover robots
@@ -788,11 +707,7 @@ Then return to [Step 4](#step-4).
 ### CONTROL MACHINE:
 
 ```bash
-set +u
-source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
-source "$WS/install/setup.bash"
-set -u || true
-
+eval "$(~/.local/bin/swarmc env)"
 ros2 topic list | rg "/.*/cmd_vel"
 ros2 action list | rg "/.*/execute_playbook"
 ```

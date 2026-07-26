@@ -32,19 +32,15 @@ is rebuilt and re-sourced.
 
 ## Step 0: Bootstrap Workspace Shell
 
+Load the workspace environment into this terminal (exports `WS`, `WS_DEV`,
+and `SC`). The `swarmc` launcher is installed by machine setup in the
+ADD-robot guide; the git subcommands below run through it.
+
 ### CONTROL MACHINE / ROBOT(S):
 
 ```bash
-SWARM_CORE_BOOTSTRAP_ENV="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f -path "*/src/swarm_control_core/scripts/swarm_core_bootstrap_env.sh" 2>/dev/null | sort | head -n1)"
-if [[ -z "${SWARM_CORE_BOOTSTRAP_ENV:-}" ]]; then
-  echo "[FAIL] Could not locate swarm_control_core terminal bootstrap helper under ${SWARM_SEARCH_ROOT:-$HOME}." >&2
-else
-  source "$SWARM_CORE_BOOTSTRAP_ENV" --interactive
-  unset SWARM_CORE_BOOTSTRAP_ENV
-fi
+eval "$(~/.local/bin/swarmc env)"
 ```
-
-This bootstrap exports `WS`, `WS_DEV`, `SC`, and `SWARM_CORE_WORKSPACE_ROOT`.
 
 ## Step 1: Start (or Resume) a Feature Branch
 
@@ -54,7 +50,7 @@ Never edit on `main`. Check where you are, then start a branch.
 
 ```bash
 git -C "$SC" branch --show-current
-"$SC/scripts/swarm_core_git.sh" start
+~/.local/bin/swarmc git start
 ```
 
 Expected: the script syncs `main` and leaves you on
@@ -77,7 +73,7 @@ Run as often as you like; it refuses to run on `main`.
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_git.sh" save
+~/.local/bin/swarmc git save
 ```
 
 Expected: a Conventional Commit on your feature branch, pushed to `origin` as
@@ -92,7 +88,7 @@ to start the next branch.
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_git.sh" publish
+~/.local/bin/swarmc git publish
 ```
 
 Expected final lines: `published feature/... into main.`
@@ -117,11 +113,18 @@ Use this on every other machine (control machines, robots) to consume the new
 ### CONTROL MACHINE / ROBOT(S):
 
 ```bash
+eval "$(~/.local/bin/swarmc env)"
 cd "$WS/src/swarm_control_core"
 git fetch origin --prune
 git switch main
 git pull --ff-only origin main
+```
 
+Then rebuild the overlay:
+
+### CONTROL MACHINE / ROBOT(S):
+
+```bash
 cd "$WS"
 set +u
 source /opt/ros/"${ROS_DISTRO:-jazzy}"/setup.bash
@@ -150,7 +153,7 @@ clean, synced `main`.
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_git.sh" tag
+~/.local/bin/swarmc git tag
 ```
 
 Expected: `tagged vX.Y.Z.` — tags replace the old `last_save`/`last_stable`
@@ -168,7 +171,7 @@ Uncommitted work on `main` must move to a feature branch before anything else:
 ```bash
 cd "$SC"
 git switch -c "feature/$(date +%Y%m%d)-rescued-work"
-"$SC/scripts/swarm_core_git.sh" save
+~/.local/bin/swarmc git save
 ```
 
 Then return to [Step 1](#step-1) (your work is now safe on a feature branch).
@@ -209,8 +212,8 @@ locally, then:
 ### CONTROL MACHINE:
 
 ```bash
-"$SC/scripts/swarm_core_git.sh" save
-"$SC/scripts/swarm_core_git.sh" publish
+~/.local/bin/swarmc git save
+~/.local/bin/swarmc git publish
 ```
 
 Then return to [Step 3](#step-3).
@@ -221,6 +224,7 @@ Then return to [Step 3](#step-3).
 ### ROBOT(S):
 
 ```bash
+eval "$(~/.local/bin/swarmc env)"
 cd "$WS/src/swarm_control_core"
 git fetch origin --prune --tags
 git switch --detach vX.Y.Z

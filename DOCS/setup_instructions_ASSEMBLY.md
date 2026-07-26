@@ -3,13 +3,13 @@
 This guide describes the reference differential-drive robot assembly for
 `swarm_control_core`.
 
-After you complete this assembly guide and the companion software guide in
-[setup_instructions_SOFTWARE.md](./setup_instructions_SOFTWARE.md), you will be
-able to power on one or more robots, launch local FPV/control, and drive from
-your control machine on the same LAN.
+After you complete this assembly guide and the companion robot onboarding
+guide in [ADD_robot_pi.md](./ADD_robot_pi.md), you will be able to power on
+one or more robots, launch local FPV/control, and drive from your control
+machine on the same LAN.
 
 If you already have compatible robot hardware, skip to
-[setup_instructions_SOFTWARE.md](./setup_instructions_SOFTWARE.md).
+[ADD_robot_pi.md](./ADD_robot_pi.md).
 
 # Direct Run Path
 
@@ -138,7 +138,7 @@ Before moving on to software, verify:
 
 Next step:
 
-- Continue to [setup_instructions_SOFTWARE.md](./setup_instructions_SOFTWARE.md)
+- Continue to [ADD_robot_pi.md](./ADD_robot_pi.md)
 
 # Alternative/Debug/Fix Reference
 
