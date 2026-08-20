@@ -6,6 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./lib/swarm_core_quickstart_common.sh
 source "${SCRIPT_DIR}/lib/swarm_core_quickstart_common.sh"
+# shellcheck source=./lib/swarm_core_discovery.sh
+source "${SCRIPT_DIR}/lib/swarm_core_discovery.sh"
 
 usage() {
   cat <<'USAGE'
@@ -52,6 +54,8 @@ swarm_core_qs_prepare_workspace_env "$WS"
 
 export ROS_DOMAIN_ID="$domain_id"
 swarm_core_qs_source_ros_overlay "$WS"
+swarm_core_apply_discovery_env
+swarm_core_stop_ros_daemon
 
 if [[ "$tool" == "teleop" ]]; then
   exec ros2 run swarm_control_core swarm_teleop_core

@@ -551,6 +551,33 @@ check_ros_setup_dependency() {
   return 1
 }
 
+check_avahi_dependency() {
+  local dep="avahi-daemon"
+  if ! check_apt_package_dependency "$dep" "avahi-daemon"; then
+    return 1
+  fi
+  if [[ -d /run/systemd/system ]] && command -v systemctl >/dev/null 2>&1; then
+    if ! sudo systemctl enable --now avahi-daemon.service >/dev/null 2>&1; then
+      echo "[$dep] package is installed but the service could not be enabled/started."
+      record_failure "avahi-daemon-service"
+      return 1
+    fi
+  fi
+  return 0
+}
+
+check_control_python_imports() {
+  local dep="control UI Python imports"
+  if /usr/bin/python3 -c 'import aiohttp, av, aiortc, numpy; from PIL import Image' >/dev/null 2>&1; then
+    echo "[$dep] import smoke test passed."
+    record_already_installed "$dep"
+    return 0
+  fi
+  echo "[$dep] import smoke test failed (aiohttp, av, aiortc, numpy, or PIL)."
+  record_failure "$dep"
+  return 1
+}
+
 echo "[swarm_core_check_install_dependencies] machine_role=${machine_role}"
 if [[ "${EUID:-$(id -u)}" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
   dependency_log "Checking sudo credentials before dependency installation."
@@ -558,9 +585,9 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
   sudo -v || exit 1
 fi
 
-progress_total_weight=55
+progress_total_weight=58
 if [[ "$machine_role" == "control" ]]; then
-  progress_total_weight=$(( progress_total_weight + 12 ))
+  progress_total_weight=$(( progress_total_weight + 17 ))
 else
   progress_total_weight=$(( progress_total_weight + 28 ))
 fi
@@ -587,9 +614,15 @@ run_progress_step 1 "Checking dependency: iw" check_cmd_dependency "iw" "iw" iw 
 run_progress_step 1 "Checking dependency: pytest" check_cmd_dependency "pytest" "pytest" python3-pytest || true
 run_progress_step 1 "Checking dependency: ssh (openssh-client)" check_cmd_dependency "ssh (openssh-client)" "ssh" openssh-client || true
 run_progress_step 1 "Checking dependency: ssh-copy-id (openssh-client)" check_cmd_dependency "ssh-copy-id (openssh-client)" "ssh-copy-id" openssh-client || true
+run_progress_step 2 "Checking dependency: avahi-daemon" check_avahi_dependency || true
+run_progress_step 1 "Checking dependency: libnss-mdns" check_apt_package_dependency "libnss-mdns" "libnss-mdns" || true
 if [[ "$machine_role" == "control" ]]; then
   run_progress_step 7 "Checking dependency: python3-aiortc" check_apt_package_dependency "python3-aiortc" "python3-aiortc" || true
   run_progress_step 5 "Checking dependency: python3-av" check_apt_package_dependency "python3-av" "python3-av" || true
+  run_progress_step 1 "Checking dependency: python3-aiohttp" check_apt_package_dependency "python3-aiohttp" "python3-aiohttp" || true
+  run_progress_step 1 "Checking dependency: python3-numpy" check_apt_package_dependency "python3-numpy" "python3-numpy" || true
+  run_progress_step 1 "Checking dependency: python3-pil" check_apt_package_dependency "python3-pil" "python3-pil" || true
+  run_progress_step 2 "Smoke-testing control UI Python imports" check_control_python_imports || true
 fi
 
 if [[ "$machine_role" == "robot" ]]; then

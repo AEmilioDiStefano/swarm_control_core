@@ -1,3 +1,4 @@
+import subprocess
 from unittest.mock import patch
 
 from io import StringIO
@@ -7,6 +8,7 @@ import yaml
 from swarm_control_core.sync_robot_entries import (
     _collect_sources,
     _detect_likely_local_robot_source,
+    _fetch_remote_registry,
     _loadable_runtime_robot_labels,
     _merge_imported_robot_entry,
     _parse_source_spec,
@@ -46,6 +48,39 @@ control_interfaces:
 def test_parse_source_spec_supports_optional_robot_name() -> None:
     assert _parse_source_spec("robot3=robot3@legion3.local") == ("robot3", "robot3@legion3.local")
     assert _parse_source_spec("robot3@legion3.local") == ("", "robot3@legion3.local")
+
+
+def test_fetch_remote_registry_uses_only_the_requested_identity() -> None:
+    completed = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout='{"registry": {}}', stderr=""
+    )
+    with patch(
+        "swarm_control_core.sync_robot_entries.subprocess.run", return_value=completed
+    ) as run:
+        assert _fetch_remote_registry(
+            "robot4@10.42.0.89", ssh_private_key="~/.ssh/id_ed25519"
+        ) == {"registry": {}}
+
+    assert run.call_args.args[0] == [
+        "ssh",
+        "-F",
+        "/dev/null",
+        "-i",
+        str(Path("~/.ssh/id_ed25519").expanduser()),
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "AddressFamily=inet",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "PasswordAuthentication=no",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        "robot4@10.42.0.89",
+        "python3",
+        "-",
+    ]
 
 
 def test_collect_sources_prints_registered_robots_one_per_line_before_prompt(capsys) -> None:

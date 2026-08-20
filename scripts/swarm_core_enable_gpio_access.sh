@@ -14,8 +14,9 @@ Options:
 Behavior:
   - Ensures gpio group exists
   - Adds user to gpio group
-  - Installs gpiomem udev rule
+  - Installs gpiochip + gpiomem udev rules
   - Reloads udev rules
+  - Verifies the actual lgpio gpiochip open/close path as the target user
   - Prints current-session access guidance (re-login/reboot only if needed)
 USAGE
 }
@@ -38,16 +39,47 @@ run_root() {
   sudo "$@"
 }
 
-user_has_gpiomem_access_now() {
+run_as_user() {
   local user_name="$1"
-  if [[ ! -e /dev/gpiomem ]]; then
+  shift
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]] && command -v runuser >/dev/null 2>&1; then
+    runuser -u "$user_name" -- "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    # sudo initializes supplementary groups from the updated group database,
+    # even when target_user is the current login whose shell predates usermod.
+    sudo -u "$user_name" "$@"
+  elif [[ "${user_name}" == "${USER:-$(id -un)}" ]]; then
+    "$@"
+  else
     return 1
   fi
-  if [[ "${user_name}" == "${USER:-$(id -un)}" ]]; then
-    [[ -r /dev/gpiomem && -w /dev/gpiomem ]]
-    return $?
-  fi
-  sudo -u "$user_name" test -r /dev/gpiomem && sudo -u "$user_name" test -w /dev/gpiomem
+}
+
+gpiochip_devices() {
+  local device
+  for device in /dev/gpiochip*; do
+    [[ -e "$device" ]] && printf '%s\n' "$device"
+  done
+}
+
+probe_lgpio_as_user() {
+  local user_name="$1" device chip_number
+  while IFS= read -r device; do
+    [[ -n "$device" ]] || continue
+    chip_number="${device##*/gpiochip}"
+    if run_as_user "$user_name" /usr/bin/python3 - "$chip_number" <<'PY_LGPIO' >/dev/null 2>&1
+import lgpio
+import sys
+
+handle = lgpio.gpiochip_open(int(sys.argv[1]))
+lgpio.gpiochip_close(handle)
+PY_LGPIO
+    then
+      log "[OK] target user '${user_name}' opened and closed ${device} through lgpio."
+      return 0
+    fi
+  done < <(gpiochip_devices)
+  return 1
 }
 
 rule_file="/etc/udev/rules.d/99-gpiomem.rules"
@@ -90,33 +122,46 @@ tmp_rule="$(mktemp)"
 trap 'rm -f "$tmp_rule"' EXIT
 cat > "$tmp_rule" <<'RULE'
 KERNEL=="gpiomem", GROUP="gpio", MODE="0660"
+SUBSYSTEM=="gpio", KERNEL=="gpiochip[0-9]*", GROUP="gpio", MODE="0660"
 RULE
 
 run_root mkdir -p "$(dirname "$rule_file")"
 run_root install -m 644 -o root -g root "$tmp_rule" "$rule_file"
 run_root udevadm control --reload-rules
 run_root udevadm trigger /dev/gpiomem || true
+run_root udevadm trigger --subsystem-match=gpio --action=add || true
 
-if [[ -e /dev/gpiomem ]]; then
-  ls -l /dev/gpiomem || true
-else
+devices_found="0"
+for device in /dev/gpiomem /dev/gpiochip*; do
+  if [[ -e "$device" ]]; then
+    devices_found="1"
+    ls -l "$device" || true
+  fi
+done
+if [[ ! -e /dev/gpiomem ]]; then
   log "NOTE: /dev/gpiomem is not present yet (hardware/driver dependent until reboot)."
 fi
 
 # Try to grant immediate session access without requiring reboot/new login.
-if [[ -e /dev/gpiomem ]] && ! user_has_gpiomem_access_now "$target_user"; then
-  if command -v setfacl >/dev/null 2>&1; then
-    log "Applying immediate ACL on /dev/gpiomem for user '${target_user}'."
-    run_root setfacl -m "u:${target_user}:rw" /dev/gpiomem || true
-  fi
+if command -v setfacl >/dev/null 2>&1; then
+  for device in /dev/gpiomem /dev/gpiochip*; do
+    [[ -e "$device" ]] || continue
+    log "Applying immediate ACL on ${device} for user '${target_user}'."
+    run_root setfacl -m "u:${target_user}:rw" "$device" || true
+  done
 fi
 
 echo
 log "GPIO access configuration complete."
-if user_has_gpiomem_access_now "$target_user"; then
-  log "[OK] GPIO access is active in current session."
+if probe_lgpio_as_user "$target_user"; then
+  log "[OK] gpiochip access is active for the runtime user."
   log "No reboot required."
 else
-  log "GPIO access is not active in current session."
-  log "Open a new SSH session (or run 'newgrp gpio'). Reboot only if /dev/gpiomem still absent."
+  if [[ "$devices_found" == "1" ]]; then
+    fail "GPIO devices exist, but none could be opened through lgpio as '${target_user}'. Re-login or reboot once, rerun this script, and do not drive motors while the backend is mock."
+  elif [[ -r /proc/device-tree/model ]] && grep -aqi 'Raspberry Pi' /proc/device-tree/model; then
+    fail "No /dev/gpiochip device could be opened through lgpio as '${target_user}'. Reboot once, rerun this script, and do not drive motors while the backend is mock."
+  else
+    log "NOTE: no GPIO character devices are present on this non-Raspberry-Pi host."
+  fi
 fi

@@ -71,11 +71,24 @@ fi
 
 pkg_dir=""
 existing="$(find "${SWARM_SEARCH_ROOT:-$HOME}" -maxdepth 10 -type f \
-  -path "*/src/swarm_control_core/scripts/swarmc" 2>/dev/null | sort | head -n1)"
+  -path "*/swarm_control_core/scripts/swarmc" 2>/dev/null | sort | head -n1)"
 if [[ -n "$existing" ]]; then
-  pkg_dir="$(cd "$(dirname "$existing")/.." && pwd)"
-  workspace="$(cd "${pkg_dir}/../.." && pwd)"
-  log "reusing existing checkout: ${pkg_dir}"
+  existing_pkg="$(cd "$(dirname "$existing")/.." && pwd)"
+  if [[ "$(basename "$(dirname "$existing_pkg")")" == "src" ]]; then
+    pkg_dir="$existing_pkg"
+    workspace="$(cd "${pkg_dir}/../.." && pwd)"
+  else
+    pkg_dir="${workspace}/src/swarm_control_core"
+    install -d "${workspace}/src"
+    if [[ -e "$pkg_dir" && "$(readlink -f "$pkg_dir")" != "$existing_pkg" ]]; then
+      fail "${pkg_dir} already points to a different checkout; set --workspace to use another workspace."
+    fi
+    if [[ ! -e "$pkg_dir" ]]; then
+      ln -s "$existing_pkg" "$pkg_dir"
+      log "adopted standalone checkout into workspace: ${pkg_dir} -> ${existing_pkg}"
+    fi
+  fi
+  log "reusing existing checkout: ${existing_pkg}"
 else
   pkg_dir="${workspace}/src/swarm_control_core"
   install -d "${workspace}/src"
@@ -96,11 +109,13 @@ fi
 "${pkg_dir}/scripts/swarm_core_install_launchers.sh" --workspace "$workspace"
 
 if [[ -n "$setup_role" ]]; then
-  "${pkg_dir}/scripts/swarmc" setup --role "$setup_role"
+  SWARM_CORE_WORKSPACE_ROOT="$workspace" \
+    "${pkg_dir}/scripts/swarmc" setup --role "$setup_role"
 fi
 
 if [[ "$with_pro" == "1" ]]; then
-  "${pkg_dir}/scripts/swarmc" ensure-pro
+  SWARM_CORE_WORKSPACE_ROOT="$workspace" \
+    "${pkg_dir}/scripts/swarmc" ensure-pro
 fi
 
 log "[OK] First contact complete. Workspace: ${workspace}"

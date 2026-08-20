@@ -107,6 +107,13 @@ if [[ "$machine_role" != "control" && "$machine_role" != "robot" && "$machine_ro
   return 1
 fi
 
+# The ROS 2 CLI daemon keeps the RMW implementation it was started with.
+# Stop it before clearing/switching RMW settings so later graph commands do
+# not query a daemon running under a stale middleware configuration.
+if [[ "$dry_run" != "1" ]] && command -v ros2 >/dev/null 2>&1; then
+  ros2 daemon stop >/dev/null 2>&1 || true
+fi
+
 runtime_vars=(
   ROS_DOMAIN_ID
   ROS_LOCALHOST_ONLY
@@ -115,6 +122,7 @@ runtime_vars=(
   ROS_STATIC_PEERS
   ROS_AUTOMATIC_DISCOVERY_RANGE
   RMW_IMPLEMENTATION
+  SWARM_CORE_RMW_IMPLEMENTATION
   CYCLONEDDS_URI
   FASTRTPS_DEFAULT_PROFILES_FILE
   ROS_NAMESPACE

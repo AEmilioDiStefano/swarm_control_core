@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import subprocess
 import textwrap
+import yaml
 
 from swarm_control_core.drive_profiles import load_profile_registry, resolve_robot_profile
 
@@ -227,3 +228,5 @@ def test_seed_runtime_config_requires_only_minimal_core_files(tmp_path: Path) ->
 
     assert not (target_dir / "capability_profiles.yaml").exists()
     assert not (target_dir / "adapter_profiles.yaml").exists()
+    seeded = yaml.safe_load((target_dir / "robot_instances.yaml").read_text(encoding="utf-8"))
+    assert seeded["robots"] == {}

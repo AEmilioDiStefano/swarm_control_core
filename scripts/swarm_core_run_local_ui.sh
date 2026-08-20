@@ -20,6 +20,8 @@ run_root() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./lib/swarm_core_workspace.sh
 source "${SCRIPT_DIR}/lib/swarm_core_workspace.sh"
+# shellcheck source=./lib/swarm_core_discovery.sh
+source "${SCRIPT_DIR}/lib/swarm_core_discovery.sh"
 
 WS="$(swarm_core_detect_workspace_root "${SWARM_CORE_WORKSPACE_ROOT:-}" || true)"
 if [[ -z "$WS" || ! -d "$WS/src/swarm_control_core" ]]; then
@@ -31,13 +33,6 @@ BIND_HOST="${SWARM_CORE_BIND_HOST:-127.0.0.1}"
 BIND_PORT="${SWARM_CORE_BIND_PORT:-8080}"
 RECLAIM_BIND_PORT="${SWARM_CORE_RECLAIM_BIND_PORT:-1}"
 export ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
-
-# Guard against stale pro/discovery/session exports.
-unset ROS_DISCOVERY_SERVER
-unset ROS_SUPER_CLIENT
-unset ROS_STATIC_PEERS
-unset ROS_AUTOMATIC_DISCOVERY_RANGE
-unset ROS_LOCALHOST_ONLY
 
 if [[ "${SWARM_CORE_ALLOW_LAN_BIND:-0}" != "1" ]]; then
   BIND_HOST="127.0.0.1"
@@ -190,15 +185,11 @@ if [[ -f "${runtime_cfg_dir}/control_interfaces.yaml" ]]; then
   export SWARM_CORE_CONTROL_INTERFACES_PATH="${runtime_cfg_dir}/control_interfaces.yaml"
 fi
 
-# Enforce community LAN discovery defaults after sourcing overlays.
-unset ROS_DISCOVERY_SERVER
-unset ROS_SUPER_CLIENT
-unset ROS_STATIC_PEERS
-export SWARM_DISCOVERY_MODE="multicast"
+# Apply the same multicast+unicast discovery policy used by robot bringup,
+# diagnostics, and the systemd service.
+swarm_core_apply_discovery_env
 export SWARM_ROLE="control"
-export ROS_LOCALHOST_ONLY=0
-export ROS_AUTOMATIC_DISCOVERY_RANGE="${SWARM_CORE_AUTOMATIC_DISCOVERY_RANGE:-SUBNET}"
-export RMW_IMPLEMENTATION="${SWARM_CORE_RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+swarm_core_stop_ros_daemon
 
 export SWARM_CORE_BIND_HOST="$BIND_HOST"
 export SWARM_CORE_BIND_PORT="$BIND_PORT"
@@ -262,11 +253,12 @@ fi
 
 log "bind=${SWARM_CORE_BIND_HOST}:${SWARM_CORE_BIND_PORT}"
 log "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
-log "discovery_env=cleared"
+log "discovery_policy=${SWARM_CORE_DISCOVERY_MODE:-hybrid}"
 log "auth_mode=${SWARM_CORE_AUTH_MODE}"
 log "SWARM_DISCOVERY_MODE=${SWARM_DISCOVERY_MODE}"
-log "ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY}"
+log "ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-<unset>}"
 log "ROS_AUTOMATIC_DISCOVERY_RANGE=${ROS_AUTOMATIC_DISCOVERY_RANGE}"
+log "ROS_STATIC_PEERS=${ROS_STATIC_PEERS:-<none>}"
 log "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-<unset>}"
 if [[ "${SWARM_CORE_WEBRTC_MAIN_ONLY}" == "1" || "${SWARM_CORE_WEBRTC_MAIN_ONLY,,}" == "true" ]]; then
   log "stream=WebRTC-only main stream"

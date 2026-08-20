@@ -3,7 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SC="$(cd "${SCRIPT_DIR}/.." && pwd)"
-WS="$(cd "${SC}/../.." && pwd)"
+# shellcheck source=./lib/swarm_core_workspace.sh
+source "${SCRIPT_DIR}/lib/swarm_core_workspace.sh"
+WS="$(swarm_core_detect_workspace_root "${SWARM_CORE_WORKSPACE_ROOT:-}" 2>/dev/null || true)"
 
 usage() {
   cat <<'USAGE'
@@ -30,8 +32,9 @@ Purpose:
 
   If the Imager pre-seeded the control machine's public key, the whole run is
   password-free: fresh RPi-Imager Ubuntu images grant the created user
-  passwordless sudo via cloud-init. Without a pre-seeded key you get one
-  password prompt for ssh-copy-id, typed here on the control machine.
+  passwordless sudo via cloud-init. If password-based SSH was enabled instead,
+  a missing key gets one password prompt for ssh-copy-id. Public-key-only
+  images with a missing/wrong key must be reflashed or repaired at the console.
 
 Options:
   --imager-checklist             Ask for the robot's Linux username and
@@ -42,6 +45,9 @@ Options:
                                  prompts)
   --robot-hostname <host>        Checklist hostname for non-interactive runs
                                  (a terminal always prompts)
+  --robot-ip <IPv4>              First-contact robot address. Stock Noble does
+                                 not advertise .local before provisioning, so
+                                 obtain this from the router/DHCP lease list
   --control-type <type>          Preselect control_type (e.g. diff_drive,
                                  mecanum_drive); omit to answer the profile
                                  prompts here in the control terminal
@@ -64,8 +70,8 @@ Examples:
   swarm_core_new_robot.sh --imager-checklist
 
   # 2) after the Pi boots (also correct for re-imaged robots):
-  swarm_core_new_robot.sh robot4@legion4.local --control-type diff_drive \
-    --control-interface 4wheel_diff_l298n_2
+  swarm_core_new_robot.sh robot4@legion4.local --robot-ip 10.42.0.89 \
+    --control-type diff_drive --control-interface 4wheel_diff_l298n_2
 USAGE
 }
 
@@ -100,6 +106,7 @@ imager_checklist="0"
 target=""
 robot_name=""
 robot_hostname=""
+robot_ip=""
 control_type=""
 control_interface=""
 skip_camera="0"
@@ -122,6 +129,10 @@ while [[ $# -gt 0 ]]; do
     --robot-hostname)
       shift
       robot_hostname="${1:-}"
+      ;;
+    --robot-ip)
+      shift
+      robot_ip="${1:-}"
       ;;
     --control-type)
       shift
@@ -175,18 +186,61 @@ robot_name="$(trim "$robot_name")"
 control_type="$(trim "$control_type")"
 control_interface="$(trim "$control_interface")"
 ssh_private_key="$(trim "$ssh_private_key")"
+robot_ip="$(trim "$robot_ip")"
 [[ "$boot_wait_timeout" =~ ^[0-9]+$ ]] || fail "--boot-wait-timeout must be integer seconds"
 [[ "$cloud_init_timeout" =~ ^[0-9]+$ ]] || fail "--cloud-init-timeout must be integer seconds"
 [[ "$domain_id" =~ ^[0-9]+$ ]] || fail "--domain-id must be an integer"
+
+is_ipv4_address() {
+  /usr/bin/python3 - "$1" <<'PY_IP' >/dev/null 2>&1
+import ipaddress
+import sys
+
+address = ipaddress.ip_address(sys.argv[1])
+if address.version != 4 or address.is_unspecified or address.is_multicast or address.is_loopback:
+    raise SystemExit(1)
+PY_IP
+}
+
+if [[ -n "$robot_ip" ]] && ! is_ipv4_address "$robot_ip"; then
+  fail "--robot-ip must be a usable IPv4 address (got '${robot_ip}')."
+fi
 
 ensure_ssh_key() {
   if [[ ! -f "$ssh_private_key" ]]; then
     mkdir -p "$(dirname "$ssh_private_key")"
     chmod 700 "$(dirname "$ssh_private_key")"
-    log "No SSH key found at $ssh_private_key. Generating ed25519 key now."
-    ssh-keygen -t ed25519 -a 100 -f "$ssh_private_key"
+    log "No SSH key found at $ssh_private_key. Generating an automation-ready ed25519 key now."
+    ssh-keygen -q -t ed25519 -a 100 -N "" \
+      -C "swarm-control-core@$(hostname -s 2>/dev/null || echo control)" \
+      -f "$ssh_private_key"
   fi
   [[ -f "${ssh_private_key}.pub" ]] || fail "Missing public key: ${ssh_private_key}.pub"
+}
+
+ensure_ssh_key_batch_ready() {
+  # Unencrypted dedicated keys work directly. A caller-supplied encrypted key
+  # is also supported when its exact public key is loaded in ssh-agent;
+  # IdentitiesOnly below prevents unrelated agent keys from being offered.
+  if ssh-keygen -y -P "" -f "$ssh_private_key" >/dev/null 2>&1; then
+    return 0
+  fi
+  local expected_blob=""
+  expected_blob="$(awk 'NF >= 2 {print $2; exit}' "${ssh_private_key}.pub")"
+  if [[ -n "$expected_blob" ]] && ssh-add -L 2>/dev/null | awk 'NF >= 2 {print $2}' | grep -Fqx "$expected_blob"; then
+    return 0
+  fi
+  fail "SSH key ${ssh_private_key} is passphrase-protected but its exact identity is not loaded. Run: ssh-add '${ssh_private_key}'"
+}
+
+persist_control_domain_id() {
+  local config_dir tmp
+  config_dir="${SWARM_CORE_CONFIG_DIR:-${HOME}/.config/swarm_control_core}"
+  install -d -m 700 "$config_dir"
+  tmp="$(mktemp "${config_dir}/ros_domain_id.tmp.XXXXXX")"
+  printf '%s\n' "$domain_id" > "$tmp"
+  chmod 600 "$tmp"
+  mv -f "$tmp" "${config_dir}/ros_domain_id"
 }
 
 # Profile catalogs are the single source of truth for the checklist menus:
@@ -275,14 +329,17 @@ if [[ "$imager_checklist" == "1" ]]; then
   ensure_ssh_key
   checklist_name="$robot_name"
   checklist_host="$robot_hostname"
+  checklist_key_arg="$(printf '%q' "$ssh_private_key")"
   if [[ -n "$control_type" && -n "$control_interface" ]]; then
     checklist_cmd="  ~/.local/bin/swarmc new-robot \\
     ${checklist_name}@${checklist_host}.local \\
+    --ssh-private-key ${checklist_key_arg} \\
     --control-type ${control_type} \\
     --control-interface ${control_interface}"
   else
     checklist_cmd="  ~/.local/bin/swarmc new-robot \\
-    ${checklist_name}@${checklist_host}.local"
+    ${checklist_name}@${checklist_host}.local \\
+    --ssh-private-key ${checklist_key_arg}"
   fi
   pub_key="$(trim "$(cat "${ssh_private_key}.pub")")"
   cat <<CHECKLIST
@@ -297,8 +354,8 @@ Raspberry Pi Imager settings for the new robot
   Hostname: ${checklist_host}
 
   Password: choose one and record it
-  (fallback only; the SSH key below makes
-  normal onboarding password-free)
+  (local recovery; public-key-only SSH does
+  not accept this password over the network)
 
   Wi-Fi: your robot LAN SSID + password
   (skip if using Ethernet)
@@ -316,6 +373,9 @@ After first boot
 RUN ON THE CONTROL MACHINE:
 
 ${checklist_cmd}
+
+Stock Noble normally does not advertise .local yet. Find this hostname in the
+router/DHCP lease list and append: --robot-ip <robot-IPv4-address>
 CHECKLIST
   exit 0
 fi
@@ -335,15 +395,34 @@ target="$(normalize_target "$target")" || fail "Invalid target: expected user@ho
 user="${target%@*}"
 host="${target#*@}"
 [[ -n "$robot_name" ]] || robot_name="$user"
+[[ "$user" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || fail "Invalid SSH username '${user}'."
+[[ "$host" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]] || fail "Invalid SSH hostname '${host}'."
+[[ "$robot_name" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$ ]] || fail "Invalid robot name '${robot_name}'."
+if [[ -n "$control_type" && ! "$control_type" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$ ]]; then
+  fail "Invalid --control-type '${control_type}'."
+fi
+if [[ -n "$control_interface" && ! "$control_interface" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$ ]]; then
+  fail "Invalid --control-interface '${control_interface}'."
+fi
+logical_target="$target"
+expected_hostname="${host%.local}"
+expected_hostname="${expected_hostname%%.*}"
+if is_ipv4_address "$host"; then
+  [[ -n "$robot_ip" ]] || robot_ip="$host"
+  expected_hostname=""
+fi
+ssh_host="${robot_ip:-$host}"
+connect_target="${user}@${ssh_host}"
 
 command -v ssh >/dev/null 2>&1 || fail "ssh is required"
 command -v ssh-keygen >/dev/null 2>&1 || fail "ssh-keygen is required"
 command -v ssh-keyscan >/dev/null 2>&1 || fail "ssh-keyscan is required"
 command -v ssh-copy-id >/dev/null 2>&1 || fail "ssh-copy-id is required"
 
-[[ -f "$WS/install/setup.bash" ]] || fail "Control workspace is not built yet ($WS/install/setup.bash missing). Run scripts/swarm_core_bootstrap_machine.sh --machine-role control first (see DOCS/ADD_robot_pi.md Step 1)."
+[[ -n "$WS" && -f "$WS/install/setup.bash" ]] || fail "Control workspace is not built or could not be detected (${WS:-<unknown>}/install/setup.bash missing). Run 'swarmc setup --role control' from this checkout first."
 
 ensure_ssh_key
+ensure_ssh_key_batch_ready
 
 repo_url="$(git -C "$SC" remote get-url origin 2>/dev/null || echo "https://github.com/AEmilioDiStefano/swarm_control_core.git")"
 case "$repo_url" in
@@ -351,6 +430,23 @@ case "$repo_url" in
     repo_url="https://github.com/${repo_url#git@github.com:}"
     ;;
 esac
+if [[ -n "$(git -C "$SC" status --porcelain --untracked-files=normal 2>/dev/null)" ]]; then
+  fail "Control checkout has uncommitted or untracked files. Use a clean committed checkout so control and robot run identical code."
+fi
+repo_ref="$(git -C "$SC" branch --show-current 2>/dev/null || true)"
+[[ -n "$repo_ref" ]] || fail "Control checkout is detached. Switch to the branch you intend to provision, then retry."
+git check-ref-format --branch "$repo_ref" >/dev/null 2>&1 \
+  || fail "Current git branch is not safe to provision: ${repo_ref}"
+[[ "$repo_ref" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] \
+  || fail "Current git branch contains characters unsupported by remote provisioning: ${repo_ref}"
+repo_commit="$(git -C "$SC" rev-parse HEAD 2>/dev/null || true)"
+[[ "$repo_commit" =~ ^[0-9a-f]{40}$ ]] || fail "Could not resolve the control checkout commit."
+remote_ref_line="$(git ls-remote --exit-code "$repo_url" "refs/heads/${repo_ref}" 2>/dev/null)" \
+  || fail "Branch '${repo_ref}' is not reachable at ${repo_url}. Push it before provisioning a robot."
+remote_commit="${remote_ref_line%%[[:space:]]*}"
+[[ "$remote_commit" == "$repo_commit" ]] \
+  || fail "Control HEAD ${repo_commit:0:12} is not the published tip of '${repo_ref}' (${remote_commit:0:12}). Commit and push the exact control code first."
+log "Robot checkout pinned to published ${repo_ref}@${repo_commit:0:12}."
 
 ws_basename="$(basename "$WS")"
 remote_ws="\$HOME/${ws_basename}"
@@ -362,55 +458,106 @@ remote_ws="\$HOME/${ws_basename}"
 if [[ "$keep_known_hosts" != "1" ]]; then
   ssh-keygen -R "$host" >/dev/null 2>&1 || true
   ssh-keygen -R "${host%.local}" >/dev/null 2>&1 || true
+  if [[ -n "$robot_ip" ]]; then
+    ssh-keygen -R "$robot_ip" >/dev/null 2>&1 || true
+  fi
   log "Cleared any stale known_hosts entries for ${host}."
 fi
 
-log "Waiting for SSH to come up on ${host} (timeout ${boot_wait_timeout}s; first boot can take a few minutes)..."
+log "Waiting for SSH to come up on ${ssh_host} (timeout ${boot_wait_timeout}s; first boot can take a few minutes)..."
+if [[ -z "$robot_ip" ]] && ! getent ahostsv4 "$ssh_host" >/dev/null 2>&1; then
+  fail "${ssh_host} does not resolve. Stock Ubuntu Noble does not advertise .local before setup. Find the Pi in the router/DHCP lease list and rerun with --robot-ip <IPv4>."
+fi
 deadline=$((SECONDS + boot_wait_timeout))
-until ssh-keyscan -T 5 -H "$host" >/dev/null 2>&1; do
+while ! ssh-keyscan -4 -p 22 -T 5 -H "$ssh_host" >/dev/null 2>&1; do
   if (( SECONDS >= deadline )); then
-    fail "SSH endpoint never came up on ${host}. Check power, network, and that the Imager settings (hostname, Wi-Fi, SSH) were applied."
+    fail "SSH endpoint never came up for ${host}. Stock Ubuntu Noble does not guarantee .local before setup. Check power/Wi-Fi and rerun with --robot-ip <address-from-router> if the Imager key was not pre-seeded."
   fi
   sleep 5
 done
-log "SSH endpoint reachable on ${host}."
+log "SSH endpoint reachable on ${ssh_host}."
 
 declare -a ssh_batch_opts=(
+  "-F" "/dev/null"
   "-i" "$ssh_private_key"
+  "-o" "IdentitiesOnly=yes"
+  "-o" "AddressFamily=inet"
   "-o" "ConnectTimeout=8"
   "-o" "BatchMode=yes"
   "-o" "PasswordAuthentication=no"
   "-o" "StrictHostKeyChecking=accept-new"
 )
 declare -a ssh_tty_opts=(
+  "-F" "/dev/null"
   "-i" "$ssh_private_key"
+  "-o" "IdentitiesOnly=yes"
+  "-o" "AddressFamily=inet"
   "-o" "ConnectTimeout=8"
   "-o" "StrictHostKeyChecking=accept-new"
 )
 
-if ! ssh "${ssh_batch_opts[@]}" "$target" true >/dev/null 2>&1; then
+if ! ssh "${ssh_batch_opts[@]}" "$connect_target" true >/dev/null 2>&1; then
   log "Key auth not active yet (Imager key not pre-seeded)."
   log "ACTION REQUIRED: enter the password set in the Imager once for ssh-copy-id."
-  ssh-copy-id -i "${ssh_private_key}.pub" -o StrictHostKeyChecking=accept-new "$target" \
-    || fail "ssh-copy-id failed for ${target} (verify the Imager username/password)."
-  ssh "${ssh_batch_opts[@]}" "$target" true >/dev/null 2>&1 \
-    || fail "Key auth still not working on ${target} after ssh-copy-id."
+  ssh-copy-id -i "${ssh_private_key}.pub" \
+    -F /dev/null \
+    -o IdentitiesOnly=yes \
+    -o IdentityAgent=none \
+    -o AddressFamily=inet \
+    -o PubkeyAuthentication=no \
+    -o PreferredAuthentications=password,keyboard-interactive \
+    -o PasswordAuthentication=yes \
+    -o NumberOfPasswordPrompts=1 \
+    -o StrictHostKeyChecking=accept-new \
+    "$connect_target" \
+    || fail "ssh-copy-id failed for ${connect_target}. Verify the exact Imager username/password and that password authentication was enabled."
+  ssh "${ssh_batch_opts[@]}" "$connect_target" true >/dev/null 2>&1 \
+    || fail "Key auth still not working on ${connect_target} after ssh-copy-id."
 fi
+
+remote_hostname="$(ssh "${ssh_batch_opts[@]}" "$connect_target" 'hostname -s')" \
+  || fail "Could not read the hostname from ${connect_target}."
+remote_hostname="$(trim "$remote_hostname")"
+if [[ -n "$expected_hostname" && "${remote_hostname,,}" != "${expected_hostname,,}" ]]; then
+  fail "Address ${ssh_host} answered as hostname '${remote_hostname}', expected '${expected_hostname}'. Refusing to provision the wrong machine."
+fi
+if [[ -z "$expected_hostname" ]]; then
+  expected_hostname="$remote_hostname"
+fi
+
+connection_info="$(ssh "${ssh_batch_opts[@]}" "$connect_target" 'printf "%s\n" "$SSH_CONNECTION"')" \
+  || fail "Could not determine the robot/control LAN addresses from SSH."
+read -r control_lan_ip _ robot_lan_ip _ <<< "$connection_info"
+is_ipv4_address "$control_lan_ip" || fail "SSH reported an invalid control address: ${control_lan_ip:-<empty>}"
+is_ipv4_address "$robot_lan_ip" || fail "SSH reported an invalid robot address: ${robot_lan_ip:-<empty>}"
+if [[ "$keep_known_hosts" != "1" && "$ssh_host" != "$robot_lan_ip" ]]; then
+  ssh-keygen -R "$robot_lan_ip" >/dev/null 2>&1 || true
+fi
+robot_ip="$robot_lan_ip"
+connect_target="${user}@${robot_ip}"
+
+# Keep custom domains consistent across later fresh-shell `swarmc` launches on
+# both machines. The service installer also receives the same explicit value.
+persist_control_domain_id
+ssh "${ssh_batch_opts[@]}" "$connect_target" \
+  "install -d -m 700 \"\$HOME/.config/swarm_control_core\"; printf '%s\\n' '${domain_id}' > \"\$HOME/.config/swarm_control_core/ros_domain_id\"; chmod 600 \"\$HOME/.config/swarm_control_core/ros_domain_id\"" \
+  || fail "Could not persist ROS domain ${domain_id} on ${connect_target}."
 
 # First boot runs cloud-init (user creation, apt seeding); provisioning that
 # races it hits apt locks or a half-created user.
 log "Waiting for first-boot provisioning to finish (up to ${cloud_init_timeout}s)..."
-ssh "${ssh_batch_opts[@]}" "$target" \
+ssh "${ssh_batch_opts[@]}" "$connect_target" \
   "command -v cloud-init >/dev/null 2>&1 && timeout ${cloud_init_timeout} cloud-init status --wait >/dev/null 2>&1 || true" \
   || log "cloud-init wait was inconclusive; continuing."
 log "First-boot provisioning settled."
 
-log "Provisioning robot workspace on ${target} (clone + dependencies + build + GPIO). This takes a while on a Pi."
+log "Provisioning robot workspace on ${connect_target} (clone + dependencies + build + GPIO). This takes a while on a Pi."
 bootstrap_extra=""
 if [[ "$install_service" == "1" ]]; then
-  bootstrap_extra="--enable-service-now --robot-name '${robot_name}'"
+  # Install now, but do not start until the robot profile and peer map exist.
+  bootstrap_extra="--install-service --robot-name '${robot_name}'"
 fi
-ssh -tt "${ssh_tty_opts[@]}" "$target" "set -euo pipefail; \
+ssh -tt "${ssh_tty_opts[@]}" "$connect_target" "set -euo pipefail; \
   if ! command -v git >/dev/null 2>&1; then \
     sudo apt-get -o DPkg::Lock::Timeout=1800 update; \
     sudo apt-get -o DPkg::Lock::Timeout=1800 install -y git; \
@@ -418,20 +565,40 @@ ssh -tt "${ssh_tty_opts[@]}" "$target" "set -euo pipefail; \
   remote_ws=\"${remote_ws}\"; \
   install -d \"\${remote_ws}/src\"; \
   if [ ! -d \"\${remote_ws}/src/swarm_control_core/.git\" ]; then \
-    git clone '${repo_url}' \"\${remote_ws}/src/swarm_control_core\"; \
+    git clone --branch '${repo_ref}' --single-branch '${repo_url}' \"\${remote_ws}/src/swarm_control_core\"; \
+  else \
+    git -C \"\${remote_ws}/src/swarm_control_core\" fetch origin '${repo_ref}'; \
+    git -C \"\${remote_ws}/src/swarm_control_core\" switch '${repo_ref}' || \
+      git -C \"\${remote_ws}/src/swarm_control_core\" switch -c '${repo_ref}' --track 'origin/${repo_ref}'; \
+    git -C \"\${remote_ws}/src/swarm_control_core\" pull --ff-only origin '${repo_ref}'; \
   fi; \
+  test \"\$(git -C \"\${remote_ws}/src/swarm_control_core\" rev-parse HEAD)\" = '${repo_commit}' || { \
+    echo 'Robot checkout does not match the pinned control commit.' >&2; exit 1; \
+  }; \
   \"\${remote_ws}/src/swarm_control_core/scripts/swarm_core_bootstrap_machine.sh\" \
     --machine-role robot \
     --workspace \"\${remote_ws}\" \
     --domain-id '${domain_id}' ${bootstrap_extra}" \
-  || fail "Remote robot bootstrap failed for ${target}. Rerun this command after fixing the reported issue; every stage is safe to rerun."
+  || fail "Remote robot bootstrap failed for ${connect_target}. Rerun this command after fixing the reported issue; every stage is safe to rerun."
 
-log "Adding the robot-local profile on ${target}."
-profile_args="--name '${robot_name}' --host '${target}'"
+# Record direct CycloneDDS peers in both directions. Hybrid mode continues to
+# use multicast where it works and falls back to these unicast addresses where
+# APs suppress multicast.
+# shellcheck source=./lib/swarm_core_discovery.sh
+source "${SCRIPT_DIR}/lib/swarm_core_discovery.sh"
+swarm_core_add_static_peer "$robot_lan_ip" \
+  || fail "Could not record robot DDS peer ${robot_lan_ip} on the control machine."
+ssh "${ssh_batch_opts[@]}" "$connect_target" "set -euo pipefail; \
+  source \"${remote_ws}/src/swarm_control_core/scripts/lib/swarm_core_discovery.sh\"; \
+  swarm_core_add_static_peer '${control_lan_ip}'" \
+  || fail "Could not record control DDS peer ${control_lan_ip} on the robot."
+
+log "Adding the robot-local profile on ${connect_target}."
+profile_args="--name '${robot_name}' --host '${connect_target}'"
 [[ -z "$control_type" ]] || profile_args="${profile_args} --control-type '${control_type}'"
 [[ -z "$control_interface" ]] || profile_args="${profile_args} --control-interface '${control_interface}'"
 [[ "$skip_camera" != "1" ]] || profile_args="${profile_args} --skip-camera"
-ssh -tt "${ssh_tty_opts[@]}" "$target" "set -euo pipefail; \
+ssh -tt "${ssh_tty_opts[@]}" "$connect_target" "set -euo pipefail; \
   remote_ws=\"${remote_ws}\"; \
   cd \"\${remote_ws}\"; \
   set +u; \
@@ -439,7 +606,14 @@ ssh -tt "${ssh_tty_opts[@]}" "$target" "set -euo pipefail; \
   source \"\${remote_ws}/install/setup.bash\"; \
   set -u || true; \
   ros2 run swarm_control_core add_robot_core --workspace \"\${remote_ws}\" ${profile_args}" \
-  || fail "Robot-local profile step failed for ${target}."
+  || fail "Robot-local profile step failed for ${connect_target}."
+
+if [[ "$install_service" == "1" ]]; then
+  log "Starting the robot service now that the profile and discovery peers exist."
+  ssh "${ssh_batch_opts[@]}" "$connect_target" \
+    'sudo systemctl enable --now swarm-core-robot.service && sudo systemctl --no-pager --full status swarm-core-robot.service' \
+    || fail "Robot profile succeeded, but swarm-core-robot.service did not start cleanly."
+fi
 
 log "Registering/approving ${robot_name} on this control machine."
 set +u
@@ -450,13 +624,16 @@ source "$WS/install/setup.bash"
 set -u || true
 ros2 run swarm_control_core sync_robot_entries_core \
   --workspace "$WS" \
-  --source "${robot_name}=${target}" \
-  || fail "Control-machine registration failed for ${robot_name}=${target}."
+  --source "${robot_name}=${connect_target}" \
+  --ssh-private-key "$ssh_private_key" \
+  || fail "Control-machine registration failed for ${robot_name}=${connect_target}."
 
 echo
 log "Verifying with robot_doctor_core."
-ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot "$robot_name" || true
+ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot "$robot_name" \
+  || fail "Robot profile/runtime verification failed for ${robot_name}; onboarding is not complete."
 
 echo
-log "[OK] ${robot_name} (${target}) is onboarded and registered/approved on this control machine."
+log "[OK] ${robot_name} (${logical_target}, transport ${connect_target}) is onboarded and registered/approved on this control machine."
+log "DDS peers: control=${control_lan_ip}, robot=${robot_lan_ip}; discovery policy defaults to hybrid."
 log "Registered/approved robots are ready for QUICKSTART handoff (DOCS/QUICKSTART.md)."
