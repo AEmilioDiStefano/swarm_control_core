@@ -108,3 +108,43 @@ robots:
         "robot5@legion5.local",
         "robot5=robot5@legion5.local",
     ]
+
+
+def test_robot_doctor_prefers_active_runtime_transport_over_repo_example(
+    tmp_path: Path, monkeypatch
+) -> None:
+    workspace = tmp_path / "ws"
+    config = workspace / "src" / "swarm_control_core" / "config"
+    runtime = tmp_path / "runtime"
+    monkeypatch.setenv("SWARM_CORE_CONFIG_DIR", str(runtime))
+
+    source = """schema_version: '1.0'
+defaults: {control_type: diff_drive, control_interface: 4wheel_diff_l298n_2}
+robots:
+  robot4:
+    ssh_target: robot4@legion4.local
+    control_type: diff_drive
+    control_interface: 4wheel_diff_l298n_2
+"""
+    active = source.replace("robot4@legion4.local", "robot4@10.42.0.89")
+    interfaces = """schema_version: '1.0'
+control_interfaces:
+  4wheel_diff_l298n_2:
+    docs: {wiring: DOCS/GPIO/GPIO_for_differential_DUAL_L298N.md}
+"""
+    _write(config / "robot_instances.yaml", source)
+    _write(config / "control_types.yaml", "schema_version: '1.0'\ncontrol_types: {}\n")
+    _write(config / "control_interfaces.yaml", interfaces)
+    _write(runtime / "robot_instances.yaml", active)
+    _write(runtime / "control_types.yaml", (config / "control_types.yaml").read_text())
+    _write(runtime / "control_interfaces.yaml", interfaces)
+    _write(runtime / "camera_profiles.yaml", "schema_version: '1.0'\nprofiles: {}\n")
+
+    report = collect_report(workspace_root=workspace, robot_name="robot4")
+
+    assert report["runtime_entry_source"] == "runtime"
+    assert report["runtime"][0]["robot_entry"] == "current"
+    assert report["control_machine_sync_specs"] == [
+        "robot4@10.42.0.89",
+        "robot4=robot4@10.42.0.89",
+    ]

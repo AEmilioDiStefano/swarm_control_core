@@ -133,21 +133,28 @@ still run here, never on the robot).
 ### CONTROL MACHINE:
 
 ```bash
-~/.local/bin/swarmc new-robot robot4@legion4.local --control-type diff_drive --control-interface 4wheel_diff_l298n_2
+~/.local/bin/swarmc new-robot robot4@legion4.local --robot-ip 10.42.0.89 --control-type diff_drive --control-interface 4wheel_diff_l298n_2
 ```
 
-The command waits for the robot to appear on the network, waits for
-first-boot provisioning to settle, clones and builds the workspace on the
-robot, prepares GPIO, adds the robot-local profile (including camera
-selection), and registers/approves the robot on this control machine. The
-build stage on a Pi takes a while; the run is unattended unless you omitted
-the profile flags.
+The command uses the supplied IPv4 address and verifies that `hostname -s`
+matches before changing anything. A stock Noble Server image does not include
+Avahi and normally cannot advertise `.local` yet. It then waits for first-boot
+provisioning, clones and builds the workspace, installs mDNS support, prepares
+GPIO, adds the robot-local profile (including camera selection), and
+registers/approves the robot on this control machine. It records direct DDS
+peers in both directions so multicast-filtering LANs have a unicast fallback.
+The build stage on a Pi takes a while; the run is unattended unless you
+omitted the profile flags. Registration imports the robot's
+`robot_instances.yaml` entry into the control machine's runtime UI-trust
+registry; the generated camera profile remains on the robot for robot-side
+bringup.
 
 Expected success signals:
 
 - `[OK] Local robot profile is prepared on this robot.`
 - `[OK] Control-machine robot registration/approval complete.`
-- `[OK] robot4 (robot4@legion4.local) is onboarded and registered/approved on this control machine.`
+- `[OK] robot4 (... transport robot4@<robot-ip>) is onboarded and registered/approved on this control machine.`
+- `DDS peers: control=<control-ip>, robot=<robot-ip>; discovery policy defaults to hybrid.`
 
 ### IF the wait for SSH times out
 
@@ -328,18 +335,24 @@ Then return to [Step 3](#add-step-3).
 <a id="add-ref-3-4"></a>
 ## Fix: mDNS `.local` Not Resolving
 
-Use when `legion4.local` cannot be resolved (multicast-blocked router or
-network). Find the robot's IP from your router's client list, then pin the
-name once:
+This is expected before first setup on a stock Ubuntu 24.04 Noble Server Pi:
+the image includes SSH but not `avahi-daemon`. Onboarding no longer requires
+`.local` in order to install the service that provides it. Find the robot's
+address in the router/DHCP client list and pass it explicitly:
 
 ### CONTROL MACHINE:
 
 ```bash
-echo "<robot-ip> legion4.local legion4" | sudo tee -a /etc/hosts
+~/.local/bin/swarmc new-robot robot4@legion4.local \
+  --robot-ip <robot-ip> \
+  --control-type diff_drive \
+  --control-interface 4wheel_diff_l298n_2
 ```
 
-IPs are transport only — keep using the hostname form
-(`robot4@legion4.local`) everywhere. Then return to [Step 3](#add-step-3).
+Do not use `/etc/hosts` success as a DDS test: mDNS name resolution uses UDP
+5353, while ROS 2 discovery is a separate transport. On a network that filters
+multicast, keep a DHCP reservation for the robot IP so the recorded unicast
+DDS peer remains stable. Then return to [Step 3](#add-step-3).
 
 <a id="add-ref-3-5"></a>
 ## Fix: Robot Bootstrap or Build Fails

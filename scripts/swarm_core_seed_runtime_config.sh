@@ -108,6 +108,25 @@ for f in "${required_files[@]}"; do
     log "Keeping existing: ${dst_file}"
     continue
   fi
+  if [[ "$f" == "robot_instances.yaml" && ! -f "$dst_file" ]]; then
+    # Repository robot entries are examples/baselines, not deployment trust.
+    # A fresh machine starts with no approved robots and learns only entries
+    # explicitly created or synced during onboarding.
+    tmp_file="$(mktemp "${dst_file}.tmp.XXXXXX")"
+    printf '%s\n' \
+      'schema_version: "1.0"' \
+      '' \
+      'defaults:' \
+      '  control_type: diff_drive' \
+      '  control_interface: 4wheel_diff_l298n_1' \
+      '' \
+      'robots: {}' > "$tmp_file"
+    chmod 644 "$tmp_file" || true
+    mv "$tmp_file" "$dst_file"
+    copied=$((copied + 1))
+    log "Seeded empty deployment registry: ${dst_file}"
+    continue
+  fi
   cp -f "$src_file" "$dst_file"
   chmod 644 "$dst_file" || true
   copied=$((copied + 1))

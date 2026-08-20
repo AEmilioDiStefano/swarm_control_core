@@ -53,3 +53,20 @@ def test_dependency_installer_repairs_duplicate_ros_apt_sources_before_update():
     assert ".disabled-by-swarm-control" in script
     assert "Disabling duplicate ROS apt source" in script
     assert "[[ \"$(sudo cat \"$source_file\" 2>/dev/null)\" != \"$repo_line\" ]]" in script
+
+
+def test_dependency_installer_covers_fresh_noble_mdns_and_ui_runtime():
+    script = (CORE_ROOT / "scripts" / "swarm_core_check_install_dependencies.sh").read_text(
+        encoding="utf-8"
+    )
+
+    for package in (
+        "avahi-daemon",
+        "libnss-mdns",
+        "python3-aiohttp",
+        "python3-numpy",
+        "python3-pil",
+    ):
+        assert f'"{package}"' in script
+    assert "systemctl enable --now avahi-daemon.service" in script
+    assert "import aiohttp, av, aiortc, numpy; from PIL import Image" in script

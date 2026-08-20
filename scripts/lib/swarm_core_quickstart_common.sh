@@ -43,6 +43,13 @@ swarm_core_qs_source_reset_env() {
   local compat_mode="${4:-1}"
   local skip_process_reset="${5:-0}"
   local reset_script="${ws}/src/swarm_control_core/scripts/swarm_core_reset_env.sh"
+  local config_dir_was_set="0"
+  local preserved_config_dir=""
+
+  if [[ -v SWARM_CORE_CONFIG_DIR ]]; then
+    config_dir_was_set="1"
+    preserved_config_dir="$SWARM_CORE_CONFIG_DIR"
+  fi
 
   [[ -f "$reset_script" ]] || swarm_core_qs_fail "Missing reset helper: ${reset_script}"
 
@@ -58,6 +65,14 @@ swarm_core_qs_source_reset_env() {
   # shellcheck disable=SC1090
   source "$reset_script" "${args[@]}"
   set -u || true
+
+  # Deep reset clears compatibility/runtime variables. Restore structural
+  # locators so adopted standalone checkouts and custom runtime config paths
+  # remain usable by the launcher that requested the reset.
+  swarm_core_qs_prepare_workspace_env "$ws"
+  if [[ "$config_dir_was_set" == "1" ]]; then
+    export SWARM_CORE_CONFIG_DIR="$preserved_config_dir"
+  fi
 }
 
 swarm_core_qs_source_ros_overlay() {

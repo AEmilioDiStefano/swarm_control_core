@@ -13,9 +13,42 @@ set -euo pipefail
 SWARMC_SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "$SWARMC_SELF")" && pwd)"
 SC="$(cd "${SCRIPT_DIR}/.." && pwd)"
-WS="$(cd "${SC}/../.." && pwd)"
+
+# A normal `git clone ... ~/swarm_control_core` is not a colcon workspace.
+# Adopt that checkout non-destructively into the canonical workspace on setup
+# rather than inferring $HOME as the workspace or cloning a second copy.
+if [[ "$(basename "$(dirname "$SC")")" == "src" ]]; then
+  WS="$(cd "${SC}/../.." && pwd)"
+else
+  WS="${SWARM_CORE_WORKSPACE_ROOT:-${HOME}/ros2_ws_dev}"
+  canonical_sc="${WS%/}/src/swarm_control_core"
+  if [[ ! -e "$canonical_sc" && "${1:-help}" == "setup" ]]; then
+    mkdir -p "$(dirname "$canonical_sc")"
+    ln -s "$SC" "$canonical_sc"
+    echo "[swarmc] Adopted existing checkout into workspace: ${canonical_sc} -> ${SC}" >&2
+  fi
+  if [[ -e "$canonical_sc" && "$(readlink -f "$canonical_sc")" != "$SC" ]]; then
+    echo "[swarmc] ERROR: ${canonical_sc} already points to a different checkout." >&2
+    echo "[swarmc] Set SWARM_CORE_WORKSPACE_ROOT to another workspace or use that existing checkout." >&2
+    exit 1
+  fi
+  if [[ ! -e "$canonical_sc" && "${1:-help}" != "help" && "${1:-help}" != "-h" && "${1:-help}" != "--help" ]]; then
+    echo "[swarmc] ERROR: this clone is outside a colcon workspace." >&2
+    echo "[swarmc] Run '${SCRIPT_DIR}/swarmc setup --role control' once to adopt it into ${WS}/src." >&2
+    exit 1
+  fi
+fi
 export WS SC
-export SWARM_CORE_ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
+export SWARM_CORE_WORKSPACE_ROOT="$WS"
+stored_domain_id="17"
+domain_id_file="${SWARM_CORE_CONFIG_DIR:-${HOME}/.config/swarm_control_core}/ros_domain_id"
+if [[ -r "$domain_id_file" ]]; then
+  read -r configured_domain_id < "$domain_id_file" || true
+  if [[ "${configured_domain_id:-}" =~ ^[0-9]+$ ]]; then
+    stored_domain_id="$configured_domain_id"
+  fi
+fi
+export SWARM_CORE_ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-$stored_domain_id}"
 
 usage() {
   cat <<'USAGE'
@@ -74,7 +107,10 @@ source_ros_env() {
     fail "Workspace overlay not built yet (${WS}/install/setup.bash missing). Run: ~/.local/bin/swarmc setup"
   fi
   set -u
-  export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-$SWARM_CORE_ROS_DOMAIN_ID}"
+  export ROS_DOMAIN_ID="$SWARM_CORE_ROS_DOMAIN_ID"
+  # shellcheck source=./lib/swarm_core_discovery.sh
+  source "${SCRIPT_DIR}/lib/swarm_core_discovery.sh"
+  swarm_core_apply_discovery_env
 }
 
 cmd="${1:-help}"
@@ -178,11 +214,15 @@ case "$cmd" in
     echo "export WS_DEV=\"${WS}\""
     echo "export SC=\"${SC}\""
     echo "export SWARM_CORE_ROS_DOMAIN_ID=\"${SWARM_CORE_ROS_DOMAIN_ID}\""
-    echo "export ROS_DOMAIN_ID=\"\${ROS_DOMAIN_ID:-${SWARM_CORE_ROS_DOMAIN_ID}}\""
+    echo "export SWARM_CORE_WORKSPACE_ROOT=\"${WS}\""
+    echo "export ROS_DOMAIN_ID=\"${SWARM_CORE_ROS_DOMAIN_ID}\""
     echo "set +u"
     echo "source \"/opt/ros/\${ROS_DISTRO:-jazzy}/setup.bash\""
     echo "[[ -f \"${WS}/install/setup.bash\" ]] && source \"${WS}/install/setup.bash\""
     echo "set -u || true"
+    echo "source \"${SC}/scripts/lib/swarm_core_discovery.sh\""
+    echo "swarm_core_apply_discovery_env"
+    echo "swarm_core_stop_ros_daemon"
     ;;
   help|-h|--help)
     usage

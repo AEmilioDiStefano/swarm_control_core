@@ -8,8 +8,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-SC="$(cd "${SCRIPT_DIR}/.." && pwd)"
-WS="$(cd "${SC}/../.." && pwd)"
+# shellcheck source=./lib/swarm_core_workspace.sh
+source "${SCRIPT_DIR}/lib/swarm_core_workspace.sh"
+WS="$(swarm_core_detect_workspace_root "${SWARM_CORE_WORKSPACE_ROOT:-}" 2>/dev/null || true)"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   echo "Usage: swarm_core_verify_robots.sh"
@@ -19,9 +20,9 @@ fi
 set +u
 # shellcheck disable=SC1091
 source "/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
-if [[ ! -f "${WS}/install/setup.bash" ]]; then
+if [[ -z "$WS" || ! -f "${WS}/install/setup.bash" ]]; then
   set -u
-  echo "[swarm_core_verify_robots] ERROR: Workspace overlay is not built (${WS}/install/setup.bash missing)." >&2
+  echo "[swarm_core_verify_robots] ERROR: Workspace overlay is not built or could not be detected (${WS:-<unknown>}/install/setup.bash missing)." >&2
   echo "[NEXT] Run: ~/.local/bin/swarmc setup" >&2
   exit 1
 fi

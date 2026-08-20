@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -279,9 +280,30 @@ def _print_profile_wizard_hint(robot_name: str = "") -> None:
     )
 
 
-def _fetch_remote_registry(target: str) -> Dict[str, Any]:
+def _fetch_remote_registry(target: str, *, ssh_private_key: str = "") -> Dict[str, Any]:
+    ssh_command = ["ssh"]
+    if ssh_private_key:
+        ssh_command.extend(
+            [
+                "-F",
+                "/dev/null",
+                "-i",
+                str(Path(ssh_private_key).expanduser()),
+                "-o",
+                "IdentitiesOnly=yes",
+                "-o",
+                "AddressFamily=inet",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "PasswordAuthentication=no",
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+            ]
+        )
+    ssh_command.extend([target, "python3", "-"])
     proc = subprocess.run(
-        ["ssh", target, "python3", "-"],
+        ssh_command,
         input=_REMOTE_REGISTRY_QUERY,
         text=True,
         capture_output=True,
@@ -527,6 +549,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Robot source as ssh_target or robot_name=ssh_target. Repeat for multiple robots.",
     )
     parser.add_argument(
+        "--ssh-private-key",
+        default=os.environ.get("SWARM_CORE_SSH_PRIVATE_KEY", ""),
+        help=(
+            "Identity file for deterministic non-interactive SSH. When set, "
+            "SSH config and unrelated agent identities are excluded."
+        ),
+    )
+    parser.add_argument(
         "--update-source-baseline",
         action="store_true",
         help=(
@@ -608,7 +638,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         print(f"[SYNC] Pulling robot entry from {target}...")
         try:
-            remote = _fetch_remote_registry(target)
+            remote = _fetch_remote_registry(
+                target,
+                ssh_private_key=str(args.ssh_private_key or "").strip(),
+            )
             robot_name, entry = _select_robot_entry_from_registry(
                 remote.get("registry", {}) or {},
                 used_target=target,

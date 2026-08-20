@@ -112,7 +112,14 @@ def collect_report(
             "entry": runtime_entry if isinstance(runtime_entry, dict) else {},
         })
 
-    selected_entry = source_entry if isinstance(source_entry, dict) and source_entry else primary_runtime_entry
+    # Runtime configuration is the active deployment state. The repository
+    # registry is a seed/example and may intentionally differ (for example an
+    # IP transport target learned during first contact). Prefer runtime so the
+    # doctor does not label a correctly onboarded fresh robot as stale merely
+    # because a same-named example exists in the checkout.
+    selected_entry = primary_runtime_entry or (
+        source_entry if isinstance(source_entry, dict) else {}
+    )
     control_interface = str(
         selected_entry.get("control_interface", "") if isinstance(selected_entry, dict) else ""
     ).strip()
@@ -164,7 +171,7 @@ def collect_report(
         "source_robot_instances": str(source_robot_instances),
         "source_entry_state": "present" if source_entry else "missing",
         "source_entry": source_entry if isinstance(source_entry, dict) else {},
-        "runtime_entry_source": "source_baseline" if source_entry else "runtime",
+        "runtime_entry_source": "runtime" if primary_runtime_entry else "source_baseline",
         "selected_control_interface": canonical_control_interface,
         "source_control_interface_state": "present" if source_interface_exists else "missing",
         "wiring_doc": wiring_doc_for_interface(source_control_interfaces, control_interface) if control_interface else "",

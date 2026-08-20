@@ -68,6 +68,7 @@ if [[ -z "\${REAL:-}" || ! -x "\$REAL" ]]; then
   echo "[${name}] ${ensure_hint}" >&2
   exit 1
 fi
+export SWARM_CORE_WORKSPACE_ROOT="${workspace}"
 exec "\$REAL" "\$@"
 SHIM
   chmod 0755 "$shim_path"
