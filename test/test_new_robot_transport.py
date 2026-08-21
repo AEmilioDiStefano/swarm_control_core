@@ -31,7 +31,8 @@ def test_onboarding_hardens_ssh_and_records_bidirectional_dds_peers():
     assert "git ls-remote --exit-code" in script
     assert "repo_commit" in script
     assert "ros_domain_id" in script
-    assert "git clone --branch '${repo_ref}' --single-branch" in script
+    assert "swarm_core_prepare_robot_checkout.sh" in script
+    assert "--require-camera" in script
     assert '--ssh-private-key "$ssh_private_key"' in script
 
 
@@ -44,9 +45,18 @@ def test_onboarding_respects_the_workspace_selected_by_swarmc():
 def test_requested_service_starts_only_after_profile_is_written():
     script = NEW_ROBOT.read_text(encoding="utf-8")
     profile = script.index("ros2 run swarm_control_core add_robot_core")
-    service_start = script.index("systemctl enable --now swarm-core-robot.service")
+    service_start = script.index("systemctl restart swarm-core-robot.service")
     assert service_start > profile
     assert "--enable-service-now --robot-name" not in script
+
+
+def test_onboarding_stops_stale_service_and_does_not_swallow_cloud_init_timeout():
+    script = NEW_ROBOT.read_text(encoding="utf-8")
+    checkout = script.index("swarm_core_prepare_robot_checkout.sh")
+    service_stop = script.index("service_action=\"stop\"")
+    assert service_stop < checkout
+    assert "cloud-init did not finish cleanly" in script
+    assert "cloud-init status --wait >/dev/null 2>&1 || true" not in script
 
 
 def test_gpio_setup_probes_the_backend_device_not_only_gpiomem():

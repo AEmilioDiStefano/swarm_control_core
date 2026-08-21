@@ -1105,6 +1105,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         action="store_true",
         help="Skip camera menu and use precedence-based auto selection.",
     )
+    parser.add_argument(
+        "--require-camera",
+        action="store_true",
+        help=(
+            "Require a currently detected capture-capable camera whose stream probe succeeds; "
+            "fail without changing camera_profiles.yaml otherwise."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
@@ -1140,6 +1148,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     # - deterministic non-interactive auto-selection
     # ---------------------------------------------------------------------
     candidates = _inventory_camera_candidates()
+    if args.require_camera and not candidates:
+        print(
+            "[ERROR] --require-camera found no capture-capable camera.",
+            file=sys.stderr,
+        )
+        print(
+            "Connect the camera, confirm that a /dev/video* capture device exists, then rerun this command. "
+            "The existing camera profile was not changed.",
+            file=sys.stderr,
+        )
+        return 2
 
     # ---------------------------------------------------------------------
     # Phase 3: Build pre-menu device preference.
@@ -1256,6 +1275,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             selected_label = fallback.display_name
             selected_sensor = fallback.sensor
             src_device = "probe.fallback.selection"
+            probe_ok = True
+            probe_note = fallback_note
             _print_wrapped("  probe: ", f"fallback selected {device} ({fallback_note})")
         else:
             _print_wrapped(
@@ -1274,6 +1295,20 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if probe_ok is None:
         _print_wrapped("  probe: ", f"stream probe unavailable ({probe_note})")
+
+    if args.require_camera and (selected_candidate is None or not device or probe_ok is not True):
+        reason = probe_note or "stream_probe_did_not_succeed"
+        print(
+            f"[ERROR] --require-camera could not validate a live stream from {device or 'the selected camera'} "
+            f"({reason}).",
+            file=sys.stderr,
+        )
+        print(
+            "Reconnect the camera or stop any process using it, then rerun this command. "
+            "The existing camera profile was not changed.",
+            file=sys.stderr,
+        )
+        return 2
 
     # We only probe v4l2 mode if we ended with a concrete device path.
     # This keeps the script resilient when no camera is attached.

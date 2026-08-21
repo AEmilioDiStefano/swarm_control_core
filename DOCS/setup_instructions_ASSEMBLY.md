@@ -3,13 +3,13 @@
 This guide describes the reference differential-drive robot assembly for
 `swarm_control_core`.
 
-After you complete this assembly guide and the companion robot onboarding
-guide in [ADD_robot_pi.md](./ADD_robot_pi.md), you will be able to power on
+After you complete this assembly guide and the supported fresh-card onboarding
+guide in [NOBLE_FRESH_INSTALL.md](./NOBLE_FRESH_INSTALL.md), you will be able to power on
 one or more robots, launch local FPV/control, and drive from your control
 machine on the same LAN.
 
 If you already have compatible robot hardware, skip to
-[ADD_robot_pi.md](./ADD_robot_pi.md).
+[NOBLE_FRESH_INSTALL.md](./NOBLE_FRESH_INSTALL.md).
 
 # Direct Run Path
 
@@ -37,7 +37,8 @@ match your local runtime config to that hardware before bringup.
 - One L298N motor controller
 - One stable power source for the Pi
 - One fused motor power path
-- One on/off switch for the motor power path
+- One operator-reachable, latching emergency motor-power cutoff or appropriately
+  rated on/off switch for the motor power path
 - Motor batteries appropriate for the drivetrain
 - One USB webcam
 - Female-to-female jumper wires
@@ -89,6 +90,8 @@ Important notes:
   `control_interfaces.yaml` before bringup instead of forcing the robot to match
   old wiring diagrams.
 - Do not power the drivetrain motors from the Pi 5V rail.
+- Browser, terminal, watchdog, and software stop controls are not a substitute
+  for the physical motor-power cutoff.
 
 ## Step 6: Connect the Motors to the Controller
 
@@ -123,6 +126,8 @@ Recommended reference layout:
 
 - Pi powered from a stable Pi-safe 5V source
 - drivetrain powered through a fused motor supply and switch
+- physical motor-power cutoff mounted where the operator can reach it without
+  entering the robot's travel path
 - motor-controller ground tied to Pi ground
 - USB webcam mounted with a forward-facing view
 - Pi, controller, batteries, and wiring secured to the chassis
@@ -135,10 +140,20 @@ Before moving on to software, verify:
 - motor polarity and battery polarity have been checked
 - wheels spin freely by hand
 - the GPIO wiring matches the current `swarm_control_core` control-interface mapping
+- the physical motor-power cutoff has been tested before software is allowed to
+  command the drivetrain
+- the robot can be raised or otherwise secured so its wheels/tracks cannot move
+  the chassis during the first powered motion test
+
+Perform the first powered motion test as a supervised lab procedure. Keep the
+area clear, begin with the robot raised or restrained, use only one command
+source, and keep a hand at the physical cutoff. Do not proceed to unrestricted
+floor testing if bringup reports mock/fallback hardware or an unexpected
+control-interface profile.
 
 Next step:
 
-- Continue to [ADD_robot_pi.md](./ADD_robot_pi.md)
+- Continue to [NOBLE_FRESH_INSTALL.md](./NOBLE_FRESH_INSTALL.md)
 
 # Alternative/Debug/Fix Reference
 

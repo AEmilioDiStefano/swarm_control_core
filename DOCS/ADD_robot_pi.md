@@ -1,5 +1,12 @@
 # ADD Robot: Raspberry Pi
 
+> [!IMPORTANT]
+> Engineering reference: do not use this document as the fresh Ubuntu 24.04
+> installation path. Follow
+> [`NOBLE_FRESH_INSTALL.md`](./NOBLE_FRESH_INSTALL.md) top-to-bottom instead;
+> it contains the tested IP-first bootstrap, strict camera gate,
+> non-destructive retry path, and local browser-frame acceptance sequence.
+
 This guide takes a Raspberry Pi robot from a blank SD card to a fully
 onboarded, registered/approved swarm robot **without ever opening a manual SSH
 session on the robot**. Every command in the direct path runs on the control
@@ -13,15 +20,25 @@ re-enrolls the robot from scratch.
 
 A robot is not considered ready for live FPV/control until it has a local
 robot profile, has been registered/approved on the control machine, and has
-passed the verification steps below. A robot is not approved for FPV UI
-control until registration/approval has completed on the control machine.
+passed the verification steps below. A robot that can produce physical motion
+must also pass the actuator-readiness gate before live driving or persistent
+service mode. A robot is not approved for FPV UI control until
+registration/approval has completed on the control machine.
 
-This guide follows the DRP guide format
-([`DRP_guide_format.md`](./DRP_guide_format.md)):
+Keep these authority planes separate throughout onboarding:
 
-1. **Direct Run Path**: the normal setup path, in order.
-2. **Alternative/Debug/Fix Reference**: all conditional branches live at the
-   bottom and are referenced from the run path with `### IF...` callouts.
+- SSH authorization permits machine administration and provisioning; it does
+  not approve UI motion commands.
+- The control machine's runtime `robot_instances.yaml` registry is the Core UI
+  control allowlist; it does not grant SSH access.
+- ROS 2/DDS discovery and topic transport are a separate network plane.
+  Registry approval does not authenticate or encrypt DDS traffic and does not
+  replace trusted-LAN or DDS security controls.
+
+This document preserves a DRP-style step/reference layout for engineering
+review, but the sequence below is not an active Direct Run Path. The Important
+notice above is authoritative until this reference is reconciled with
+[`DRP_guide_format.md`](./DRP_guide_format.md) and the Noble guide.
 
 If your swarm uses `swarm_control_pro`, use the pro package's version of
 this guide instead (`swarm_control_pro/DOCS/ADD_robot_pi.md`): it adds the
@@ -32,6 +49,8 @@ Prerequisites:
 
 - the robot is assembled and wired
   ([`setup_instructions_ASSEMBLY.md`](./setup_instructions_ASSEMBLY.md))
+- for robots with physical actuators, an independent, reachable motor-power
+  cutoff or emergency stop is installed and can be operated without software
 - an SD card, a Raspberry Pi, and Raspberry Pi Imager on any computer
 - the control machine and robot share (or will share) the same private LAN
 - the control machine and robot can reach the internet during initial install
@@ -43,14 +62,17 @@ When you finish this guide:
 - the robot will have a local `robot_instances.yaml` entry describing its own
   drive type, hardware interface, and SSH target
 - the control machine will have registered/approved the robot for UI trust
-- GPIO access and a camera profile will be prepared on the robot
+- GPIO access and a camera profile will be prepared and remain on the robot;
+  Core registration copies the robot entry, not the camera profile
+- a moving robot will have passed the lifted-wheel and supervised-stop safety
+  gate before live driving or persistent service mode
 - you can continue with [QUICKSTART.md](./QUICKSTART.md)
 
 Command style note: this guide calls the launcher as `~/.local/bin/swarmc` so
 every command works in any terminal, even before `~/.local/bin` is on your
 PATH. In terminals opened after Step 0, plain `swarmc` works too.
 
-# Direct Run Path
+# Engineering Reference Sequence
 
 <a id="add-step-0"></a>
 ## Step 0: Prepare the Control Machine
@@ -64,8 +86,12 @@ control-machine setup (dependencies + build).
 ### CONTROL MACHINE:
 
 ```bash
+set -o pipefail
 wget -qO- https://raw.githubusercontent.com/AEmilioDiStefano/swarm_control_core/main/scripts/swarm_core_first_contact.sh | bash -s -- --setup control
 ```
+
+This convenience bootstrap currently follows mutable `main`; verify the
+documented success output. A pinned, digest-verified release flow is pending.
 
 Expected success signals:
 
@@ -219,35 +245,40 @@ Expected success signals for each robot:
 - `robot_entry: current`
 - the selected `control_interface` matches the robot hardware
 
-Registered/approved robots are ready for QUICKSTART handoff: continue with
-[QUICKSTART.md](./QUICKSTART.md).
+Registration and profile verification are now ready for QUICKSTART handoff.
+For a robot that can move, complete the actuator-readiness gate below before
+issuing live motion commands.
 
 ### IF a robot is missing, stale, or still read-only in the UI later
 
 Go to [Fix: Control Machine Does Not Recognize an Approved Robot](#add-ref-4-1),
 then return to [Step 4](#add-step-4).
 
-### IF you want to test wheel direction/order before live quickstart
+### IF this robot has powered wheels, tracks, or another physical actuator
 
-Go to [Optional: Wheel Direction Test](#add-ref-optional-wheel-test), then
-return to [Step 4](#add-step-4).
+Go to [Safety Gate: Actuator Readiness and Supervised Stop](#add-ref-actuator-readiness),
+then return to [Step 4](#add-step-4). Do not continue to live motion or
+persistent service mode until the gate passes.
 
 ### IF you see an inverted image after camera configuration
 
 Go to [Optional: Camera Orientation Flip](#add-ref-optional-camera-flip),
 then return to [Step 4](#add-step-4).
 
-### IF you want robot service mode instead of manual bringup
+### IF you want persistent robot service mode
 
-Go to [Optional: Robot Service Mode](#add-ref-optional-service-mode).
+Go to [Optional: Robot Service Mode](#add-ref-optional-service-mode), then
+return to [Step 4](#add-step-4).
 
 <a id="add-step-5"></a>
 ## Step 5: Prepare for Additional Control Machines (Recommended)
 
-The robots you just onboarded keep their drive/hardware/camera profiles
-locally, so another control machine can operate this same swarm without
-re-provisioning any robot. When you want a second machine (or a replacement
-machine), follow [ADD_control_machine.md](./ADD_control_machine.md).
+The robots you just onboarded keep their drive, hardware, and camera
+configuration locally. Another control machine imports each robot's
+`robot_instances.yaml` entry for its own UI trust registry; it does not copy
+the robot-local camera profile or re-provision the robot. When you want a
+second machine (or a replacement machine), follow
+[ADD_control_machine.md](./ADD_control_machine.md).
 
 Setup on this control machine is complete. Robots onboarded by this guide
 are ready for either core operating document — pick by need:
@@ -478,6 +509,7 @@ first contact + machine setup, then the robot-local profile tool.
 ### ROBOT(S):
 
 ```bash
+set -o pipefail
 wget -qO- https://raw.githubusercontent.com/AEmilioDiStefano/swarm_control_core/main/scripts/swarm_core_first_contact.sh | bash -s -- --setup robot
 ~/.local/bin/swarmc add-robot --name "$(id -un)"
 ```
@@ -503,9 +535,11 @@ return to [Step 4](#add-step-4).
 ## Optional: Wheel Direction Test
 
 Run this when the robot uses GPIO motor control and before the live
-quickstart bringup. This test drives the GPIO hardware directly, so keep the
-robot on blocks, wheels/tracks clear, and do not run robot bringup at the
-same time. It is interactive, so allocate a TTY over SSH:
+quickstart bringup. This test drives the GPIO hardware directly. Keep the
+robot stable on blocks with every driven wheel/track lifted clear, keep people
+and tools outside the motion envelope, and station a second person at the
+physical motor-power cutoff. Do not run robot bringup at the same time. It is
+interactive, so allocate a TTY over SSH:
 
 ### CONTROL MACHINE:
 
@@ -523,12 +557,61 @@ directions. Movement keys match terminal teleop and the Swarm Control UI:
 - `0`: toggle strafe mode for mecanum robots
 - `space`, `s`, or `5`: stop
 
+Each movement is a bounded pulse: the default is `0.7 s`, and `--duration`
+accepts only finite values from `0.05` through `5.0` seconds. Explicit
+`--linear` and `--angular` values must be finite, non-negative, and within the
+resolved robot profile limits. Invalid values are rejected before the GPIO
+backend is initialized. The direct test uses the same drive mixer as normal
+bringup, requests zero after every pulse, and shuts down the GPIO backend when
+the command ends.
+
+Those checks constrain the software request; they do not prove that a GPIO
+line, H-bridge, motor controller, or physical cutoff actually stopped. Use the
+physical cutoff immediately if motion is unexpected, and complete the
+supervised stop gate below before live operation.
+
 Calibration keys:
 
 - `v`: choose FL/BL/FR/BR and toggle wheel inversion when a wheel spins backward
 - `c`: swap two wheel channel mappings when the wrong wheel moves
 - `P`: print pending GPIO overrides
 - `S`: save pending GPIO overrides into `robot_instances.yaml`
+
+If you came here from
+[Safety Gate: Actuator Readiness and Supervised Stop](#add-ref-actuator-readiness),
+return there and continue with the supervised bringup and stop checks.
+Otherwise, return to [Step 4](#add-step-4).
+
+<a id="add-ref-actuator-readiness"></a>
+## Safety Gate: Actuator Readiness and Supervised Stop
+
+Complete this gate for every robot that can produce physical motion. Profile
+registration proves configuration and UI trust; it does not prove that the
+actuators are wired correctly or will stop safely.
+
+1. Start with actuator power disconnected or disabled. Identify the physical
+   cutoff or emergency stop, confirm it is reachable by the supervisor, and
+   confirm operating it does not depend on the control software.
+2. Secure the chassis on stable blocks with driven wheels/tracks fully clear
+   of the surface. Remove loose tools and keep people outside the motion
+   envelope.
+3. With a supervisor stationed at the physical cutoff, restore actuator power
+   and operate the cutoff once to confirm it removes actuator power. Reset it
+   only after every actuator is stopped. For GPIO motor robots, complete
+   [Optional: Wheel Direction Test](#add-ref-optional-wheel-test) and verify
+   that each brief command moves only the intended wheel in the intended
+   direction.
+4. Start one manual, attached quickstart bringup under supervision. Issue only
+   brief, low-consequence commands, return to stop between commands, and
+   verify the documented stop control halts every actuator promptly. The
+   browser rejects malformed/non-finite drive input, stops drive targets owned
+   by a disconnecting browser session, and uses a bounded monotonic deadman;
+   the motor driver independently applies its command watchdog and hard-stop
+   path. Treat these as layers to observe, not as substitutes for the cutoff.
+5. End the control session and confirm all actuators remain stopped. If motion
+   is unexpected or any actuator does not stop promptly, use the physical
+   cutoff and do not enable persistent service mode until the hardware,
+   profile, and stop behavior have been corrected and the full gate repeated.
 
 Then return to [Step 4](#add-step-4).
 
@@ -558,10 +641,15 @@ Then return to [Step 4](#add-step-4).
 <a id="add-ref-optional-service-mode"></a>
 ## Optional: Robot Service Mode
 
-Manual quickstart bringup is the recommended first run, but if you want the
-robot bringup installed as a systemd service, pass `--install-service` to the
-onboarding command in Step 3, or install it afterwards from the control
-machine:
+Persistent service mode can start robot bringup at boot and restart it after a
+process failure. For a robot that can produce physical motion, do not enable
+it during initial onboarding. First complete
+[Safety Gate: Actuator Readiness and Supervised Stop](#add-ref-actuator-readiness),
+including a successful manual attached bringup and stop test.
+
+Before running the command below, keep the robot secured with driven surfaces
+clear, keep a supervisor at the physical cutoff, and confirm no motion command
+is active. Then install and start the service from the control machine:
 
 ### CONTROL MACHINE:
 
@@ -569,6 +657,21 @@ machine:
 ssh -tt robot4@legion4.local "~/.local/bin/swarmc setup --role robot --enable-service-now"
 ```
 
+Keep the robot lifted for this first service start. Confirm it remains stopped
+without an active command, then stop the service under supervision and verify
+that every actuator remains stopped:
+
+### CONTROL MACHINE:
+
+```bash
+ssh -tt robot4@legion4.local "sudo systemctl stop swarm-core-robot.service"
+```
+
+If either check fails, use the physical cutoff and do not leave the service
+running. Correct the hardware/profile/stop behavior and repeat the safety gate
+before starting or relying on persistent service mode.
+
 For the full live-session startup and expanded fix paths, use
 [QUICKSTART.md](./QUICKSTART.md) and
-[LOCAL_FPV_runbook.md](./LOCAL_FPV_runbook.md).
+[LOCAL_FPV_runbook.md](./LOCAL_FPV_runbook.md). Then return to
+[Step 4](#add-step-4).

@@ -10,13 +10,14 @@ source "${SCRIPT_DIR}/lib/swarm_core_quickstart_common.sh"
 usage() {
   cat <<'USAGE'
 Usage:
-  swarm_core_quickstart_step3.sh [--domain-id <id>] [--balanced-fleet] [--switch-heavy] [--allow-lan-bind]
+  swarm_core_quickstart_step3.sh [--domain-id <id>] [--balanced-fleet] [--switch-heavy]
 
 Behavior:
   - Runs the control-machine UI quickstart prep in one script.
   - Applies compat reset.
-  - Sets the documented local/LAN UI defaults.
-  - Optionally enables the balanced-fleet profile, switch-heavy profile, or private-LAN bind.
+  - Sets the documented loopback-only local UI defaults.
+  - Fails without terminating an existing TCP listener when the UI port is busy.
+  - Optionally enables the balanced-fleet or switch-heavy profile.
   - Launches the local FPV UI and stays attached to it.
 USAGE
 }
@@ -24,7 +25,6 @@ USAGE
 domain_id="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
 balanced_fleet="0"
 switch_heavy="0"
-allow_lan_bind="0"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,9 +37,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --switch-heavy)
       switch_heavy="1"
-      ;;
-    --allow-lan-bind)
-      allow_lan_bind="1"
       ;;
     -h|--help)
       usage
@@ -151,11 +148,6 @@ fi
 if [[ "$switch_heavy" == "1" ]]; then
   export SWARM_CORE_THUMB_REFRESH_HZ=1.0
   export SWARM_CORE_IMAGE_THUMB_INTEREST_TTL_S=4.0
-fi
-
-if [[ "$allow_lan_bind" == "1" ]]; then
-  export SWARM_CORE_ALLOW_LAN_BIND=1
-  export SWARM_CORE_BIND_HOST="${SWARM_CORE_BIND_HOST:-0.0.0.0}"
 fi
 
 exec "${SCRIPT_DIR}/swarm_core_run_local_ui.sh"

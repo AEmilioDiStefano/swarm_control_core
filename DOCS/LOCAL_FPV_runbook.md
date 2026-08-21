@@ -1,9 +1,23 @@
 # Local FPV Runbook (DRP-First)
 
-This runbook is for local/LAN operation of `swarm_control_core`. It is the
+This runbook is for control-machine-local browser operation of
+`swarm_control_core` over a trusted private ROS LAN. It is the
 raw, low-level companion to [QUICKSTART.md](./QUICKSTART.md): the quickstart
 wraps these stages in `swarmc step*` commands, while this runbook runs the
 underlying launch files and tools directly for debugging and development.
+
+Core is experimental supervised-lab software, not a safety-rated controller.
+Before bringup, provide an operator-reachable physical motor cutoff, raise or
+secure wheels/tracks for first motion, use a spotter, and keep every other
+command/autonomy surface closed.
+
+Runtime safeguards are layered: browser drive input is strict and finite,
+invalid input or disconnect stops retained targets owned by that browser
+session, the browser bridge uses a bounded monotonic drive deadman, and the
+robot motor driver has an independent watchdog/hard-stop path. Reversing motor
+channels are commanded to zero before their direction pins change. These
+behaviors are software-tested only; verify them with wheels clear and do not
+use them in place of the physical cutoff.
 
 # Direct Run Path
 
@@ -12,8 +26,8 @@ underlying launch files and tools directly for debugging and development.
 Load the workspace environment into this shell. This exports `WS`, `WS_DEV`,
 and `SC`, and sources the ROS + workspace overlays for the raw commands
 below. If the launcher is missing, the command prints a failure message and
-leaves this shell open; install it via the first-contact bootstrap in
-[ADD_robot_pi.md](./ADD_robot_pi.md) Step 0.
+leaves this shell open; install it via Step 0 of
+[NOBLE_FRESH_INSTALL.md](./NOBLE_FRESH_INSTALL.md).
 
 ### CONTROL MACHINE / ROBOT(S):
 
@@ -71,6 +85,10 @@ ros2 launch swarm_control_core swarm_bringup.launch.py robot_name:="$ROBOT_NAME"
 
 Go to [Fix Step 3.1](#ref-3-1), then return to [Step 3](#step-3-start-robot-bringup).
 
+Before continuing, verify that the intended real hardware profile resolved and
+that logs contain no mock-hardware warning. Nodes/topics alone do not prove
+actuator readiness.
+
 ## Step 4: Start Control UI
 
 ### CONTROL MACHINE:
@@ -87,21 +105,20 @@ Open:
 
 Go to [Fix Step 4.1](#ref-4-1), then return to [Step 4](#step-4-start-control-ui).
 
-### IF you need private LAN browser access
+### IF you need private-LAN browser access
 
 Go to [Alternative Step 4.2](#ref-4-2), then return to [Step 4](#step-4-start-control-ui).
 
-## Step 5: Optional Terminal Control Smoke Test
+## Step 5: Browser Control Smoke Test
 
-### CONTROL MACHINE:
-
-```bash
-ros2 run swarm_control_core swarm_teleop_core
-```
-
-### IF terminal nodes fail to discover robots
-
-Go to [Fix Step 5.1](#ref-5-1), then return to [Step 5](#step-5-optional-terminal-control-smoke-test).
+In the loopback UI, select the intended robot. With the robot raised/secured,
+the spotter ready, and the physical cutoff reachable, apply the smallest input
+and release it. Confirm only that robot responds and the command returns to
+zero. A malformed drive message is rejected rather than coerced, and closing
+the controlling tab requests zero for the targets that tab owns; the
+robot-side watchdog remains the next software backstop. The terminal teleop
+tool is not a current acceptance path; see
+[Fix Step 5.1](#ref-5-1).
 
 # Alternative/Debug/Fix Reference
 
@@ -168,30 +185,37 @@ Then return to [Step 4](#step-4-start-control-ui).
 <a id="ref-4-2"></a>
 ## Alternative Step 4.2: Private LAN Browser Access
 
-### CONTROL MACHINE:
-
-```bash
-export SWARM_CORE_ALLOW_LAN_BIND=1
-export SWARM_CORE_BIND_HOST=0.0.0.0
-ros2 launch swarm_control_core swarm_fpv_ui.launch.py ros_domain_id:="$ROS_DOMAIN_ID"
-```
+Standalone Core's browser endpoint is currently loopback-only. Setting a LAN
+bind does not satisfy the non-loopback authentication guard, so there is no
+supported standalone command for this alternative. Use an appropriately
+authenticated distribution for browser exposure; keep ROS itself on a trusted
+private LAN.
 
 Then return to [Step 4](#step-4-start-control-ui).
 
 <a id="ref-5-1"></a>
-## Fix Step 5.1: Terminal Nodes Cannot Discover Robots
+## Fix Step 5.1: Terminal Teleop Known Limitation
+
+The terminal entry point exists, but its active input loop does not reliably
+service republish, discovery, offline-watchdog, and override timers. Do not use
+it as a readiness or stop-safety test until timer-liveness behavioral tests
+pass. The commands below are diagnostics only.
 
 ### CONTROL MACHINE:
 
 ```bash
 eval "$(~/.local/bin/swarmc env)"
 ros2 topic list | rg "/.*/cmd_vel"
-ros2 action list | rg "/.*/execute_playbook"
+ros2 action list | rg "/.*/execute_playbook" || \
+  ros2 topic list | rg "/.*/execute_playbook_(cmd|result)"
 ```
 
-If actions are missing, verify `unit_executor_action_server_core` is running from Step 3.
+On a clean Core-only install, the optional action interface package is absent
+and the `_cmd`/`_result` topic pair is the expected compatibility interface.
+If both forms are missing, verify `unit_executor_action_server_core` is
+running from Step 3.
 
-Then return to [Step 5](#step-5-optional-terminal-control-smoke-test).
+Then return to [Step 5](#step-5-browser-control-smoke-test).
 
 <a id="ref-5-2"></a>
 ## Optional: Service-Mode Switch On Shared Robots

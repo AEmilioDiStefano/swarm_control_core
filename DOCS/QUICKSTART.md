@@ -1,18 +1,18 @@
 # Local FPV Quickstart
 
-Status: active local/LAN quickstart for `swarm_control_core`.
+Status: active control-machine-local quickstart for standalone
+`swarm_control_core`; ROS robot traffic remains private-LAN scoped.
 
 Use this for the shortest path to local robot FPV + control.
 For full detail and extended troubleshooting, use:
 - [`LOCAL_FPV_runbook.md`](LOCAL_FPV_runbook.md)
 
 If robot setup has not already been done for the robot(s) you want to
-control, you must first follow one of the ADD_robots guide docs (for
-example, [`ADD_robot_pi.md`](ADD_robot_pi.md) for Raspberry Pi robots).
+control, first follow
+[`NOBLE_FRESH_INSTALL.md`](./NOBLE_FRESH_INSTALL.md) for the supported fresh
+Ubuntu 24.04 control-machine/Pi path.
 If you are still assembling the robot hardware, start with
 [`setup_instructions_ASSEMBLY.md`](setup_instructions_ASSEMBLY.md).
-To operate an existing swarm from a new machine, use
-[`ADD_control_machine.md`](ADD_control_machine.md).
 
 This runbook is split into two parts:
 1. **Quickstart Path** at the top.
@@ -47,12 +47,47 @@ Trust/verification rule:
   `[OK] Registered/approved robots are ready for QUICKSTART handoff.`
 - If a robot is visible over ROS but missing from the control machine's trusted
   registry, the UI keeps it read-only by design.
+- This registry gates UI-issued commands only; every DDS participant on the
+  trusted ROS LAN remains inside the command trust perimeter.
 
 ### IF switching between `swarm_control_core` and `swarm_control_pro`
 
 Go to [Alternative Step A.1](#ref-a-1), then return to [Step 0](#step-0).
 
 # Direct Run Path
+
+## Motion-Safety Preflight
+
+Core is experimental, operator-supervised lab software—not a safety-rated
+controller. Before starting robot bringup:
+
+- provide an operator-reachable physical motor-power cutoff
+- raise/secure wheels or tracks for the first motion test and use a spotter
+- keep exactly one active command surface per robot
+- treat any mock-hardware, unresolved-profile, or actuator warning as a failed
+  bringup; heartbeat/topic visibility alone does not prove motors are ready
+- never rely on a browser or terminal Stop control as an e-stop
+
+Software stop behavior to expect during this supervised test:
+
+- browser drive messages accept only the documented finite numeric fields;
+  malformed JSON, unknown drive fields, booleans, numeric strings, `NaN`, and
+  infinity are rejected instead of being converted into motion
+- playbook/action parameters likewise require a strict JSON object with
+  documented fields and finite JSON numbers; rejected input does not start a
+  motion plan
+- an invalid browser drive message or browser disconnect drops retained drive
+  targets and publishes zero only for robots owned by that browser session
+- retained browser drive targets expire on a monotonic deadman (default
+  `0.35 s`; the supported configured range is `0.05..2.0 s`)
+- the robot motor driver has its own command watchdog and uses an immediate
+  all-channel hard-stop path for stale, invalid, failed, or shutdown output;
+  motor reversals first command zero and wait the configured direction-change
+  deadtime before changing direction pins
+
+These are software regression-tested safeguards, not proof that a particular
+motor controller, GPIO path, power stage, or physical cutoff works. The
+lifted-wheel and physical-cutoff checks remain required.
 
 <a id="apt-lock-preflight"></a>
 ## Before Step 0: Apt/Dpkg Lock Preflight
@@ -157,7 +192,8 @@ Behavior of the step-2 wrapper:
 - refreshes runtime `control_types.yaml` and `control_interfaces.yaml` from the
   source tree while preserving generated camera profiles
 - prints the selected hardware profile's wiring document when available
-- runs the interactive camera-profile save
+- runs the interactive camera-profile save and requires a successful live
+  stream probe before replacing the saved profile
 - launches robot bringup and stays attached to it
 
 ### Verify success
@@ -167,6 +203,10 @@ Expected robot-side nodes include:
 - `heartbeat_node`
 - `unit_executor_action_server`
 - `camera` (if `use_camera:=true`)
+
+Also verify that the resolved robot/control-interface profile is the intended
+real hardware profile and that bringup has no mock-hardware warning. Do not
+continue to motion testing on heartbeat/topic presence alone.
 
 ### IF robot nodes or camera do not come up
 
@@ -274,6 +314,11 @@ Robot trust model:
 - Unknown robots are shown read-only for video/diagnostics, but drive and
   autonomy commands are blocked by default.
 
+If the controlling browser tab disconnects, the server releases that tab's
+control locks and requests an immediate zero command for its retained targets.
+The robot-side command watchdog is an independent software backstop. Neither
+behavior replaces the physical motor-power cutoff.
+
 ### IF UI does not load or bind
 
 Go to [Fix Step 3.1](#ref-3-1), then return to [Step 3](#step-3).
@@ -282,7 +327,7 @@ Go to [Fix Step 3.1](#ref-3-1), then return to [Step 3](#step-3).
 
 Go to [Fix Step 3.2](#ref-3-2), then return to [Step 3](#step-3).
 
-### IF you need balanced fleet, switch-heavy, all-stream, or LAN-bind mode
+### IF you need balanced fleet, switch-heavy, or all-stream mode
 
 Go to [Alternative Step 3.3](#ref-3-3), then return to [Step 3](#step-3).
 
@@ -290,6 +335,11 @@ Proceed to Step 4.
 
 <a id="step-4"></a>
 ## Step 4: Fleet Readiness Check (Control Machine)
+
+Keep Step 3 running and use the UI plus a fresh control terminal. The helper
+loads the same CycloneDDS discovery policy as the robot/UI runners, stops a
+stale ROS CLI daemon, reports missing graph entries explicitly, and requires a
+fresh decodable frame from the local UI.
 
 ### CONTROL MACHINE:
 
@@ -301,26 +351,34 @@ Proceed to Step 4.
 
 Expected:
 - heartbeat/camera/cmd_vel topics visible for active robots
-- UI displays robots and streams
+- output includes `FPV ACCEPTANCE PASSED`
+- UI reports a fresh frame and WebRTC support
+- the browser visibly displays live/moving video; topic names or a cached
+  still image alone are not FPV proof
+- robot bringup still reports the intended non-mock actuator profile
 
 ### IF robots are missing in UI/topics
 
 Go to [Fix Step 4.1](#ref-4-1), then return to [Step 4](#step-4).
 
+### IF Step 4 reports no fresh frame
+
+Go to [Fix Step 4.2](#ref-4-2), then return to [Step 4](#step-4).
+
 Proceed to Step 5.
 
 <a id="step-5"></a>
-## Step 5: Terminal Control Smoke Test (Control Machine)
+## Step 5: Browser Control Smoke Test (Control Machine)
 
-### CONTROL MACHINE:
+In the loopback UI opened in Step 3, select the intended robot. With the robot
+raised/secured, the spotter ready, and the physical cutoff reachable, apply the
+smallest control input and release it. Confirm only that robot responds and the
+command returns to zero on release. Keep all other control/autonomy tools
+closed.
 
-```bash
-~/.local/bin/swarmc step5 --tool teleop
-```
-
-### IF terminal control cannot discover robots
-
-Go to [Fix Step 5.1](#ref-5-1), then return to [Step 5](#step-5).
+The terminal teleop tool is not a current acceptance path because its input
+loop does not service ROS timers reliably. Its command is retained only as a
+known-limitation reference in [Fix Step 5.1](#ref-5-1).
 
 Quickstart complete.
 
@@ -364,11 +422,23 @@ The launcher is installed by machine setup in the ADD-robot guides. On a
 machine that has never been set up, run the first-contact bootstrap
 (`control` on the control machine, `robot` on a robot):
 
-### CONTROL MACHINE / ROBOT(S):
+### CONTROL MACHINE:
 
 ```bash
+set -o pipefail
 wget -qO- https://raw.githubusercontent.com/AEmilioDiStefano/swarm_control_core/main/scripts/swarm_core_first_contact.sh | bash -s -- --setup control
 ```
+
+### ROBOT(S):
+
+```bash
+set -o pipefail
+wget -qO- https://raw.githubusercontent.com/AEmilioDiStefano/swarm_control_core/main/scripts/swarm_core_first_contact.sh | bash -s -- --setup robot
+```
+
+This convenience command currently follows mutable `main`; it is not an
+immutable release verification. Confirm the documented success output rather
+than treating a returned prompt alone as proof.
 
 If the machine already has the workspace checkout, this reuses it and only
 installs the launcher + missing dependencies. Then return to
@@ -412,7 +482,8 @@ re-save the camera profile:
 eval "$(~/.local/bin/swarmc env)"
 ros2 node list
 ros2 topic list | rg "/$(id -un)/(heartbeat|camera/image_raw|cmd_vel)"
-ros2 run swarm_control_core save_camera_profile_core --robot "$(id -un)"
+ros2 run swarm_control_core save_camera_profile_core \
+  --robot "$(id -un)" --require-camera
 ```
 
 If the robot runs under a non-default name, replace `$(id -un)` with that
@@ -481,6 +552,13 @@ Control UI, then prints the intended wheel directions before publishing the test
 command. Use `8/2/4/6/7/9/1/3` or arrow keys for movement, `0` for mecanum
 strafe mode, and `space`, `s`, or `5` for stop.
 
+Wheel-test pulses default to `0.7 s`; `--duration` accepts only finite values in
+`0.05..5.0 s`. Explicit `--linear` and `--angular` values must be finite,
+non-negative, and no greater than the resolved robot profile limits. Invalid
+values are rejected before a command is published. Keep the robot lifted even
+with these bounds: they limit the software request but do not validate physical
+stopping.
+
 If a wheel direction is reversed, use `v` to choose FL/BL/FR/BR and toggle that
 wheel inversion, then press `S` to save. If the wrong wheel moves, use `c` to
 swap wheel channel mappings and press `S` to save.
@@ -547,22 +625,20 @@ Then return to [Step 2](#step-2).
 <a id="ref-3-1"></a>
 ## Fix Step 3.1: UI does not load or bind
 
-Free the UI port, then restart the UI step:
+Inspect the UI port before changing anything:
 
 ### CONTROL MACHINE:
 
 ```bash
-~/.local/bin/swarmc free-ui-port --port 8080
-~/.local/bin/swarmc step3
+ss -ltnp | rg ':8080' || true
 ```
 
-If LAN access is needed, restart the UI with the bind override instead:
+If the listener is a stale swarm UI, stop that identified process/service
+normally and rerun `~/.local/bin/swarmc step3`. Do not use a force-reclaim
+helper against an unidentified listener.
 
-### CONTROL MACHINE:
-
-```bash
-~/.local/bin/swarmc step3 --allow-lan-bind
-```
+Standalone Core intentionally remains loopback-only at the browser boundary.
+There is no supported unauthenticated non-loopback launcher mode.
 
 Then return to [Step 3](#step-3).
 
@@ -605,7 +681,7 @@ they are registered in `robot_instances.yaml`.
 Then return to [Step 3](#step-3).
 
 <a id="ref-3-3"></a>
-## Alternative Step 3.3: Fleet, Switching, Streaming, or LAN Bind Modes
+## Alternative Step 3.3: Fleet, Switching, Or Streaming Modes
 
 Balanced fleet profile.
 
@@ -632,13 +708,8 @@ To keep all robot camera streams subscribed continuously, at higher load.
 SWARM_CORE_IMAGE_SUBSCRIPTION_MODE=all ~/.local/bin/swarmc step3
 ```
 
-For private-LAN browser access.
-
-### CONTROL MACHINE:
-
-```bash
-~/.local/bin/swarmc step3 --allow-lan-bind
-```
+Private-LAN browser exposure is not available from standalone Core without an
+appropriate authenticated distribution. Keep the Core browser on loopback.
 
 Then return to [Step 3](#step-3).
 
@@ -652,39 +723,39 @@ Check domain and source consistency on control + robots.
 ```bash
 eval "$(~/.local/bin/swarmc env)"
 echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID (target=${SWARM_CORE_ROS_DOMAIN_ID:-17})"
-env | rg -E '^(ROS_DOMAIN_ID|ROS_LOCALHOST_ONLY|ROS_AUTOMATIC_DISCOVERY_RANGE|ROS_STATIC_PEERS|ROS_DISCOVERY_SERVER|RMW_IMPLEMENTATION)=' || true
+env | rg '^(ROS_DOMAIN_ID|ROS_LOCALHOST_ONLY|ROS_AUTOMATIC_DISCOVERY_RANGE|ROS_STATIC_PEERS|ROS_DISCOVERY_SERVER|RMW_IMPLEMENTATION)=' || true
 ros2 topic list | rg "/.*/heartbeat"
 ```
 
-All machines must use the same domain id (default `17`) and sourced workspace.
+All machines must use the same domain id (default `17`), CycloneDDS policy,
+and sourced workspace. The default `hybrid` policy uses SUBNET multicast plus
+the direct peer addresses recorded by onboarding. For a multicast-free test,
+set `SWARM_CORE_DISCOVERY_MODE=static` on every process; CycloneDDS/Jazzy
+requires `LOCALHOST + ROS_STATIC_PEERS` for this mode, not `OFF` (which ignores
+the peers).
 
-If robot terminals show heartbeat publishing but control still has no heartbeat topics,
-DDS traffic is being blocked (commonly by ufw state carried from an earlier setup).
-Keep compat defaults and rerun [Step 2](#step-2) on robots + [Step 3](#step-3) on control.
+If robot terminals show heartbeat publishing but control still has no heartbeat
+topics, first confirm that `ROS_STATIC_PEERS` contains the opposite host's IP.
+If IP ping also fails, the AP is enforcing client isolation and neither static
+peers nor multicast can cross it: move both machines to a private LAN/Ethernet
+or disable AP isolation. Inspect LAN/DDS/firewall policy explicitly; do not
+disable a host firewall merely to make this check pass.
 
 If the UI sees a robot but logs it as unknown/read-only, go to
 [Fix Step 3.2](#ref-3-2), then return to [Step 4](#step-4).
 
-If you previously forced firewall preservation, remove that override.
-
-### CONTROL MACHINE / ROBOT(S):
-
-```bash
-unset SWARM_CORE_COMPAT_STOP_UFW
-```
-
 If a step script prints `Unknown argument: --machine-role`, your robot/control
 checkout is stale. If `git pull --ff-only` is blocked by local changes to
 `config/robot_instances.yaml` after running robot setup, the runtime profile is
-already stored under `~/.config/swarm_control_core/robot_instances.yaml`; restore
-the generated source-file edit before pulling.
+already stored under `~/.config/swarm_control_core/robot_instances.yaml`.
+Inspect the source diff and preserve any intentional edit before restoring it.
 
 ### CONTROL MACHINE / ROBOT(S):
 
 ```bash
 eval "$(~/.local/bin/swarmc env)"
 cd "$WS/src/swarm_control_core"
-git restore config/robot_instances.yaml
+git diff -- config/robot_instances.yaml
 git fetch origin --prune
 git switch main || git checkout -b main origin/main
 git pull --ff-only origin main
@@ -701,15 +772,45 @@ Then rerun the sync/build gate on that machine:
 Use `--machine-role robot` in robot terminals. Then return to
 [Step 4](#step-4).
 
+<a id="ref-4-2"></a>
+## Fix Step 4.2: UI Has No Fresh Camera Frame
+
+Stop the affected Step 2 bringup with Ctrl-C, reconnect the USB camera, and
+require a successful live stream probe before replacing its saved profile.
+
+### AFFECTED ROBOT:
+
+```bash
+eval "$(~/.local/bin/swarmc env)"
+ros2 run swarm_control_core save_camera_profile_core \
+  --robot "$(id -un)" --require-camera
+```
+
+Restart the affected robot at Step 2 and keep it running. Keep the loopback UI
+and browser running, select the robot, and confirm visibly moving video.
+
+Then return to [Step 4](#step-4).
+
 <a id="ref-5-1"></a>
-## Fix Step 5.1: Terminal control cannot discover robots
+## Fix Step 5.1: Terminal Teleop Known Limitation
+
+The terminal teleop entry point resolves, but its active input loop currently
+does not service republish, discovery-refresh, offline-watchdog, and override
+timers reliably. Do not use it as a motion-readiness or stop-safety test. Use
+the Step 5 loopback browser test until timer-liveness remediation and behavioral
+tests land.
 
 ### CONTROL MACHINE:
 
 ```bash
 eval "$(~/.local/bin/swarmc env)"
 ros2 topic list | rg "/.*/cmd_vel"
-ros2 action list | rg "/.*/execute_playbook"
+ros2 action list | rg "/.*/execute_playbook" || \
+  ros2 topic list | rg "/.*/execute_playbook_(cmd|result)"
 ```
+
+A clean Core-only install does not include the optional
+`fleet_orchestrator_interfaces` action package; in that case the executor
+intentionally exposes the `_cmd`/`_result` String-topic compatibility pair.
 
 Then return to [Step 5](#step-5).
