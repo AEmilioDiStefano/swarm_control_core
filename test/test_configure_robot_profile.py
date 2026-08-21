@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import yaml
+
+from swarm_control_core import add_robot
 from swarm_control_core.configure_robot_profile import (
     _build_robot_entry,
     _suggest_control_machine_sync_specs,
@@ -9,6 +12,7 @@ from swarm_control_core.configure_robot_profile import (
     refresh_runtime_core_profiles,
     wiring_doc_for_interface,
 )
+from swarm_control_core.wheel_test import save_gpio_overrides
 
 
 CORE_ROOT = Path(__file__).resolve().parents[1]
@@ -359,15 +363,162 @@ control_interfaces:
         prompt_input=None,
         control_type="diff_drive",
         control_interface="4wheel_diff_l298n_2",
+        linux_username="robot4",
+        hostname="legion4.local",
         update_existing=True,
     )
 
-    assert created is False
+    assert created is True
     assert entry["ssh_target"] == "robot4@legion4.local"
     assert entry["control_interface"] == "4wheel_diff_l298n_2"
     assert sync_results[0]["repaired"] is True
     assert "control_interface: 4wheel_diff_l298n_1" in repo_profiles.read_text(encoding="utf-8")
     assert "control_interface: 4wheel_diff_l298n_2" in runtime_profiles.read_text(encoding="utf-8")
+
+
+def test_add_robot_rerun_preserves_onboarded_hardware_and_wheel_overrides(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    workspace = tmp_path / "ws"
+    source_config = workspace / "src" / "swarm_control_core" / "config"
+    runtime_config = tmp_path / "runtime"
+    runtime_profiles = runtime_config / "robot_instances.yaml"
+    monkeypatch.setenv("SWARM_CORE_CONFIG_DIR", str(runtime_config))
+
+    _write(
+        source_config / "robot_instances.yaml",
+        """schema_version: "1.0"
+defaults:
+  control_type: diff_drive
+  control_interface: 4wheel_diff_l298n_1
+robots:
+  robot1:
+    ssh_target: robot1@sample-host.local
+    control_type: diff_drive
+    control_interface: 4wheel_diff_tb6612fng_2
+    params:
+      control_interface:
+        max_pwm: 40
+""",
+    )
+    _write(
+        source_config / "control_types.yaml",
+        """schema_version: "1.0"
+control_types:
+  diff_drive:
+    type: diff_drive
+""",
+    )
+    _write(
+        source_config / "control_interfaces.yaml",
+        """schema_version: "1.0"
+control_interfaces:
+  4wheel_diff_l298n_1:
+    compatible_control_types: [diff_drive]
+  4wheel_diff_l298n_2:
+    compatible_control_types: [diff_drive]
+  4wheel_diff_tb6612fng_2:
+    compatible_control_types: [diff_drive]
+""",
+    )
+
+    assert add_robot.main(
+        [
+            "--workspace",
+            str(workspace),
+            "--name",
+            "robot1",
+            "--host",
+            "robot1@10.42.0.44",
+            "--control-type",
+            "diff_drive",
+            "--control-interface",
+            "4wheel_diff_l298n_2",
+            "--skip-camera",
+        ]
+    ) == 0
+    fresh_entry = yaml.safe_load(runtime_profiles.read_text(encoding="utf-8"))["robots"]["robot1"]
+    assert fresh_entry == {
+        "ssh_target": "robot1@10.42.0.44",
+        "control_type": "diff_drive",
+        "control_interface": "4wheel_diff_l298n_2",
+    }, "fresh runtime onboarding must not inherit same-named repository sample params"
+
+    save_gpio_overrides(
+        runtime_profiles,
+        "robot1",
+        {
+            "invert_fl": True,
+            "fl_in1": 23,
+            "fl_in2": 24,
+        },
+    )
+    calibrated_entry = yaml.safe_load(runtime_profiles.read_text(encoding="utf-8"))["robots"]["robot1"]
+
+    # Rerunning the exact checklist-generated onboarding arguments must merge
+    # the same top-level selections into the active entry, not erase calibration.
+    assert add_robot.main(
+        [
+            "--workspace",
+            str(workspace),
+            "--name",
+            "robot1",
+            "--host",
+            "robot1@10.42.0.44",
+            "--control-type",
+            "diff_drive",
+            "--control-interface",
+            "4wheel_diff_l298n_2",
+            "--skip-camera",
+        ]
+    ) == 0
+    exact_retry_entry = yaml.safe_load(runtime_profiles.read_text(encoding="utf-8"))["robots"]["robot1"]
+    assert exact_retry_entry == calibrated_entry
+
+    # This is the exact profile phase that quickstart Step 2 repeats: it names
+    # the robot but intentionally supplies no replacement hardware or host.
+    assert add_robot.main(
+        [
+            "--workspace",
+            str(workspace),
+            "--name",
+            "robot1",
+            "--skip-camera",
+        ]
+    ) == 0
+
+    rerun_entry = yaml.safe_load(runtime_profiles.read_text(encoding="utf-8"))["robots"]["robot1"]
+    assert rerun_entry == calibrated_entry
+    assert rerun_entry["ssh_target"] == "robot1@10.42.0.44"
+    assert rerun_entry["control_interface"] == "4wheel_diff_l298n_2"
+    assert rerun_entry["gpio"] == {
+        "invert_fl": True,
+        "fl_in1": 23,
+        "fl_in2": 24,
+    }
+
+    # An actual hardware-pair change must not retain GPIO pins or tuning from
+    # the old controller, even though identity remains stable.
+    assert add_robot.main(
+        [
+            "--workspace",
+            str(workspace),
+            "--name",
+            "robot1",
+            "--control-type",
+            "diff_drive",
+            "--control-interface",
+            "4wheel_diff_l298n_1",
+            "--skip-camera",
+        ]
+    ) == 0
+    changed_hardware_entry = yaml.safe_load(runtime_profiles.read_text(encoding="utf-8"))["robots"]["robot1"]
+    assert changed_hardware_entry == {
+        "ssh_target": "robot1@10.42.0.44",
+        "control_type": "diff_drive",
+        "control_interface": "4wheel_diff_l298n_1",
+    }
 
 
 def test_ensure_robot_entry_update_preserves_explicit_ip_host(tmp_path: Path) -> None:

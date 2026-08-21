@@ -97,7 +97,7 @@ fi
 ros2 run swarm_control_core add_robot_core "${add_robot_args[@]}"
 
 if [[ "$skip_camera_profile" != "1" ]]; then
-  ros2 run swarm_control_core save_camera_profile_core --robot "$robot_name"
+  ros2 run swarm_control_core save_camera_profile_core --robot "$robot_name" --require-camera
 fi
 
 ros2 run swarm_control_core robot_doctor_core --workspace "$WS" --robot "$robot_name"

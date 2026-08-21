@@ -384,6 +384,86 @@ disable_duplicate_ros_apt_sources() {
   [[ "$changed" == "1" ]]
 }
 
+atomic_install_as_root() {
+  local source_path="$1"
+  local destination_path="$2"
+  local file_mode="${3:-0644}"
+  local destination_tmp=""
+
+  # Create the temporary file beside the destination so the final rename is
+  # atomic even when /tmp and the destination live on different filesystems.
+  destination_tmp="$(sudo mktemp "${destination_path}.tmp.XXXXXX")" || return 1
+  if ! sudo install -m "$file_mode" "$source_path" "$destination_tmp"; then
+    sudo rm -f "$destination_tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+  if ! sudo mv -f "$destination_tmp" "$destination_path"; then
+    sudo rm -f "$destination_tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+  return 0
+}
+
+write_text_file_atomically_as_root() {
+  local destination_path="$1"
+  local contents="$2"
+  local source_tmp=""
+
+  source_tmp="$(mktemp)" || return 1
+  if ! printf '%s\n' "$contents" > "$source_tmp"; then
+    rm -f "$source_tmp" || true
+    return 1
+  fi
+  if ! atomic_install_as_root "$source_tmp" "$destination_path" 0644; then
+    rm -f "$source_tmp" || true
+    return 1
+  fi
+  rm -f "$source_tmp" || return 1
+  return 0
+}
+
+ros_apt_keyring_is_valid() {
+  local keyring_path="$1"
+
+  [[ -s "$keyring_path" ]] || return 1
+  command -v gpg >/dev/null 2>&1 || return 1
+  gpg --batch --quiet --show-keys "$keyring_path" >/dev/null 2>&1
+}
+
+install_ros_apt_keyring_atomically() {
+  local destination_path="$1"
+  local armored_tmp=""
+  local dearmored_tmp=""
+
+  armored_tmp="$(mktemp)" || return 1
+  dearmored_tmp="$(mktemp)" || {
+    rm -f "$armored_tmp" || true
+    return 1
+  }
+
+  if ! curl --connect-timeout 15 --max-time 60 --retry 2 --retry-delay 2 -fsSL \
+    --output "$armored_tmp" \
+    "https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"; then
+    rm -f "$armored_tmp" "$dearmored_tmp" || true
+    return 1
+  fi
+  if ! gpg --batch --yes --dearmor --output "$dearmored_tmp" "$armored_tmp"; then
+    rm -f "$armored_tmp" "$dearmored_tmp" || true
+    return 1
+  fi
+  if ! ros_apt_keyring_is_valid "$dearmored_tmp"; then
+    dependency_status "Downloaded ROS apt key is not a valid OpenPGP keyring"
+    rm -f "$armored_tmp" "$dearmored_tmp" || true
+    return 1
+  fi
+  if ! atomic_install_as_root "$dearmored_tmp" "$destination_path" 0644; then
+    rm -f "$armored_tmp" "$dearmored_tmp" || true
+    return 1
+  fi
+  rm -f "$armored_tmp" "$dearmored_tmp" || return 1
+  return 0
+}
+
 ensure_ros_apt_repository() {
   local setup_file="/opt/ros/${ros_distro}/setup.bash"
   if [[ ! -f /etc/os-release ]]; then
@@ -407,6 +487,24 @@ ensure_ros_apt_repository() {
   arch="$(dpkg --print-architecture 2>/dev/null || echo arm64)"
   local repo_line="deb [arch=${arch} signed-by=${keyring}] http://packages.ros.org/ros2/ubuntu ${codename} main"
   local changed="0"
+  local keyring_valid="0"
+
+  if ros_apt_keyring_is_valid "$keyring"; then
+    keyring_valid="1"
+  elif sudo test -f "$source_file"; then
+    # A configured ROS source plus a missing/corrupt key prevents even Ubuntu
+    # prerequisite packages from updating. Preserve the old source as a
+    # disabled backup, then reconstruct the key and canonical source below.
+    local disabled_source="${source_file}.disabled-by-swarm-control-key-repair"
+    local disabled_suffix=0
+    while sudo test -e "$disabled_source"; do
+      disabled_suffix=$((disabled_suffix + 1))
+      disabled_source="${source_file}.disabled-by-swarm-control-key-repair.${disabled_suffix}"
+    done
+    dependency_status "Disabling ROS apt source while repairing a missing or invalid keyring"
+    sudo mv "$source_file" "$disabled_source" || return 1
+    changed="1"
+  fi
 
   if disable_duplicate_ros_apt_sources "$source_file"; then
     changed="1"
@@ -432,15 +530,19 @@ ensure_ros_apt_repository() {
     changed="1"
   fi
 
-  if [[ ! -f "$keyring" ]]; then
+  if [[ "$keyring_valid" != "1" ]]; then
+    if sudo test -e "$keyring"; then
+      dependency_status "Existing ROS apt keyring is invalid; replacing it safely"
+    else
+      dependency_status "ROS apt keyring is missing; installing it"
+    fi
     dependency_status "Installing ROS apt key prerequisites"
     if ! install_apt_packages ca-certificates curl gnupg lsb-release; then
       return 1
     fi
 
     dependency_status "Downloading ROS apt key from GitHub"
-    if ! curl --connect-timeout 15 --max-time 60 --retry 2 --retry-delay 2 -fsSL "https://raw.githubusercontent.com/ros/rosdistro/master/ros.key" \
-      | sudo gpg --batch --yes --dearmor -o "$keyring"; then
+    if ! install_ros_apt_keyring_atomically "$keyring"; then
       return 1
     fi
     changed="1"
@@ -448,7 +550,7 @@ ensure_ros_apt_repository() {
 
   if ! sudo test -f "$source_file" || [[ "$(sudo cat "$source_file" 2>/dev/null)" != "$repo_line" ]]; then
     dependency_status "Writing ROS apt source list for ${codename}/${arch}"
-    echo "$repo_line" | sudo tee "$source_file" >/dev/null
+    write_text_file_atomically_as_root "$source_file" "$repo_line" || return 1
     changed="1"
   fi
 

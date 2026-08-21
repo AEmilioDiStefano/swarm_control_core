@@ -15,12 +15,12 @@ DRP_MACHINE_LABELS = (
     "### CONTROL MACHINE / ROBOT",
     "### ROBOT",
     "### AFFECTED ROBOT",
+    "### AFFECTED CONTROL MACHINE",
     "### SECOND ROBOT SSH TERMINAL",
 )
 OPERATOR_GUIDES = [
+    CORE_ROOT / "DOCS" / "NOBLE_FRESH_INSTALL.md",
     CORE_ROOT / "DOCS" / "QUICKSTART.md",
-    CORE_ROOT / "DOCS" / "ADD_robot_pi.md",
-    CORE_ROOT / "DOCS" / "ADD_control_machine.md",
     CORE_ROOT / "DOCS" / "setup_instructions_ASSEMBLY.md",
     CORE_ROOT / "DOCS" / "LOCAL_FPV_runbook.md",
     CORE_ROOT / "DOCS" / "control_interface_profiles.md",
@@ -29,6 +29,7 @@ OPERATOR_GUIDES = [
 # Guides fully converted to launcher commands: user-facing bash blocks must
 # stay short. The heavy lifting belongs in scripts/, not in copy-paste blocks.
 SHORT_BLOCK_GUIDES = {
+    CORE_ROOT / "DOCS" / "NOBLE_FRESH_INSTALL.md",
     CORE_ROOT / "DOCS" / "QUICKSTART.md",
     CORE_ROOT / "DOCS" / "ADD_robot_pi.md",
     CORE_ROOT / "DOCS" / "ADD_control_machine.md",
@@ -73,7 +74,8 @@ def test_add_robot_guide_uses_first_contact_bootstrap():
     assert f"{LAUNCHER} new-robot" in text
     assert f"{LAUNCHER} imager-checklist" in text
     assert f"{LAUNCHER} verify-robots" in text
-    assert "# Direct Run Path" in text
+    assert "# Engineering Reference Sequence" in text
+    assert "not an active Direct Run Path" in text
     assert "# Alternative/Debug/Fix Reference" in text
     assert "## Step 3: Onboard With One Command" in text
     assert "swarm_core_new_robot.sh" in text
@@ -81,6 +83,14 @@ def test_add_robot_guide_uses_first_contact_bootstrap():
     assert "approved for FPV UI control until" in text
     assert "Registered/approved robots are ready for QUICKSTART handoff" in text
     assert "ADD_control_machine.md" in text
+
+
+def test_held_add_control_guide_is_not_advertised_as_a_direct_run_path():
+    text = (CORE_ROOT / "DOCS" / "ADD_control_machine.md").read_text(
+        encoding="utf-8"
+    )
+    assert "# Engineering Reference Sequence" in text
+    assert "not an active Direct Run Path" in text
 
 
 def test_first_contact_script_is_fresh_machine_safe():

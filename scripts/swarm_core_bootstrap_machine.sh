@@ -143,19 +143,56 @@ wait_for_package_manager() {
   done
 }
 
+repair_package_state_before_dependencies() {
+  local initial_dpkg_status=0
+  if ! command -v sudo >/dev/null 2>&1; then
+    fail "sudo is required for package-state repair"
+  fi
+
+  # Control setup reaches the dependency installer without the robot-only OS
+  # upgrade below. Repair dpkg first so an interrupted earlier setup can be
+  # resumed by rerunning the same command instead of remaining wedged forever.
+  # Explicit returns are required because run_bootstrap_step invokes this
+  # function from an `if`, which disables Bash errexit inside the call.
+  wait_for_package_manager || return $?
+  sudo env DEBIAN_FRONTEND=noninteractive dpkg --configure -a || initial_dpkg_status=$?
+  if (( initial_dpkg_status != 0 )); then
+    log "Initial dpkg configuration reported unresolved dependencies; running apt --fix-broken next."
+  fi
+  wait_for_package_manager || return $?
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=1800 --fix-broken install -y || return $?
+  wait_for_package_manager || return $?
+  sudo env DEBIAN_FRONTEND=noninteractive dpkg --configure -a || return $?
+}
+
 robot_system_update_upgrade() {
+  local initial_dpkg_status=0
   if ! command -v sudo >/dev/null 2>&1; then
     fail "sudo is required for robot system update/upgrade preflight"
   fi
 
-  wait_for_package_manager
-  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=1800 update
-  wait_for_package_manager
-  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=1800 upgrade -y
-  wait_for_package_manager
-  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=1800 --fix-broken install -y
-  wait_for_package_manager
-  sudo dpkg --configure -a
+  # This function is called from an `if` in run_bootstrap_step. Bash disables
+  # errexit for every command in that call context, so each command must return
+  # explicitly or a later successful command can hide an earlier apt failure.
+  # Repair interrupted first-boot package work both before and after the normal
+  # update/upgrade so rerunning bootstrap is safe after a power or network loss.
+  wait_for_package_manager || return $?
+  sudo env DEBIAN_FRONTEND=noninteractive dpkg --configure -a || initial_dpkg_status=$?
+  if (( initial_dpkg_status != 0 )); then
+    log "Initial dpkg configuration reported unresolved dependencies; running apt --fix-broken next."
+  fi
+  wait_for_package_manager || return $?
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=1800 --fix-broken install -y || return $?
+  wait_for_package_manager || return $?
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=1800 update || return $?
+  wait_for_package_manager || return $?
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=1800 upgrade -y || return $?
+  wait_for_package_manager || return $?
+  sudo dpkg --configure -a || return $?
+  wait_for_package_manager || return $?
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=1800 --fix-broken install -y || return $?
+  wait_for_package_manager || return $?
+  sudo dpkg --configure -a || return $?
 }
 
 current_step="initialization"
@@ -390,6 +427,10 @@ bootstrap_progress_init
 if [[ "$machine_role" == "robot" && "$skip_system_upgrade" != "1" ]]; then
   current_step="robot-system-update-upgrade"
   run_bootstrap_step 12 "Waiting for apt and upgrading robot OS packages" robot_system_update_upgrade
+else
+  current_step="package-state-repair"
+  run_bootstrap_step 5 "Repairing interrupted apt/dpkg package state" \
+    repair_package_state_before_dependencies
 fi
 
 current_step="dependency-check"

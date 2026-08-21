@@ -31,7 +31,10 @@ fi
 
 BIND_HOST="${SWARM_CORE_BIND_HOST:-127.0.0.1}"
 BIND_PORT="${SWARM_CORE_BIND_PORT:-8080}"
-RECLAIM_BIND_PORT="${SWARM_CORE_RECLAIM_BIND_PORT:-1}"
+# Fail closed when the requested port already has a listener. Reclaiming a TCP
+# port can terminate an unrelated process, so it is available only through the
+# operator's explicit SWARM_CORE_RECLAIM_BIND_PORT=1 opt-in.
+RECLAIM_BIND_PORT="${SWARM_CORE_RECLAIM_BIND_PORT:-0}"
 export ROS_DOMAIN_ID="${SWARM_CORE_ROS_DOMAIN_ID:-17}"
 
 if [[ "${SWARM_CORE_ALLOW_LAN_BIND:-0}" != "1" ]]; then

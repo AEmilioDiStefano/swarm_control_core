@@ -425,6 +425,27 @@ def _build_robot_entry(
     }
 
 
+def _runtime_robot_entry_is_compatible(
+    entry: RobotEntry,
+    *,
+    control_types: Dict[str, Any],
+    control_interfaces: Dict[str, Any],
+) -> bool:
+    """Return whether an existing runtime entry still names a supported profile pair."""
+    control_type = canonical_profile_name(control_types, str(entry.get("control_type") or ""))
+    control_interface = canonical_profile_name(
+        control_interfaces,
+        str(entry.get("control_interface") or entry.get("hardware_profile") or ""),
+    )
+    if control_type not in control_types or control_interface not in control_interfaces:
+        return False
+    return control_interface in _compatible_control_interfaces(
+        control_type,
+        [str(name) for name in control_interfaces],
+        control_interfaces,
+    )
+
+
 def ensure_robot_entry(
     *,
     repo_profiles_path: Path,
@@ -447,6 +468,40 @@ def ensure_robot_entry(
 
     created = False
     entry = repo_robots.get(robot_name)
+    explicit_replacement_requested = any(
+        str(value or "").strip()
+        for value in (control_type, control_interface, linux_username, hostname)
+    )
+    if not update_source_baseline:
+        # Runtime-only onboarding must never treat repository examples as live
+        # deployment state. A valid active entry is the base for both Step 2 and
+        # exact new-robot retries; explicit values are merged below. When no
+        # active entry exists, explicit onboarding builds a clean entry instead
+        # of inheriting sample GPIO/tuning from a same-named repo robot.
+        control_type_mapping = _load_named_mapping(
+            control_types_path,
+            "control_types",
+            _FALLBACK_CONTROL_TYPES,
+        )
+        control_interface_mapping = _load_named_mapping(
+            control_interfaces_path,
+            "control_interfaces",
+            _FALLBACK_CONTROL_INTERFACES,
+        )
+        for runtime_path in runtime_profiles_paths:
+            runtime_registry = _load_robot_registry(runtime_path)
+            runtime_robots = runtime_registry.get("robots", {}) or {}
+            runtime_entry = runtime_robots.get(robot_name) if isinstance(runtime_robots, dict) else None
+            if isinstance(runtime_entry, dict) and _runtime_robot_entry_is_compatible(
+                runtime_entry,
+                control_types=control_type_mapping,
+                control_interfaces=control_interface_mapping,
+            ):
+                entry = dict(runtime_entry)
+                break
+        else:
+            if explicit_replacement_requested:
+                entry = None
     if not isinstance(entry, dict):
         control_type_mapping = _load_named_mapping(
             control_types_path,
@@ -531,7 +586,14 @@ def ensure_robot_entry(
         entry = dict(entry)
         requested_control_type = str(control_type or "").strip()
         requested_control_interface = str(control_interface or "").strip()
-        if update_existing and (requested_control_type or requested_control_interface):
+        identity_replacement_requested = bool(
+            str(linux_username or "").strip() or str(hostname or "").strip()
+        )
+        if update_existing and (
+            requested_control_type
+            or requested_control_interface
+            or identity_replacement_requested
+        ):
             control_type_mapping = _load_named_mapping(
                 control_types_path,
                 "control_types",
@@ -563,11 +625,43 @@ def ensure_robot_entry(
                     f"Unsupported control_interface '{selected_control_interface}' for control_type '{selected_control_type}'. "
                     f"Valid options: {valid}"
                 )
-            entry["control_type"] = selected_control_type
-            entry["control_interface"] = selected_control_interface
-            if linux_username or hostname:
-                username = str(linux_username or "").strip() or str(entry.get("ssh_target", "")).split("@")[0] or getpass.getuser()
-                detected_host = str(hostname or "").strip() or socket.gethostname()
+
+            current_control_type = canonical_profile_name(
+                control_type_mapping,
+                str(entry.get("control_type") or ""),
+            )
+            current_control_interface = canonical_profile_name(
+                control_interface_mapping,
+                str(entry.get("control_interface") or entry.get("hardware_profile") or ""),
+            )
+            hardware_pair_changed = (
+                current_control_type != selected_control_type
+                or current_control_interface != selected_control_interface
+            )
+
+            current_ssh_target = str(entry.get("ssh_target", "")).strip()
+            current_username = ""
+            current_hostname = ""
+            if "@" in current_ssh_target:
+                current_username, current_hostname = current_ssh_target.split("@", 1)
+            username = str(linux_username or "").strip() or current_username or getpass.getuser()
+            detected_host = str(hostname or "").strip() or current_hostname or socket.gethostname()
+
+            if hardware_pair_changed:
+                # GPIO channel maps and interface tuning are hardware-specific.
+                # Changing the resolved pair starts clean instead of carrying a
+                # calibration that could energize the wrong physical pins.
+                entry = _build_robot_entry(
+                    robot_name,
+                    selected_control_type,
+                    selected_control_interface,
+                    linux_username=username,
+                    hostname=detected_host,
+                )
+            else:
+                entry["control_type"] = selected_control_type
+                entry["control_interface"] = selected_control_interface
+            if identity_replacement_requested and not hardware_pair_changed:
                 entry["ssh_target"] = _build_robot_entry(
                     robot_name,
                     selected_control_type,
@@ -814,7 +908,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if created_robot and args.update_source_baseline:
         state_text = "created"
     elif created_robot:
-        state_text = "not present in source baseline; runtime entry prepared"
+        state_text = "clean runtime entry prepared; source baseline unchanged"
     elif args.update_existing and (args.control_type or args.control_interface) and not args.update_source_baseline:
         state_text = "already present; runtime override prepared"
     else:
